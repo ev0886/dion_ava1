@@ -1,5 +1,11 @@
+from __future__ import annotations
+
+from app.bootstrap import bootstrap
+
+
 def main() -> None:
-    print("DION ABA1 application bootstrap placeholder")
+    settings = bootstrap()
+    print(f"{settings.app_name} backend foundation initialized")
 
 
 if __name__ == "__main__":
