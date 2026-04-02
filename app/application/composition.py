@@ -83,6 +83,7 @@ def build_repositories(session: Session) -> RepositoryBundle:
 
 def build_services(
     *,
+    settings: AppSettings,
     session: Session,
     repositories: RepositoryBundle,
     hardware: HardwareBundle,
@@ -115,7 +116,11 @@ def build_services(
             hardware_facade=hardware.facade,
         ),
         exports=ExportService(
+            settings=settings,
             export_repository=repositories.exports,
+            operation_repository=repositories.operations,
+            recovery_repository=repositories.recovery,
+            inventory_repository=repositories.inventory,
             event_log_repository=repositories.event_logs,
             audit_log_repository=repositories.audit_logs,
         ),
@@ -136,7 +141,7 @@ def build_application_container(
 ) -> ApplicationContainer:
     repositories = build_repositories(session)
     hardware = create_hardware_bundle(settings)
-    services = build_services(session=session, repositories=repositories, hardware=hardware)
+    services = build_services(settings=settings, session=session, repositories=repositories, hardware=hardware)
     return ApplicationContainer(
         settings=settings,
         engine=engine,

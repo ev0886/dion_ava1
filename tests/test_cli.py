@@ -6,6 +6,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from contextlib import redirect_stderr, redirect_stdout
 
+from app.api import create_app
 from app.application.dto.startup import (
     DatabaseReadinessDTO,
     HardwareReadinessDTO,
@@ -13,8 +14,20 @@ from app.application.dto.startup import (
     StartupReadinessDTO,
 )
 from app.cli import main
-from app.domain.enums import StartupReadinessStatus
+from app.domain.enums import (
+    ItemStatus,
+    OperationState,
+    OperationType,
+    RecoveryClassification,
+    RecoveryStatus,
+    RoleCode,
+    SlotStatus,
+    SlotType,
+    StartupReadinessStatus,
+    UserStatus,
+)
 from app.hardware.dto import HardwareOperationStatus
+from app.persistence.models import AuditLog, EventLog, InventoryBalance, Item, Operation, RecoveryCase, Role, Slot, User
 
 
 def test_startup_check_returns_success_for_healthy_temp_environment(tmp_path: Path) -> None:
@@ -106,6 +119,55 @@ def test_recovery_scan_runs_and_prints_deterministic_summary(tmp_path: Path) -> 
     assert '"unfinished_operation_ids": []' in stdout
 
 
+def test_execute_export_and_get_export_cli(tmp_path: Path) -> None:
+    _seed_cli_export_domain(tmp_path)
+
+    execute_exit_code, execute_stdout, execute_stderr = _run_cli(
+        [
+            "--data-dir",
+            str(tmp_path),
+            "--sqlite-filename",
+            "cli_export.sqlite3",
+            "--alembic-config-path",
+            "alembic.ini",
+            "execute-export",
+            "--requested-by-user-id",
+            "1",
+            "--export-type",
+            "operations_report",
+            "--destination-path",
+            "exports",
+            "--operation-type",
+            "dispense",
+            "--operation-state",
+            "completed",
+        ]
+    )
+
+    assert execute_exit_code == 0
+    assert '"export_type": "operations_report"' in execute_stdout
+    assert "ERROR:" not in execute_stderr
+
+    get_exit_code, get_stdout, get_stderr = _run_cli(
+        [
+            "--data-dir",
+            str(tmp_path),
+            "--sqlite-filename",
+            "cli_export.sqlite3",
+            "--alembic-config-path",
+            "alembic.ini",
+            "get-export",
+            "--export-id",
+            "1",
+        ]
+    )
+
+    assert get_exit_code == 0
+    assert '"status": "completed"' in get_stdout
+    assert '"produced_file_paths"' in get_stdout
+    assert "ERROR:" not in get_stderr
+
+
 @dataclass(slots=True)
 class _FakeStartupService:
     result: StartupReadinessDTO
@@ -132,3 +194,108 @@ def _run_cli(argv: list[str]) -> tuple[int, str, str]:
     with redirect_stdout(stdout_buffer), redirect_stderr(stderr_buffer):
         exit_code = main(argv)
     return exit_code, stdout_buffer.getvalue(), stderr_buffer.getvalue()
+
+
+def _seed_cli_export_domain(tmp_path: Path) -> None:
+    app = create_app(_settings(tmp_path, "cli_export.sqlite3"))
+    with app.state.session_factory() as session:
+        role = Role(code=RoleCode.ADMIN, name="Admin")
+        session.add(role)
+        session.flush()
+        user = User(
+            role_id=role.id,
+            user_code="admin-1",
+            full_name="Admin One",
+            status=UserStatus.ACTIVE,
+            is_active=True,
+        )
+        item = Item(
+            item_group_id=None,
+            sku="item-1",
+            name="Item One",
+            description=None,
+            unit="pcs",
+            return_allowed=True,
+            min_level=0,
+            status=ItemStatus.ACTIVE,
+        )
+        slot = Slot(
+            code="slot-1",
+            slot_type=SlotType.UNIVERSAL,
+            drum_position=1,
+            board_address=1,
+            lock_number=1,
+            capacity=10,
+            status=SlotStatus.ACTIVE,
+        )
+        session.add_all((user, item, slot))
+        session.flush()
+        operation = Operation(
+            session_id=None,
+            operation_type=OperationType.DISPENSE,
+            operation_state=OperationState.COMPLETED,
+            user_id=user.id,
+            item_id=item.id,
+            slot_id=slot.id,
+            qty_requested=1,
+            qty_confirmed=1,
+            result="success",
+            error_code=None,
+            error_message=None,
+            hardware_context_json={},
+            business_context_json={},
+            started_at=None,
+            finished_at=None,
+        )
+        session.add(operation)
+        session.flush()
+        session.add(
+            RecoveryCase(
+                classification=RecoveryClassification.MANUAL_REVIEW_REQUIRED,
+                status=RecoveryStatus.OPEN,
+                resolved_at=None,
+                summary="seed",
+                context_json=None,
+            )
+        )
+        session.add(
+            AuditLog(
+                entity_type="slot",
+                entity_id="1",
+                action="inspect",
+                actor_user_id=user.id,
+                reason_code="seed",
+                comment="seed",
+                before_json=None,
+                after_json=None,
+            )
+        )
+        session.add(
+            EventLog(
+                event_type="door_opened",
+                level="info",
+                source="lock",
+                operation_id=None,
+                session_id=None,
+                user_id=user.id,
+                slot_id=slot.id,
+                item_id=item.id,
+                qty=1,
+                result="ok",
+                comment="seed",
+                message="seed",
+                payload_json=None,
+            )
+        )
+        session.add(InventoryBalance(slot_id=slot.id, item_id=item.id, quantity=3))
+        session.commit()
+
+
+def _settings(tmp_path: Path, sqlite_filename: str):
+    from app.config import AppSettings
+
+    return AppSettings(
+        data_dir=tmp_path,
+        sqlite_filename=sqlite_filename,
+        alembic_config_path=Path("alembic.ini"),
+    )

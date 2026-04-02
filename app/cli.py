@@ -4,13 +4,15 @@ import argparse
 import json
 import sys
 from dataclasses import asdict, is_dataclass
+from datetime import date, datetime
 from enum import Enum
 from pathlib import Path
 from typing import Any
 
 from app.application.composition import ApplicationContainer, create_bootstrapped_application_container
+from app.application.export_service import build_export_execution_request
 from app.config import AppSettings
-from app.domain.enums import StartupReadinessStatus
+from app.domain.enums import OperationState, OperationType, RecoveryClassification, RecoveryStatus, StartupReadinessStatus
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -29,6 +31,30 @@ def build_parser() -> argparse.ArgumentParser:
     export_plan.add_argument("--destination-type", type=str, default="filesystem")
     export_plan.add_argument("--destination-path", type=str, default="var/exports")
     export_plan.add_argument("--comment", type=str, default=None)
+
+    execute_export = subparsers.add_parser("execute-export")
+    execute_export.add_argument("--requested-by-user-id", type=int, default=None)
+    execute_export.add_argument("--export-type", type=str, required=True)
+    execute_export.add_argument("--destination-type", type=str, default="filesystem")
+    execute_export.add_argument("--destination-path", type=str, default="exports")
+    execute_export.add_argument("--limit", type=int, default=None)
+    execute_export.add_argument("--operation-type", type=str, default=None)
+    execute_export.add_argument("--operation-state", type=str, default=None)
+    execute_export.add_argument("--recovery-status", type=str, default=None)
+    execute_export.add_argument("--recovery-classification", type=str, default=None)
+    execute_export.add_argument("--event-type", type=str, default=None)
+    execute_export.add_argument("--level", type=str, default=None)
+    execute_export.add_argument("--entity-type", type=str, default=None)
+    execute_export.add_argument("--actor-user-id", type=int, default=None)
+    execute_export.add_argument("--slot-id", type=int, default=None)
+    execute_export.add_argument("--item-id", type=int, default=None)
+    execute_export.add_argument("--user-id", type=int, default=None)
+    execute_export.add_argument("--created-from", type=_parse_datetime, default=None)
+    execute_export.add_argument("--created-to", type=_parse_datetime, default=None)
+    execute_export.add_argument("--comment", type=str, default=None)
+
+    get_export = subparsers.add_parser("get-export")
+    get_export.add_argument("--export-id", type=int, required=True)
 
     service_mode_open = subparsers.add_parser("service-mode-open")
     service_mode_open.add_argument("--user-id", type=int, required=True)
@@ -93,6 +119,39 @@ def _dispatch(args: argparse.Namespace, container: ApplicationContainer) -> int:
         print(_render(result))
         return 0
 
+    if args.command == "execute-export":
+        request = build_export_execution_request(
+            requested_by_user_id=args.requested_by_user_id,
+            export_type=args.export_type,
+            destination_type=args.destination_type,
+            destination_path=args.destination_path,
+            limit=args.limit,
+            operation_type=OperationType(args.operation_type) if args.operation_type is not None else None,
+            operation_state=OperationState(args.operation_state) if args.operation_state is not None else None,
+            recovery_status=RecoveryStatus(args.recovery_status) if args.recovery_status is not None else None,
+            recovery_classification=(
+                RecoveryClassification(args.recovery_classification)
+                if args.recovery_classification is not None
+                else None
+            ),
+            event_type=args.event_type,
+            level=args.level,
+            entity_type=args.entity_type,
+            actor_user_id=args.actor_user_id,
+            slot_id=args.slot_id,
+            item_id=args.item_id,
+            user_id=args.user_id,
+            created_from=args.created_from,
+            created_to=args.created_to,
+            comment=args.comment,
+        )
+        print(_render(container.services.exports.execute_export(request)))
+        return 0
+
+    if args.command == "get-export":
+        print(_render(container.services.exports.get_export(args.export_id)))
+        return 0
+
     if args.command == "service-mode-open":
         result = container.services.service_mode.enter_service_mode(
             user_id=args.user_id,
@@ -132,6 +191,8 @@ def _to_jsonable(value: Any) -> Any:
         return _to_jsonable(asdict(value))
     if isinstance(value, Enum):
         return value.value
+    if isinstance(value, (datetime, date)):
+        return value.isoformat()
     if isinstance(value, Path):
         return str(value)
     if isinstance(value, dict):
@@ -139,6 +200,10 @@ def _to_jsonable(value: Any) -> Any:
     if isinstance(value, (list, tuple)):
         return [_to_jsonable(item) for item in value]
     return value
+
+
+def _parse_datetime(value: str) -> datetime:
+    return datetime.fromisoformat(value)
 
 
 if __name__ == "__main__":

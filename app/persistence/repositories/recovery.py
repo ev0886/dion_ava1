@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from datetime import datetime
+
 from sqlalchemy import select
 
 from app.persistence.models import RecoveryAction, RecoveryCase, RecoveryCaseEntity
@@ -63,4 +65,26 @@ class RecoveryRepository(Repository):
             .where(RecoveryAction.recovery_case_id == recovery_case_id)
             .order_by(RecoveryAction.id.asc())
         )
+        return list(self.session.execute(statement).scalars())
+
+    def list_for_report(
+        self,
+        *,
+        limit: int | None = None,
+        status: str | None = None,
+        classification: str | None = None,
+        created_from: datetime | None = None,
+        created_to: datetime | None = None,
+    ) -> list[RecoveryCase]:
+        statement = select(RecoveryCase).order_by(RecoveryCase.id.asc())
+        if status is not None:
+            statement = statement.where(RecoveryCase.status == status)
+        if classification is not None:
+            statement = statement.where(RecoveryCase.classification == classification)
+        if created_from is not None:
+            statement = statement.where(RecoveryCase.created_at >= created_from)
+        if created_to is not None:
+            statement = statement.where(RecoveryCase.created_at <= created_to)
+        if limit is not None:
+            statement = statement.limit(limit)
         return list(self.session.execute(statement).scalars())

@@ -16,7 +16,10 @@ from app.hardware import HardwareFacade, LockState, MockDrumAdapter, MockHardwar
 from app.persistence.base import Base
 from app.persistence.models import Export, Item, OperationSession, Role, Slot, User
 from app.persistence.repositories.logs import AuditLogRepository, EventLogRepository
+from app.persistence.repositories.inventory import InventoryRepository
+from app.persistence.repositories.operations import OperationRepository
 from app.persistence.repositories.operations import OperationSessionRepository
+from app.persistence.repositories.recovery import RecoveryRepository
 from app.persistence.repositories.service import ExportRepository
 from app.persistence.repositories.users import UserRepository
 
@@ -187,7 +190,15 @@ def _service_mode_service(
 
 def _export_service(session: Session) -> ExportService:
     return ExportService(
+        settings=AppSettings(
+            data_dir=Path("var"),
+            sqlite_filename="service_mode.sqlite3",
+            alembic_config_path=Path("alembic.ini"),
+        ),
         export_repository=ExportRepository(session),
+        operation_repository=OperationRepository(session),
+        recovery_repository=RecoveryRepository(session),
+        inventory_repository=InventoryRepository(session),
         event_log_repository=EventLogRepository(session),
         audit_log_repository=AuditLogRepository(session),
     )

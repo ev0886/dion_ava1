@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict
@@ -57,6 +58,28 @@ class ExportCreateRequest(ApiModel):
     requested_by_user_id: int
     destination_type: str = "filesystem"
     destination_path: str = "var/exports"
+    comment: str | None = None
+
+
+class ExportExecuteRequest(ApiModel):
+    requested_by_user_id: int | None = None
+    export_type: str
+    destination_type: str = "filesystem"
+    destination_path: str = "exports"
+    limit: int | None = None
+    operation_type: str | None = None
+    operation_state: str | None = None
+    recovery_status: str | None = None
+    recovery_classification: str | None = None
+    event_type: str | None = None
+    level: str | None = None
+    entity_type: str | None = None
+    actor_user_id: int | None = None
+    slot_id: int | None = None
+    item_id: int | None = None
+    user_id: int | None = None
+    created_from: datetime | None = None
+    created_to: datetime | None = None
     comment: str | None = None
 
 

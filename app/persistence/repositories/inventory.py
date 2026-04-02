@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from datetime import datetime
+
 from sqlalchemy import case, select
 
 from app.domain.enums import BindingType
@@ -46,4 +48,26 @@ class InventoryRepository(Repository):
         statement = select(InventoryTransaction).order_by(InventoryTransaction.id.asc())
         if operation_id is not None:
             statement = statement.where(InventoryTransaction.operation_id == operation_id)
+        return list(self.session.execute(statement).scalars())
+
+    def list_balances_for_report(
+        self,
+        *,
+        limit: int | None = None,
+        slot_id: int | None = None,
+        item_id: int | None = None,
+        created_from: datetime | None = None,
+        created_to: datetime | None = None,
+    ) -> list[InventoryBalance]:
+        statement = select(InventoryBalance).order_by(InventoryBalance.id.asc())
+        if slot_id is not None:
+            statement = statement.where(InventoryBalance.slot_id == slot_id)
+        if item_id is not None:
+            statement = statement.where(InventoryBalance.item_id == item_id)
+        if created_from is not None:
+            statement = statement.where(InventoryBalance.updated_at >= created_from)
+        if created_to is not None:
+            statement = statement.where(InventoryBalance.updated_at <= created_to)
+        if limit is not None:
+            statement = statement.limit(limit)
         return list(self.session.execute(statement).scalars())

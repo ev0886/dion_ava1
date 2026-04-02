@@ -11,6 +11,7 @@ from app.api.schemas import (
     AuthResolveRequest,
     DispenseOperationRequest,
     ExportCreateRequest,
+    ExportExecuteRequest,
     RefillOperationRequest,
     ReturnOperationRequest,
     ServiceModeFinishRequest,
@@ -20,6 +21,8 @@ from app.api.schemas import (
 from app.application.composition import ApplicationContainer
 from app.application.dto.auth import AuthRequest
 from app.application.dto.operations import DispenseRequest, RefillRequest, ReturnRequest
+from app.application.export_service import build_export_execution_request
+from app.domain.enums import OperationState, OperationType, RecoveryClassification, RecoveryStatus
 from app.bootstrap import bootstrap
 from app.config import AppSettings, get_settings
 from app.persistence.session import create_session_factory, create_sqlalchemy_engine
@@ -190,5 +193,44 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
                 )
             )
         )
+
+    @app.post("/exports/execute")
+    def export_execute(
+        payload: ExportExecuteRequest,
+        container: ApplicationContainer = Depends(get_application_container),
+    ) -> JSONResponse:
+        request = build_export_execution_request(
+            requested_by_user_id=payload.requested_by_user_id,
+            export_type=payload.export_type,
+            destination_type=payload.destination_type,
+            destination_path=payload.destination_path,
+            limit=payload.limit,
+            operation_type=OperationType(payload.operation_type) if payload.operation_type is not None else None,
+            operation_state=OperationState(payload.operation_state) if payload.operation_state is not None else None,
+            recovery_status=RecoveryStatus(payload.recovery_status) if payload.recovery_status is not None else None,
+            recovery_classification=(
+                RecoveryClassification(payload.recovery_classification)
+                if payload.recovery_classification is not None
+                else None
+            ),
+            event_type=payload.event_type,
+            level=payload.level,
+            entity_type=payload.entity_type,
+            actor_user_id=payload.actor_user_id,
+            slot_id=payload.slot_id,
+            item_id=payload.item_id,
+            user_id=payload.user_id,
+            created_from=payload.created_from,
+            created_to=payload.created_to,
+            comment=payload.comment,
+        )
+        return JSONResponse(to_api_payload(container.services.exports.execute_export(request)))
+
+    @app.get("/exports/{export_id}")
+    def export_get(
+        export_id: int,
+        container: ApplicationContainer = Depends(get_application_container),
+    ) -> JSONResponse:
+        return JSONResponse(to_api_payload(container.services.exports.get_export(export_id)))
 
     return app
