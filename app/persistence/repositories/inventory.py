@@ -1,8 +1,9 @@
 from __future__ import annotations
 
-from sqlalchemy import select
+from sqlalchemy import case, select
 
-from app.persistence.models import InventoryBalance, InventoryTransaction
+from app.domain.enums import BindingType
+from app.persistence.models import InventoryBalance, InventoryTransaction, Slot, SlotItemBinding
 from app.persistence.repositories.base import Repository
 
 
@@ -14,5 +15,35 @@ class InventoryRepository(Repository):
         )
         return self.session.execute(statement).scalar_one_or_none()
 
+    def add_balance(self, balance: InventoryBalance) -> None:
+        self.session.add(balance)
+
     def add_transaction(self, transaction: InventoryTransaction) -> None:
         self.session.add(transaction)
+
+    def get_slot(self, slot_id: int) -> Slot | None:
+        return self.session.get(Slot, slot_id)
+
+    def find_preferred_binding_for_item(self, item_id: int) -> SlotItemBinding | None:
+        statement = (
+            select(SlotItemBinding)
+            .where(
+                SlotItemBinding.item_id == item_id,
+                SlotItemBinding.is_active.is_(True),
+                SlotItemBinding.binding_type.in_((BindingType.RETURN, BindingType.PRIMARY)),
+            )
+            .order_by(
+                case(
+                    (SlotItemBinding.binding_type == BindingType.RETURN, 0),
+                    else_=1,
+                ),
+                SlotItemBinding.id.asc(),
+            )
+        )
+        return self.session.execute(statement).scalars().first()
+
+    def list_transactions(self, operation_id: int | None = None) -> list[InventoryTransaction]:
+        statement = select(InventoryTransaction).order_by(InventoryTransaction.id.asc())
+        if operation_id is not None:
+            statement = statement.where(InventoryTransaction.operation_id == operation_id)
+        return list(self.session.execute(statement).scalars())
