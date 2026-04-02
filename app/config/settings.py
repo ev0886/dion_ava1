@@ -27,6 +27,8 @@ class AppSettings(BaseSettings):
     alembic_config_path: Path = Field(default=Path("alembic.ini"))
     hardware_provider: HardwareProvider = HardwareProvider.MOCK
     hardware_real_endpoints: dict[str, object] = Field(default_factory=dict)
+    export_default_destination_type: str = "filesystem"
+    export_default_destination_path: Path = Field(default=Path("var/exports"))
 
     @property
     def sqlite_path(self) -> Path:

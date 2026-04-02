@@ -5,6 +5,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict
 
 from app.domain.enums import RoleCode
+from app.config import HardwareProvider
 
 
 class ApiModel(BaseModel):
@@ -55,8 +56,18 @@ class ServiceModeFinishRequest(ApiModel):
 
 class ExportCreateRequest(ApiModel):
     requested_by_user_id: int
-    destination_type: str = "filesystem"
-    destination_path: str = "var/exports"
+    destination_type: str | None = None
+    destination_path: str | None = None
+    comment: str | None = None
+
+
+class SystemConfigPatchRequest(ApiModel):
+    model_config = ConfigDict(use_enum_values=True, extra="forbid")
+
+    actor_user_id: int
+    hardware_provider: HardwareProvider | None = None
+    export_default_destination_type: str | None = None
+    export_default_destination_path: str | None = None
     comment: str | None = None
 
 

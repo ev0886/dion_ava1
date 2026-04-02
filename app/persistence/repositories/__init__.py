@@ -2,7 +2,7 @@ from app.persistence.repositories.logs import AuditLogRepository, EventLogReposi
 from app.persistence.repositories.inventory import InventoryRepository
 from app.persistence.repositories.operations import OperationRepository, OperationSessionRepository
 from app.persistence.repositories.recovery import RecoveryRepository
-from app.persistence.repositories.service import ExportRepository
+from app.persistence.repositories.service import ExportRepository, SystemSettingRepository
 from app.persistence.repositories.users import UserRepository
 
 __all__ = [
@@ -13,5 +13,6 @@ __all__ = [
     "OperationRepository",
     "OperationSessionRepository",
     "RecoveryRepository",
+    "SystemSettingRepository",
     "UserRepository",
 ]

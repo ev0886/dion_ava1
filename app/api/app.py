@@ -15,13 +15,15 @@ from app.api.schemas import (
     ReturnOperationRequest,
     ServiceModeFinishRequest,
     ServiceModeStartRequest,
+    SystemConfigPatchRequest,
     to_api_payload,
 )
 from app.application.composition import ApplicationContainer
 from app.application.dto.auth import AuthRequest
 from app.application.dto.operations import DispenseRequest, RefillRequest, ReturnRequest
+from app.application.dto.system_config import SystemConfigPatchDTO
 from app.bootstrap import bootstrap
-from app.config import AppSettings, get_settings
+from app.config import AppSettings, HardwareProvider, get_settings
 from app.persistence.session import create_session_factory, create_sqlalchemy_engine
 
 
@@ -50,6 +52,38 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
     @app.get("/readiness")
     def readiness(container: ApplicationContainer = Depends(get_application_container)) -> JSONResponse:
         return JSONResponse(to_api_payload(container.services.startup.run_startup_checks()))
+
+    @app.get("/system/config")
+    def system_config_get(container: ApplicationContainer = Depends(get_application_container)) -> JSONResponse:
+        return JSONResponse(to_api_payload(container.services.system_config.get_effective_config()))
+
+    @app.patch("/system/config")
+    def system_config_patch(
+        payload: SystemConfigPatchRequest,
+        container: ApplicationContainer = Depends(get_application_container),
+    ) -> JSONResponse:
+        writable_fields = {
+            "hardware_provider",
+            "export_default_destination_type",
+            "export_default_destination_path",
+        }
+        result = container.services.system_config.apply_overrides(
+            SystemConfigPatchDTO(
+                actor_user_id=payload.actor_user_id,
+                provided_fields=frozenset(field for field in payload.model_fields_set if field in writable_fields),
+                hardware_provider=(
+                    None
+                    if payload.hardware_provider is None
+                    else HardwareProvider(payload.hardware_provider)
+                    if isinstance(payload.hardware_provider, str)
+                    else payload.hardware_provider
+                ),
+                export_default_destination_type=payload.export_default_destination_type,
+                export_default_destination_path=payload.export_default_destination_path,
+                comment=payload.comment,
+            )
+        )
+        return JSONResponse(to_api_payload(result))
 
     @app.post("/auth/resolve")
     def auth_resolve(
@@ -183,8 +217,8 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
             to_api_payload(
                 container.services.exports.prepare_export(
                     requested_by_user_id=payload.requested_by_user_id,
-                    destination_type=payload.destination_type,
-                    destination_path=payload.destination_path,
+                    destination_type=payload.destination_type or container.settings.export_default_destination_type,
+                    destination_path=payload.destination_path or str(container.settings.export_default_destination_path),
                     diagnostic_manifest=manifest,
                     comment=payload.comment,
                 )

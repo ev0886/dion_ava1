@@ -6,6 +6,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from contextlib import redirect_stderr, redirect_stdout
 
+from app.application.composition import create_bootstrapped_application_container
 from app.application.dto.startup import (
     DatabaseReadinessDTO,
     HardwareReadinessDTO,
@@ -13,8 +14,11 @@ from app.application.dto.startup import (
     StartupReadinessDTO,
 )
 from app.cli import main
+from app.config import AppSettings
 from app.domain.enums import StartupReadinessStatus
+from app.domain.enums import RoleCode, UserStatus
 from app.hardware.dto import HardwareOperationStatus
+from app.persistence.models import Role, User
 
 
 def test_startup_check_returns_success_for_healthy_temp_environment(tmp_path: Path) -> None:
@@ -106,6 +110,69 @@ def test_recovery_scan_runs_and_prints_deterministic_summary(tmp_path: Path) -> 
     assert '"unfinished_operation_ids": []' in stdout
 
 
+def test_get_system_config_prints_effective_config(tmp_path: Path) -> None:
+    exit_code, stdout, stderr = _run_cli(
+        [
+            "--data-dir",
+            str(tmp_path),
+            "--sqlite-filename",
+            "cli_system_config.sqlite3",
+            "--alembic-config-path",
+            "alembic.ini",
+            "get-system-config",
+        ]
+    )
+
+    assert exit_code == 0
+    assert '"hardware"' in stdout
+    assert '"writable_fields"' in stdout
+    assert "ERROR:" not in stderr
+
+
+def test_update_system_config_updates_persisted_effective_settings(tmp_path: Path) -> None:
+    settings = AppSettings(
+        data_dir=tmp_path,
+        sqlite_filename="cli_update_system_config.sqlite3",
+        alembic_config_path=Path("alembic.ini"),
+    )
+    _seed_cli_operator(settings)
+
+    update_exit_code, update_stdout, update_stderr = _run_cli(
+        [
+            "--data-dir",
+            str(tmp_path),
+            "--sqlite-filename",
+            "cli_update_system_config.sqlite3",
+            "--alembic-config-path",
+            "alembic.ini",
+            "update-system-config",
+            "--actor-user-id",
+            "1",
+            "--patch-json",
+            '{"hardware_provider":"real","export_default_destination_path":"var/cli-exports"}',
+        ]
+    )
+    get_exit_code, get_stdout, get_stderr = _run_cli(
+        [
+            "--data-dir",
+            str(tmp_path),
+            "--sqlite-filename",
+            "cli_update_system_config.sqlite3",
+            "--alembic-config-path",
+            "alembic.ini",
+            "get-system-config",
+        ]
+    )
+
+    assert update_exit_code == 0
+    assert '"value": "real"' in update_stdout
+    assert "ERROR:" not in update_stderr
+    assert get_exit_code == 0
+    assert '"value": "real"' in get_stdout
+    assert '"value": "var/cli-exports"' in get_stdout
+    assert "ERROR:" not in get_stderr
+
+
 @dataclass(slots=True)
 class _FakeStartupService:
     result: StartupReadinessDTO
@@ -132,3 +199,23 @@ def _run_cli(argv: list[str]) -> tuple[int, str, str]:
     with redirect_stdout(stdout_buffer), redirect_stderr(stderr_buffer):
         exit_code = main(argv)
     return exit_code, stdout_buffer.getvalue(), stderr_buffer.getvalue()
+
+
+def _seed_cli_operator(settings: AppSettings) -> None:
+    container = create_bootstrapped_application_container(settings)
+    try:
+        role = Role(code=RoleCode.OPERATOR, name="Operator")
+        container.session.add(role)
+        container.session.flush()
+        container.session.add(
+            User(
+                role_id=role.id,
+                user_code="operator-1",
+                full_name="Operator One",
+                status=UserStatus.ACTIVE,
+                is_active=True,
+            )
+        )
+        container.session.commit()
+    finally:
+        container.close()

@@ -8,8 +8,9 @@ from enum import Enum
 from pathlib import Path
 from typing import Any
 
+from app.application.dto.system_config import SystemConfigPatchDTO
 from app.application.composition import ApplicationContainer, create_bootstrapped_application_container
-from app.config import AppSettings
+from app.config import AppSettings, HardwareProvider
 from app.domain.enums import StartupReadinessStatus
 
 
@@ -23,12 +24,18 @@ def build_parser() -> argparse.ArgumentParser:
     subparsers.add_parser("startup-check")
     subparsers.add_parser("hardware-health")
     subparsers.add_parser("recovery-scan")
+    subparsers.add_parser("get-system-config")
 
     export_plan = subparsers.add_parser("export-plan")
     export_plan.add_argument("--requested-by-user-id", type=int, required=True)
-    export_plan.add_argument("--destination-type", type=str, default="filesystem")
-    export_plan.add_argument("--destination-path", type=str, default="var/exports")
+    export_plan.add_argument("--destination-type", type=str, default=None)
+    export_plan.add_argument("--destination-path", type=str, default=None)
     export_plan.add_argument("--comment", type=str, default=None)
+
+    update_system_config = subparsers.add_parser("update-system-config")
+    update_system_config.add_argument("--actor-user-id", type=int, required=True)
+    update_system_config.add_argument("--patch-json", type=str, required=True)
+    update_system_config.add_argument("--comment", type=str, default=None)
 
     service_mode_open = subparsers.add_parser("service-mode-open")
     service_mode_open.add_argument("--user-id", type=int, required=True)
@@ -80,15 +87,34 @@ def _dispatch(args: argparse.Namespace, container: ApplicationContainer) -> int:
         print(_render(summary))
         return 0
 
+    if args.command == "get-system-config":
+        print(_render(container.services.system_config.get_effective_config()))
+        return 0
+
     if args.command == "export-plan":
         snapshot = container.services.service_mode.get_hardware_snapshot(session_id=None)
         manifest = container.services.exports.build_diagnostic_dump_manifest(session_id=None, snapshot=snapshot)
         result = container.services.exports.prepare_export(
             requested_by_user_id=args.requested_by_user_id,
-            destination_type=args.destination_type,
-            destination_path=args.destination_path,
+            destination_type=args.destination_type or container.settings.export_default_destination_type,
+            destination_path=args.destination_path or str(container.settings.export_default_destination_path),
             diagnostic_manifest=manifest,
             comment=args.comment,
+        )
+        print(_render(result))
+        return 0
+
+    if args.command == "update-system-config":
+        patch_payload = _parse_system_config_patch_json(args.patch_json)
+        result = container.services.system_config.apply_overrides(
+            SystemConfigPatchDTO(
+                actor_user_id=args.actor_user_id,
+                provided_fields=frozenset(patch_payload.keys()),
+                hardware_provider=patch_payload.get("hardware_provider"),
+                export_default_destination_type=patch_payload.get("export_default_destination_type"),
+                export_default_destination_path=patch_payload.get("export_default_destination_path"),
+                comment=args.comment,
+            )
         )
         print(_render(result))
         return 0
@@ -139,6 +165,42 @@ def _to_jsonable(value: Any) -> Any:
     if isinstance(value, (list, tuple)):
         return [_to_jsonable(item) for item in value]
     return value
+
+
+def _parse_system_config_patch_json(raw_patch_json: str) -> dict[str, Any]:
+    try:
+        payload = json.loads(raw_patch_json)
+    except json.JSONDecodeError as error:
+        raise ValueError(f"patch-json must be valid JSON: {error.msg}") from error
+    if not isinstance(payload, dict):
+        raise ValueError("patch-json must decode to an object")
+
+    supported_fields = {
+        "hardware_provider",
+        "export_default_destination_type",
+        "export_default_destination_path",
+    }
+    unknown_fields = sorted(field for field in payload.keys() if field not in supported_fields)
+    if unknown_fields:
+        raise ValueError(f"patch-json contains unsupported fields: {', '.join(unknown_fields)}")
+
+    parsed: dict[str, Any] = {}
+    if "hardware_provider" in payload:
+        hardware_provider = payload["hardware_provider"]
+        if hardware_provider is not None:
+            try:
+                parsed["hardware_provider"] = HardwareProvider(str(hardware_provider))
+            except ValueError as error:
+                raise ValueError(f"Unsupported hardware_provider: {hardware_provider}") from error
+        else:
+            parsed["hardware_provider"] = None
+    if "export_default_destination_type" in payload:
+        destination_type = payload["export_default_destination_type"]
+        parsed["export_default_destination_type"] = None if destination_type is None else str(destination_type)
+    if "export_default_destination_path" in payload:
+        destination_path = payload["export_default_destination_path"]
+        parsed["export_default_destination_path"] = None if destination_path is None else str(destination_path)
+    return parsed
 
 
 if __name__ == "__main__":

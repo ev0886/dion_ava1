@@ -15,6 +15,7 @@ from app.application.recovery_service import RecoveryService
 from app.application.refill_service import RefillOperationService
 from app.application.service_mode_service import ServiceModeService
 from app.application.startup_service import StartupOrchestrationService, StartupService
+from app.application.system_config_service import SystemConfigService
 from app.application.return_service import ReturnOperationService
 from app.application.session_service import OperationSessionService
 from app.hardware import HardwareBundle, create_hardware_bundle
@@ -40,4 +41,5 @@ __all__ = [
     "ServiceModeService",
     "StartupOrchestrationService",
     "StartupService",
+    "SystemConfigService",
 ]

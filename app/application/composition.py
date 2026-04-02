@@ -14,6 +14,7 @@ from app.application.refill_service import RefillOperationService
 from app.application.return_service import ReturnOperationService
 from app.application.service_mode_service import ServiceModeService
 from app.application.startup_service import StartupOrchestrationService
+from app.application.system_config_service import SystemConfigService
 from app.application.session_service import OperationSessionService
 from app.bootstrap import bootstrap
 from app.config import AppSettings, get_settings
@@ -22,7 +23,7 @@ from app.persistence.repositories.inventory import InventoryRepository
 from app.persistence.repositories.logs import AuditLogRepository, EventLogRepository
 from app.persistence.repositories.operations import OperationRepository, OperationSessionRepository
 from app.persistence.repositories.recovery import RecoveryRepository
-from app.persistence.repositories.service import ExportRepository
+from app.persistence.repositories.service import ExportRepository, SystemSettingRepository
 from app.persistence.repositories.users import UserRepository
 from app.persistence.session import create_session_factory, create_sqlalchemy_engine
 
@@ -37,11 +38,13 @@ class RepositoryBundle:
     event_logs: EventLogRepository
     audit_logs: AuditLogRepository
     exports: ExportRepository
+    system_settings: SystemSettingRepository
 
 
 @dataclass(frozen=True, slots=True)
 class ServiceBundle:
     auth: AuthService
+    system_config: SystemConfigService
     inventory: InventoryService
     operation_sessions: OperationSessionService
     dispense: DispenseOperationService
@@ -78,16 +81,26 @@ def build_repositories(session: Session) -> RepositoryBundle:
         event_logs=EventLogRepository(session),
         audit_logs=AuditLogRepository(session),
         exports=ExportRepository(session),
+        system_settings=SystemSettingRepository(session),
     )
 
 
 def build_services(
     *,
+    settings: AppSettings,
     session: Session,
     repositories: RepositoryBundle,
     hardware: HardwareBundle,
+    auth_service: AuthService | None = None,
+    system_config_service: SystemConfigService | None = None,
 ) -> ServiceBundle:
-    auth_service = AuthService(repositories.users)
+    auth_service = auth_service or AuthService(repositories.users)
+    system_config_service = system_config_service or SystemConfigService(
+        runtime_settings=settings,
+        auth_service=auth_service,
+        system_setting_repository=repositories.system_settings,
+        audit_log_repository=repositories.audit_logs,
+    )
     inventory_service = InventoryService(repositories.inventory)
     operation_session_service = OperationSessionService(repositories.operation_sessions)
     recovery_service = RecoveryService(
@@ -97,6 +110,7 @@ def build_services(
     )
     return ServiceBundle(
         auth=auth_service,
+        system_config=system_config_service,
         inventory=inventory_service,
         operation_sessions=operation_session_service,
         dispense=DispenseOperationService(repositories.operations, repositories.inventory),
@@ -135,8 +149,23 @@ def build_application_container(
     session: Session,
 ) -> ApplicationContainer:
     repositories = build_repositories(session)
+    auth_service = AuthService(repositories.users)
+    system_config_service = SystemConfigService(
+        runtime_settings=settings,
+        auth_service=auth_service,
+        system_setting_repository=repositories.system_settings,
+        audit_log_repository=repositories.audit_logs,
+    )
+    system_config_service.sync_runtime_settings()
     hardware = create_hardware_bundle(settings)
-    services = build_services(session=session, repositories=repositories, hardware=hardware)
+    services = build_services(
+        settings=settings,
+        session=session,
+        repositories=repositories,
+        hardware=hardware,
+        auth_service=auth_service,
+        system_config_service=system_config_service,
+    )
     return ApplicationContainer(
         settings=settings,
         engine=engine,

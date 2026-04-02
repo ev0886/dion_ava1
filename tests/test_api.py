@@ -92,6 +92,49 @@ def test_error_mapping_returns_400_for_validation_error(tmp_path: Path) -> None:
     assert response.json()["error"] == "validation_error"
 
 
+def test_system_config_get_and_patch_happy_path(tmp_path: Path) -> None:
+    app = create_app(_settings(tmp_path, "api_system_config.sqlite3"))
+    _seed_operator(app)
+
+    with TestClient(app) as client:
+        get_response = client.get("/system/config")
+        patch_response = client.patch(
+            "/system/config",
+            json={
+                "actor_user_id": 1,
+                "hardware_provider": "real",
+                "export_default_destination_path": "var/api-exports",
+                "comment": "api config update",
+            },
+        )
+        get_after_patch = client.get("/system/config")
+
+    assert get_response.status_code == 200
+    assert get_response.json()["hardware"]["provider"]["value"] == "mock"
+    assert patch_response.status_code == 200
+    assert patch_response.json()["hardware"]["provider"]["value"] == "real"
+    assert patch_response.json()["hardware"]["provider"]["source"] == "override"
+    assert patch_response.json()["export"]["default_destination_path"]["value"] == "var/api-exports"
+    assert get_after_patch.status_code == 200
+    assert get_after_patch.json()["hardware"]["provider"]["value"] == "real"
+
+
+def test_system_config_patch_rejects_unsupported_write_fields(tmp_path: Path) -> None:
+    app = create_app(_settings(tmp_path, "api_system_config_reject.sqlite3"))
+    _seed_operator(app)
+
+    with TestClient(app) as client:
+        response = client.patch(
+            "/system/config",
+            json={
+                "actor_user_id": 1,
+                "hardware_real_endpoints": {"drum_controller": {"transport": "serial"}},
+            },
+        )
+
+    assert response.status_code == 422
+
+
 def _settings(tmp_path: Path, sqlite_filename: str) -> AppSettings:
     return AppSettings(
         data_dir=tmp_path,
@@ -145,6 +188,23 @@ def _seed_base_domain(app) -> None:
             )
         )
         session.add(InventoryBalance(slot_id=slot.id, item_id=item.id, quantity=5))
+        session.commit()
+
+
+def _seed_operator(app) -> None:
+    with app.state.session_factory() as session:
+        role = Role(code=RoleCode.OPERATOR, name="Operator")
+        session.add(role)
+        session.flush()
+        session.add(
+            User(
+                role_id=role.id,
+                user_code="operator-1",
+                full_name="Operator One",
+                status=UserStatus.ACTIVE,
+                is_active=True,
+            )
+        )
         session.commit()
 
 
