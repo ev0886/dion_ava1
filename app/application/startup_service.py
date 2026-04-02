@@ -133,6 +133,8 @@ class StartupOrchestrationService:
                 entries=entries,
                 message=None,
             )
+        # Hardware is treated as degradable at startup so misconfigured or offline
+        # real endpoints remain visible to operators without taking down the process.
         return HardwareReadinessDTO(
             ok=True,
             degraded=True,

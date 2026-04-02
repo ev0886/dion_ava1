@@ -9,7 +9,7 @@ from app.hardware.dto import (
     UnlockResult,
     UnlockTimeResult,
 )
-from app.hardware.exceptions import HardwareFailureError, HardwareTimeoutError, HardwareUnavailableError
+from app.hardware.exceptions import HardwareFailureError, HardwareUnavailableError
 from app.hardware.real_adapter_base import RealHardwareAdapterBase
 from app.hardware.transport_config import HardwareEndpointTransportConfig
 from app.hardware.transports import SerialRequestResponseTransport, TcpRequestResponseTransport
@@ -51,11 +51,7 @@ class RealLockAdapter(RealHardwareAdapterBase):
                 device_type=self.device_type,
                 operation="ping",
             )
-        return HardwareOperationResult(
-            device_type=self.device_type,
-            status=HardwareOperationStatus.SUCCESS,
-            ok=True,
-        )
+        return self._success_result()
 
     def get_lock_status(self, board_address: int, lock_number: int) -> LockStatusResult:
         response = self._send_request(
@@ -159,39 +155,6 @@ class RealLockAdapter(RealHardwareAdapterBase):
             board_address=board_address,
             seconds=applied_seconds,
         )
-
-    def _send_request(self, payload: bytes, *, operation: str) -> str:
-        self._raise_if_unavailable(operation=operation)
-        assert self._transport is not None
-        timeout_ms = self._config.endpoint.timeouts.read_timeout_ms if self._config is not None else None
-        try:
-            raw_response = self._transport.request(payload, timeout_ms=timeout_ms)
-        except TimeoutError as error:
-            raise HardwareTimeoutError(
-                f"Lock controller transport request timed out: {error}",
-                device_type=self.device_type,
-                operation=operation,
-            ) from error
-        except NotImplementedError as error:
-            raise HardwareUnavailableError(
-                f"Lock controller transport I/O is not implemented yet: {error}",
-                device_type=self.device_type,
-                operation=operation,
-            ) from error
-        except OSError as error:
-            raise HardwareUnavailableError(
-                f"Lock controller transport request failed: {error}",
-                device_type=self.device_type,
-                operation=operation,
-            ) from error
-        try:
-            return raw_response.decode("ascii").strip()
-        except (AttributeError, TypeError, UnicodeDecodeError) as error:
-            raise HardwareFailureError(
-                "Lock controller returned a malformed response.",
-                device_type=self.device_type,
-                operation=operation,
-            ) from error
 
     def _parse_lock_state(self, state: str, *, operation: str) -> LockState:
         normalized = state.strip().upper()

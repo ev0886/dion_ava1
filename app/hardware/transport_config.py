@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class EndpointTimeoutSettings(BaseModel):
@@ -21,6 +21,14 @@ class CommonEndpointSettings(BaseModel):
     enabled: bool = True
     timeouts: EndpointTimeoutSettings = Field(default_factory=EndpointTimeoutSettings)
 
+    @field_validator("code", "driver_name")
+    @classmethod
+    def _validate_non_blank_text(cls, value: str) -> str:
+        cleaned = value.strip()
+        if not cleaned:
+            raise ValueError("must not be blank")
+        return cleaned
+
 
 class SerialTransportSettings(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -32,6 +40,14 @@ class SerialTransportSettings(BaseModel):
     parity: Literal["none", "even", "odd"] = "none"
     stop_bits: Literal[1, 2] = 1
 
+    @field_validator("port")
+    @classmethod
+    def _validate_port(cls, value: str) -> str:
+        cleaned = value.strip()
+        if not cleaned:
+            raise ValueError("must not be blank")
+        return cleaned
+
 
 class TcpTransportSettings(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -39,6 +55,16 @@ class TcpTransportSettings(BaseModel):
     transport: Literal["tcp"]
     host: str = Field(min_length=1, max_length=255)
     port: int = Field(ge=1, le=65535)
+
+    @field_validator("host")
+    @classmethod
+    def _validate_host(cls, value: str) -> str:
+        cleaned = value.strip()
+        if not cleaned:
+            raise ValueError("must not be blank")
+        if cleaned == "0.0.0.0":
+            raise ValueError("must be a reachable remote host, not 0.0.0.0")
+        return cleaned
 
 
 TransportSettings = Annotated[SerialTransportSettings | TcpTransportSettings, Field(discriminator="transport")]

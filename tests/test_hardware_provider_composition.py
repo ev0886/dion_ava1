@@ -165,6 +165,34 @@ def test_real_mode_with_invalid_or_incomplete_transport_config_fails_safely(tmp_
         drum_entry = next(entry for entry in result.hardware.entries if entry.device_type == "drum_controller")
         assert drum_entry.message is not None
         assert "invalid" in drum_entry.message
+        assert "transport.serial.port" in drum_entry.message
+    finally:
+        container.close()
+
+
+def test_real_mode_with_obviously_invalid_tcp_host_fails_early_but_stays_degraded(tmp_path: Path) -> None:
+    settings = AppSettings(
+        data_dir=tmp_path,
+        sqlite_filename="real_invalid_host.sqlite3",
+        alembic_config_path=Path("alembic.ini"),
+        hardware_provider=HardwareProvider.REAL,
+        hardware_real_endpoints={
+            "drum_controller": _serial_endpoint_config(code="drum-1", driver_name="drum-driver", port="COM1"),
+            "lock_controller": _tcp_endpoint_config(code="lock-1", driver_name="lock-driver", host="0.0.0.0", port=9001),
+            "rfid_reader": _serial_endpoint_config(code="rfid-1", driver_name="rfid-driver", port="COM2"),
+        },
+    )
+
+    container = create_bootstrapped_application_container(settings)
+    try:
+        result = container.services.startup.run_startup_checks()
+
+        assert result.readiness_status is StartupReadinessStatus.DEGRADED
+        lock_entry = next(entry for entry in result.hardware.entries if entry.device_type == "lock_controller")
+        assert lock_entry.is_available is False
+        assert lock_entry.message is not None
+        assert "transport.tcp.host" in lock_entry.message
+        assert "reachable remote host" in lock_entry.message
     finally:
         container.close()
 

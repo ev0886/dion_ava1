@@ -8,7 +8,7 @@ from app.application.composition import create_bootstrapped_application_containe
 from app.config import AppSettings, HardwareProvider
 from app.domain.enums import StartupReadinessStatus
 from app.hardware import (
-    HardwareUnavailableError,
+    HardwareTimeoutError,
     RealRfidAdapter,
     SerialTransport,
     TcpTransport,
@@ -50,7 +50,7 @@ def test_tcp_transport_request_response_happy_path() -> None:
     assert fake_socket.sent_payloads == [b"READ\n"]
 
 
-def test_transport_timeout_error_is_mapped_to_safe_adapter_unavailable() -> None:
+def test_transport_timeout_error_is_mapped_to_safe_adapter_timeout() -> None:
     adapter = RealRfidAdapter(
         config=_rfid_config(),
         transport=SerialTransport(
@@ -67,7 +67,7 @@ def test_transport_timeout_error_is_mapped_to_safe_adapter_unavailable() -> None
         ),
     )
 
-    with pytest.raises(HardwareUnavailableError, match="transport request failed|read timed out"):
+    with pytest.raises(HardwareTimeoutError, match="read timed out"):
         adapter.ping()
 
 
