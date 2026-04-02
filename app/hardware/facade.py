@@ -81,12 +81,19 @@ class HardwareFacade:
     @staticmethod
     def _status_from_error(error: HardwareError):
         from app.hardware.dto import HardwareOperationStatus
-        from app.hardware.exceptions import HardwareBusyError, HardwareFailureError, HardwareTimeoutError
+        from app.hardware.exceptions import (
+            HardwareBusyError,
+            HardwareFailureError,
+            HardwareTimeoutError,
+            HardwareUnavailableError,
+        )
 
         if isinstance(error, HardwareBusyError):
             return HardwareOperationStatus.BUSY
         if isinstance(error, HardwareTimeoutError):
             return HardwareOperationStatus.TIMEOUT
+        if isinstance(error, HardwareUnavailableError):
+            return HardwareOperationStatus.FAILURE
         if isinstance(error, HardwareFailureError):
             return HardwareOperationStatus.FAILURE
         return HardwareOperationStatus.FAILURE

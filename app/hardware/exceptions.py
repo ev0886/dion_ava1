@@ -30,3 +30,7 @@ class HardwareFailureError(HardwareError):
 
 class HardwareUnavailableError(HardwareError):
     pass
+
+
+class HardwareProtocolNotImplementedError(HardwareUnavailableError):
+    pass

@@ -1,11 +1,9 @@
 from app.application.auth_service import AuthService
 from app.application.composition import (
     ApplicationContainer,
-    MockHardwareBundle,
     RepositoryBundle,
     ServiceBundle,
     build_application_container,
-    build_mock_hardware,
     build_repositories,
     build_services,
     create_bootstrapped_application_container,
@@ -19,15 +17,16 @@ from app.application.service_mode_service import ServiceModeService
 from app.application.startup_service import StartupOrchestrationService, StartupService
 from app.application.return_service import ReturnOperationService
 from app.application.session_service import OperationSessionService
+from app.hardware import HardwareBundle, create_hardware_bundle
 
 __all__ = [
     "ApplicationContainer",
     "AuthService",
-    "MockHardwareBundle",
+    "HardwareBundle",
     "RepositoryBundle",
     "ServiceBundle",
     "build_application_container",
-    "build_mock_hardware",
+    "create_hardware_bundle",
     "build_repositories",
     "build_services",
     "create_bootstrapped_application_container",
