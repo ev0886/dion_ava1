@@ -10,6 +10,9 @@ from app.hardware import (
     MockDrumAdapter,
     MockLockAdapter,
     MockRfidAdapter,
+    RealDrumAdapter,
+    RealLockAdapter,
+    RealRfidAdapter,
     StubRealDrumAdapter,
     StubRealLockAdapter,
     StubRealRfidAdapter,
@@ -17,7 +20,7 @@ from app.hardware import (
 )
 
 
-def test_hardware_provider_selection_defaults_to_mock_and_supports_stub_real(tmp_path: Path) -> None:
+def test_hardware_provider_selection_defaults_to_mock_and_supports_stub_real_and_real(tmp_path: Path) -> None:
     default_settings = AppSettings(
         data_dir=tmp_path,
         sqlite_filename="provider_default.sqlite3",
@@ -29,15 +32,31 @@ def test_hardware_provider_selection_defaults_to_mock_and_supports_stub_real(tmp
         alembic_config_path=Path("alembic.ini"),
         hardware_provider=HardwareProvider.STUB_REAL,
     )
+    real_settings = AppSettings(
+        data_dir=tmp_path,
+        sqlite_filename="provider_real.sqlite3",
+        alembic_config_path=Path("alembic.ini"),
+        hardware_provider=HardwareProvider.REAL,
+        hardware_real_endpoints={
+            "drum_controller": _serial_endpoint_config(code="drum-1", driver_name="drum-driver", port="COM1"),
+            "lock_controller": _tcp_endpoint_config(code="lock-1", driver_name="lock-driver", host="127.0.0.1", port=9001),
+            "rfid_reader": _serial_endpoint_config(code="rfid-1", driver_name="rfid-driver", port="COM2"),
+        },
+    )
 
     default_bundle = create_hardware_bundle(default_settings)
     stub_real_bundle = create_hardware_bundle(stub_real_settings)
+    real_bundle = create_hardware_bundle(real_settings)
 
     assert default_bundle.provider is HardwareProvider.MOCK
     assert isinstance(default_bundle.drum_controller, MockDrumAdapter)
     assert isinstance(stub_real_bundle.provider, HardwareProvider)
     assert stub_real_bundle.provider is HardwareProvider.STUB_REAL
     assert isinstance(stub_real_bundle.drum_controller, StubRealDrumAdapter)
+    assert real_bundle.provider is HardwareProvider.REAL
+    assert isinstance(real_bundle.drum_controller, RealDrumAdapter)
+    assert isinstance(real_bundle.lock_controller, RealLockAdapter)
+    assert isinstance(real_bundle.rfid_reader, RealRfidAdapter)
 
 
 def test_mock_mode_composition_uses_mock_hardware_bundle(tmp_path: Path) -> None:
@@ -114,3 +133,108 @@ def test_readiness_differs_between_mock_and_stub_real_modes(tmp_path: Path) -> N
     finally:
         mock_container.close()
         stub_real_container.close()
+
+
+def test_real_mode_with_invalid_or_incomplete_transport_config_fails_safely(tmp_path: Path) -> None:
+    settings = AppSettings(
+        data_dir=tmp_path,
+        sqlite_filename="real_invalid.sqlite3",
+        alembic_config_path=Path("alembic.ini"),
+        hardware_provider=HardwareProvider.REAL,
+        hardware_real_endpoints={
+            "drum_controller": {
+                "endpoint": {
+                    "code": "drum-1",
+                    "driver_name": "drum-driver",
+                },
+                "transport": {
+                    "transport": "serial",
+                    "baudrate": 9600,
+                },
+            },
+        },
+    )
+
+    container = create_bootstrapped_application_container(settings)
+    try:
+        result = container.services.startup.run_startup_checks()
+
+        assert result.readiness_status is StartupReadinessStatus.DEGRADED
+        assert result.hardware.degraded is True
+        assert all(entry.is_available is False for entry in result.hardware.entries)
+        drum_entry = next(entry for entry in result.hardware.entries if entry.device_type == "drum_controller")
+        assert drum_entry.message is not None
+        assert "invalid" in drum_entry.message
+    finally:
+        container.close()
+
+
+def test_readiness_in_real_mode_is_still_degraded_without_working_real_transports(tmp_path: Path) -> None:
+    settings = AppSettings(
+        data_dir=tmp_path,
+        sqlite_filename="real_protocol_unavailable.sqlite3",
+        alembic_config_path=Path("alembic.ini"),
+        hardware_provider=HardwareProvider.REAL,
+        hardware_real_endpoints={
+            "drum_controller": _serial_endpoint_config(code="drum-1", driver_name="drum-driver", port="COM1"),
+            "lock_controller": _tcp_endpoint_config(code="lock-1", driver_name="lock-driver", host="127.0.0.1", port=9001),
+            "rfid_reader": _serial_endpoint_config(code="rfid-1", driver_name="rfid-driver", port="COM2"),
+        },
+    )
+
+    container = create_bootstrapped_application_container(settings)
+    try:
+        result = container.services.startup.run_startup_checks()
+
+        assert result.readiness_status is StartupReadinessStatus.DEGRADED
+        assert result.hardware.ok is True
+        assert result.hardware.degraded is True
+        entries = {entry.device_type: entry for entry in result.hardware.entries}
+        assert entries["drum_controller"].is_available is False
+        assert entries["drum_controller"].message is not None
+        assert any(entry.is_available is False for entry in entries.values())
+    finally:
+        container.close()
+
+
+def _serial_endpoint_config(*, code: str, driver_name: str, port: str) -> dict[str, object]:
+    return {
+        "endpoint": {
+            "code": code,
+            "driver_name": driver_name,
+            "enabled": True,
+            "timeouts": {
+                "connect_timeout_ms": 1000,
+                "read_timeout_ms": 1000,
+                "write_timeout_ms": 1000,
+            },
+        },
+        "transport": {
+            "transport": "serial",
+            "port": port,
+            "baudrate": 9600,
+            "data_bits": 8,
+            "parity": "none",
+            "stop_bits": 1,
+        },
+    }
+
+
+def _tcp_endpoint_config(*, code: str, driver_name: str, host: str, port: int) -> dict[str, object]:
+    return {
+        "endpoint": {
+            "code": code,
+            "driver_name": driver_name,
+            "enabled": True,
+            "timeouts": {
+                "connect_timeout_ms": 1000,
+                "read_timeout_ms": 1000,
+                "write_timeout_ms": 1000,
+            },
+        },
+        "transport": {
+            "transport": "tcp",
+            "host": host,
+            "port": port,
+        },
+    }
