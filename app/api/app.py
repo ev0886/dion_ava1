@@ -11,10 +11,14 @@ from app.api.schemas import (
     AuthResolveRequest,
     DispenseOperationRequest,
     ExportCreateRequest,
+    InventoryAdjustmentRequest,
     RefillOperationRequest,
     ReturnOperationRequest,
     ServiceModeFinishRequest,
     ServiceModeStartRequest,
+    SlotBindingCreateRequest,
+    SlotCreateRequest,
+    SlotUpdateRequest,
     to_api_payload,
 )
 from app.application.composition import ApplicationContainer
@@ -190,5 +194,149 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
                 )
             )
         )
+
+    @app.post("/slots")
+    def create_slot(
+        payload: SlotCreateRequest,
+        container: ApplicationContainer = Depends(get_application_container),
+    ) -> JSONResponse:
+        dto = container.services.slots.create_slot(
+            code=payload.code,
+            slot_type=payload.slot_type,
+            drum_position=payload.drum_position,
+            board_address=payload.board_address,
+            lock_number=payload.lock_number,
+            capacity=payload.capacity,
+            status=payload.status,
+            actor_user_id=payload.actor_user_id,
+            reason_code=payload.reason_code,
+            comment=payload.comment,
+        )
+        return JSONResponse(to_api_payload(dto))
+
+    @app.patch("/slots/{slot_id}")
+    def update_slot(
+        slot_id: int,
+        payload: SlotUpdateRequest,
+        container: ApplicationContainer = Depends(get_application_container),
+    ) -> JSONResponse:
+        if payload.is_active is True:
+            dto = container.services.slots.activate_slot(
+                slot_id=slot_id,
+                actor_user_id=payload.actor_user_id,
+                reason_code=payload.reason_code,
+                comment=payload.comment,
+            )
+        elif payload.is_active is False:
+            dto = container.services.slots.deactivate_slot(
+                slot_id=slot_id,
+                actor_user_id=payload.actor_user_id,
+                reason_code=payload.reason_code,
+                comment=payload.comment,
+            )
+        else:
+            dto = container.services.slots.update_slot(
+                slot_id=slot_id,
+                code=payload.code,
+                slot_type=payload.slot_type,
+                drum_position=payload.drum_position,
+                board_address=payload.board_address,
+                lock_number=payload.lock_number,
+                capacity=payload.capacity,
+                status=payload.status,
+                actor_user_id=payload.actor_user_id,
+                reason_code=payload.reason_code,
+                comment=payload.comment,
+            )
+        return JSONResponse(to_api_payload(dto))
+
+    @app.get("/slots/{slot_id}")
+    def get_slot(
+        slot_id: int,
+        container: ApplicationContainer = Depends(get_application_container),
+    ) -> JSONResponse:
+        return JSONResponse(to_api_payload(container.services.slots.get_slot_details(slot_id)))
+
+    @app.get("/slots")
+    def list_slots(container: ApplicationContainer = Depends(get_application_container)) -> JSONResponse:
+        return JSONResponse(to_api_payload(container.services.slots.list_slots()))
+
+    @app.post("/slot-bindings")
+    def create_slot_binding(
+        payload: SlotBindingCreateRequest,
+        container: ApplicationContainer = Depends(get_application_container),
+    ) -> JSONResponse:
+        dto = container.services.slots.create_binding(
+            slot_id=payload.slot_id,
+            item_id=payload.item_id,
+            binding_type=payload.binding_type,
+            actor_user_id=payload.actor_user_id,
+            reason_code=payload.reason_code,
+            comment=payload.comment,
+        )
+        return JSONResponse(to_api_payload(dto))
+
+    @app.delete("/slot-bindings/{binding_id}")
+    def deactivate_slot_binding(
+        binding_id: int,
+        actor_user_id: int | None = None,
+        reason_code: str | None = None,
+        comment: str | None = None,
+        container: ApplicationContainer = Depends(get_application_container),
+    ) -> JSONResponse:
+        dto = container.services.slots.deactivate_binding(
+            binding_id=binding_id,
+            actor_user_id=actor_user_id,
+            reason_code=reason_code,
+            comment=comment,
+        )
+        return JSONResponse(to_api_payload(dto))
+
+    @app.get("/slots/{slot_id}/bindings")
+    def list_slot_bindings(
+        slot_id: int,
+        container: ApplicationContainer = Depends(get_application_container),
+    ) -> JSONResponse:
+        return JSONResponse(to_api_payload(container.services.slots.list_bindings_for_slot(slot_id)))
+
+    @app.get("/items/{item_id}/bindings")
+    def list_item_bindings(
+        item_id: int,
+        container: ApplicationContainer = Depends(get_application_container),
+    ) -> JSONResponse:
+        return JSONResponse(to_api_payload(container.services.slots.list_bindings_for_item(item_id)))
+
+    @app.get("/inventory-balances")
+    def list_inventory_balances(
+        slot_id: int | None = None,
+        item_id: int | None = None,
+        container: ApplicationContainer = Depends(get_application_container),
+    ) -> JSONResponse:
+        return JSONResponse(to_api_payload(container.services.inventory.list_balances(slot_id=slot_id, item_id=item_id)))
+
+    @app.post("/inventory-adjustments")
+    def inventory_adjustments(
+        payload: InventoryAdjustmentRequest,
+        container: ApplicationContainer = Depends(get_application_container),
+    ) -> JSONResponse:
+        if payload.mode == "delta":
+            dto = container.services.inventory_admin.adjust_inventory(
+                slot_id=payload.slot_id,
+                item_id=payload.item_id,
+                quantity_delta=payload.quantity,
+                actor_user_id=payload.actor_user_id,
+                reason_code=payload.reason_code,
+                comment=payload.comment,
+            )
+        else:
+            dto = container.services.inventory_admin.set_inventory(
+                slot_id=payload.slot_id,
+                item_id=payload.item_id,
+                quantity=payload.quantity,
+                actor_user_id=payload.actor_user_id,
+                reason_code=payload.reason_code,
+                comment=payload.comment,
+            )
+        return JSONResponse(to_api_payload(dto))
 
     return app

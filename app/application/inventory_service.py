@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from sqlalchemy import select
-
 from app.application.dto.inventory import InventoryBalanceDTO, InventoryLookupResult, SlotBindingDTO
 from app.application.exceptions import ValidationError
 from app.persistence.models import InventoryBalance, SlotItemBinding
@@ -31,13 +29,24 @@ class InventoryService:
         )
 
     def list_bindings(self, slot_id: int | None = None, item_id: int | None = None) -> tuple[SlotBindingDTO, ...]:
-        statement = select(SlotItemBinding)
-        if slot_id is not None:
-            statement = statement.where(SlotItemBinding.slot_id == slot_id)
-        if item_id is not None:
-            statement = statement.where(SlotItemBinding.item_id == item_id)
-        bindings = self.inventory_repository.session.execute(statement).scalars()
-        return tuple(self._to_binding_dto(binding) for binding in bindings)
+        if slot_id is not None and slot_id <= 0:
+            raise ValidationError("slot_id must be positive")
+        if item_id is not None and item_id <= 0:
+            raise ValidationError("item_id must be positive")
+        return tuple(
+            self._to_binding_dto(binding)
+            for binding in self.inventory_repository.list_bindings(slot_id=slot_id, item_id=item_id)
+        )
+
+    def list_balances(self, slot_id: int | None = None, item_id: int | None = None) -> tuple[InventoryBalanceDTO, ...]:
+        if slot_id is not None and slot_id <= 0:
+            raise ValidationError("slot_id must be positive")
+        if item_id is not None and item_id <= 0:
+            raise ValidationError("item_id must be positive")
+        return tuple(
+            self._to_balance_dto(balance)
+            for balance in self.inventory_repository.list_balances(slot_id=slot_id, item_id=item_id)
+        )
 
     @staticmethod
     def _validate_slot_item_ids(slot_id: int, item_id: int) -> None:
@@ -58,6 +67,7 @@ class InventoryService:
     @staticmethod
     def _to_binding_dto(binding: SlotItemBinding) -> SlotBindingDTO:
         return SlotBindingDTO(
+            binding_id=binding.id,
             slot_id=binding.slot_id,
             item_id=binding.item_id,
             binding_type=binding.binding_type,

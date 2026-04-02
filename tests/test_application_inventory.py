@@ -5,32 +5,21 @@ from app.domain.enums import BindingType
 from app.persistence.models import InventoryBalance, SlotItemBinding
 
 
-class _FakeScalarResult:
-    def __init__(self, values: list[object]) -> None:
-        self._values = values
-
-    def scalars(self) -> "_FakeScalarResult":
-        return self
-
-    def __iter__(self):
-        return iter(self._values)
-
-
-class _FakeSession:
-    def __init__(self, bindings: list[SlotItemBinding]) -> None:
-        self._bindings = bindings
-
-    def execute(self, _statement: object) -> _FakeScalarResult:
-        return _FakeScalarResult(self._bindings)
-
-
 class _FakeInventoryRepository:
     def __init__(self, balance: InventoryBalance | None, bindings: list[SlotItemBinding]) -> None:
         self._balance = balance
-        self.session = _FakeSession(bindings)
+        self._bindings = bindings
 
     def get_balance(self, _slot_id: int, _item_id: int) -> InventoryBalance | None:
         return self._balance
+
+    def list_bindings(self, *, slot_id: int | None = None, item_id: int | None = None) -> list[SlotItemBinding]:
+        values = self._bindings
+        if slot_id is not None:
+            values = [binding for binding in values if binding.slot_id == slot_id]
+        if item_id is not None:
+            values = [binding for binding in values if binding.item_id == item_id]
+        return values
 
 
 def test_inventory_lookup_result_shape() -> None:
@@ -53,3 +42,4 @@ def test_inventory_lookup_result_shape() -> None:
     assert result.balance.quantity == 7
     assert len(result.bindings) == 1
     assert result.bindings[0].binding_type is BindingType.PRIMARY
+    assert result.bindings[0].binding_id is None

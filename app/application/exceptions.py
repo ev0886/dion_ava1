@@ -17,6 +17,10 @@ class NotFoundError(ApplicationError):
     """Raised when a required entity is missing."""
 
 
+class ConflictError(ApplicationError):
+    """Raised when a mutation conflicts with existing data."""
+
+
 class InvalidStateTransitionError(ApplicationError):
     """Raised when an operation moves to a state outside the allowed graph."""
 

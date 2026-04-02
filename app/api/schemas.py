@@ -4,7 +4,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict
 
-from app.domain.enums import RoleCode
+from app.domain.enums import BindingType, RoleCode, SlotStatus, SlotType
 
 
 class ApiModel(BaseModel):
@@ -57,6 +57,52 @@ class ExportCreateRequest(ApiModel):
     requested_by_user_id: int
     destination_type: str = "filesystem"
     destination_path: str = "var/exports"
+    comment: str | None = None
+
+
+class SlotCreateRequest(ApiModel):
+    code: str
+    slot_type: SlotType
+    drum_position: int
+    board_address: int
+    lock_number: int
+    capacity: int | None = None
+    status: SlotStatus = SlotStatus.ACTIVE
+    actor_user_id: int | None = None
+    reason_code: str | None = None
+    comment: str | None = None
+
+
+class SlotUpdateRequest(ApiModel):
+    code: str | None = None
+    slot_type: SlotType | None = None
+    drum_position: int | None = None
+    board_address: int | None = None
+    lock_number: int | None = None
+    capacity: int | None = None
+    status: SlotStatus | None = None
+    is_active: bool | None = None
+    actor_user_id: int | None = None
+    reason_code: str | None = None
+    comment: str | None = None
+
+
+class SlotBindingCreateRequest(ApiModel):
+    slot_id: int
+    item_id: int
+    binding_type: BindingType
+    actor_user_id: int | None = None
+    reason_code: str | None = None
+    comment: str | None = None
+
+
+class InventoryAdjustmentRequest(ApiModel):
+    slot_id: int
+    item_id: int
+    mode: Literal["delta", "set"]
+    quantity: int
+    actor_user_id: int | None = None
+    reason_code: str | None = None
     comment: str | None = None
 
 

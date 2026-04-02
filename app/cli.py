@@ -39,6 +39,78 @@ def build_parser() -> argparse.ArgumentParser:
     service_mode_close.add_argument("--user-id", type=int, required=True)
     service_mode_close.add_argument("--comment", type=str, default=None)
 
+    create_slot = subparsers.add_parser("create-slot")
+    create_slot.add_argument("--code", type=str, required=True)
+    create_slot.add_argument("--slot-type", type=str, required=True)
+    create_slot.add_argument("--drum-position", type=int, required=True)
+    create_slot.add_argument("--board-address", type=int, required=True)
+    create_slot.add_argument("--lock-number", type=int, required=True)
+    create_slot.add_argument("--capacity", type=int, default=None)
+    create_slot.add_argument("--status", type=str, default="active")
+    create_slot.add_argument("--actor-user-id", type=int, default=None)
+    create_slot.add_argument("--reason-code", type=str, default=None)
+    create_slot.add_argument("--comment", type=str, default=None)
+
+    update_slot = subparsers.add_parser("update-slot")
+    update_slot.add_argument("--slot-id", type=int, required=True)
+    update_slot.add_argument("--code", type=str, default=None)
+    update_slot.add_argument("--slot-type", type=str, default=None)
+    update_slot.add_argument("--drum-position", type=int, default=None)
+    update_slot.add_argument("--board-address", type=int, default=None)
+    update_slot.add_argument("--lock-number", type=int, default=None)
+    update_slot.add_argument("--capacity", type=int, default=None)
+    update_slot.add_argument("--status", type=str, default=None)
+    update_slot.add_argument("--activate", action="store_true")
+    update_slot.add_argument("--deactivate", action="store_true")
+    update_slot.add_argument("--actor-user-id", type=int, default=None)
+    update_slot.add_argument("--reason-code", type=str, default=None)
+    update_slot.add_argument("--comment", type=str, default=None)
+
+    get_slot = subparsers.add_parser("get-slot")
+    get_slot.add_argument("--slot-id", type=int, required=True)
+
+    list_slots = subparsers.add_parser("list-slots")
+
+    create_slot_binding = subparsers.add_parser("create-slot-binding")
+    create_slot_binding.add_argument("--slot-id", type=int, required=True)
+    create_slot_binding.add_argument("--item-id", type=int, required=True)
+    create_slot_binding.add_argument("--binding-type", type=str, required=True)
+    create_slot_binding.add_argument("--actor-user-id", type=int, default=None)
+    create_slot_binding.add_argument("--reason-code", type=str, default=None)
+    create_slot_binding.add_argument("--comment", type=str, default=None)
+
+    deactivate_slot_binding = subparsers.add_parser("deactivate-slot-binding")
+    deactivate_slot_binding.add_argument("--binding-id", type=int, required=True)
+    deactivate_slot_binding.add_argument("--actor-user-id", type=int, default=None)
+    deactivate_slot_binding.add_argument("--reason-code", type=str, default=None)
+    deactivate_slot_binding.add_argument("--comment", type=str, default=None)
+
+    list_slot_bindings = subparsers.add_parser("list-slot-bindings")
+    list_slot_bindings.add_argument("--slot-id", type=int, required=True)
+
+    list_item_bindings = subparsers.add_parser("list-item-bindings")
+    list_item_bindings.add_argument("--item-id", type=int, required=True)
+
+    list_inventory_balances = subparsers.add_parser("list-inventory-balances")
+    list_inventory_balances.add_argument("--slot-id", type=int, default=None)
+    list_inventory_balances.add_argument("--item-id", type=int, default=None)
+
+    adjust_inventory = subparsers.add_parser("adjust-inventory")
+    adjust_inventory.add_argument("--slot-id", type=int, required=True)
+    adjust_inventory.add_argument("--item-id", type=int, required=True)
+    adjust_inventory.add_argument("--quantity-delta", type=int, required=True)
+    adjust_inventory.add_argument("--actor-user-id", type=int, default=None)
+    adjust_inventory.add_argument("--reason-code", type=str, default=None)
+    adjust_inventory.add_argument("--comment", type=str, default=None)
+
+    set_inventory = subparsers.add_parser("set-inventory")
+    set_inventory.add_argument("--slot-id", type=int, required=True)
+    set_inventory.add_argument("--item-id", type=int, required=True)
+    set_inventory.add_argument("--quantity", type=int, required=True)
+    set_inventory.add_argument("--actor-user-id", type=int, default=None)
+    set_inventory.add_argument("--reason-code", type=str, default=None)
+    set_inventory.add_argument("--comment", type=str, default=None)
+
     return parser
 
 
@@ -110,6 +182,122 @@ def _dispatch(args: argparse.Namespace, container: ApplicationContainer) -> int:
         print(_render(result))
         return 0
 
+    if args.command == "create-slot":
+        result = container.services.slots.create_slot(
+            code=args.code,
+            slot_type=args.slot_type,
+            drum_position=args.drum_position,
+            board_address=args.board_address,
+            lock_number=args.lock_number,
+            capacity=args.capacity,
+            status=args.status,
+            actor_user_id=args.actor_user_id,
+            reason_code=args.reason_code,
+            comment=args.comment,
+        )
+        print(_render(result))
+        return 0
+
+    if args.command == "update-slot":
+        if args.activate and args.deactivate:
+            raise ValueError("Only one of --activate or --deactivate may be specified")
+        if args.activate:
+            result = container.services.slots.activate_slot(
+                slot_id=args.slot_id,
+                actor_user_id=args.actor_user_id,
+                reason_code=args.reason_code,
+                comment=args.comment,
+            )
+        elif args.deactivate:
+            result = container.services.slots.deactivate_slot(
+                slot_id=args.slot_id,
+                actor_user_id=args.actor_user_id,
+                reason_code=args.reason_code,
+                comment=args.comment,
+            )
+        else:
+            result = container.services.slots.update_slot(
+                slot_id=args.slot_id,
+                code=args.code,
+                slot_type=args.slot_type,
+                drum_position=args.drum_position,
+                board_address=args.board_address,
+                lock_number=args.lock_number,
+                capacity=args.capacity,
+                status=args.status,
+                actor_user_id=args.actor_user_id,
+                reason_code=args.reason_code,
+                comment=args.comment,
+            )
+        print(_render(result))
+        return 0
+
+    if args.command == "get-slot":
+        print(_render(container.services.slots.get_slot_details(args.slot_id)))
+        return 0
+
+    if args.command == "list-slots":
+        print(_render(container.services.slots.list_slots()))
+        return 0
+
+    if args.command == "create-slot-binding":
+        result = container.services.slots.create_binding(
+            slot_id=args.slot_id,
+            item_id=args.item_id,
+            binding_type=args.binding_type,
+            actor_user_id=args.actor_user_id,
+            reason_code=args.reason_code,
+            comment=args.comment,
+        )
+        print(_render(result))
+        return 0
+
+    if args.command == "deactivate-slot-binding":
+        result = container.services.slots.deactivate_binding(
+            binding_id=args.binding_id,
+            actor_user_id=args.actor_user_id,
+            reason_code=args.reason_code,
+            comment=args.comment,
+        )
+        print(_render(result))
+        return 0
+
+    if args.command == "list-slot-bindings":
+        print(_render(container.services.slots.list_bindings_for_slot(args.slot_id)))
+        return 0
+
+    if args.command == "list-item-bindings":
+        print(_render(container.services.slots.list_bindings_for_item(args.item_id)))
+        return 0
+
+    if args.command == "list-inventory-balances":
+        print(_render(container.services.inventory.list_balances(slot_id=args.slot_id, item_id=args.item_id)))
+        return 0
+
+    if args.command == "adjust-inventory":
+        result = container.services.inventory_admin.adjust_inventory(
+            slot_id=args.slot_id,
+            item_id=args.item_id,
+            quantity_delta=args.quantity_delta,
+            actor_user_id=args.actor_user_id,
+            reason_code=args.reason_code,
+            comment=args.comment,
+        )
+        print(_render(result))
+        return 0
+
+    if args.command == "set-inventory":
+        result = container.services.inventory_admin.set_inventory(
+            slot_id=args.slot_id,
+            item_id=args.item_id,
+            quantity=args.quantity,
+            actor_user_id=args.actor_user_id,
+            reason_code=args.reason_code,
+            comment=args.comment,
+        )
+        print(_render(result))
+        return 0
+
     raise ValueError(f"Unsupported command: {args.command}")
 
 
@@ -128,10 +316,14 @@ def _render(value: Any) -> str:
 
 
 def _to_jsonable(value: Any) -> Any:
+    from datetime import date, datetime
+
     if is_dataclass(value):
         return _to_jsonable(asdict(value))
     if isinstance(value, Enum):
         return value.value
+    if isinstance(value, (datetime, date)):
+        return value.isoformat()
     if isinstance(value, Path):
         return str(value)
     if isinstance(value, dict):

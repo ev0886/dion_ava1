@@ -92,6 +92,51 @@ def test_error_mapping_returns_400_for_validation_error(tmp_path: Path) -> None:
     assert response.json()["error"] == "validation_error"
 
 
+def test_slot_and_inventory_management_endpoints(tmp_path: Path) -> None:
+    app = create_app(_settings(tmp_path, "api_inventory_management.sqlite3"))
+    _seed_base_domain(app)
+
+    with TestClient(app) as client:
+        create_slot_response = client.post(
+            "/slots",
+            json={
+                "code": "slot-2",
+                "slot_type": "universal",
+                "drum_position": 4,
+                "board_address": 2,
+                "lock_number": 2,
+                "capacity": 8,
+                "status": "active",
+            },
+        )
+        assert create_slot_response.status_code == 200
+        slot_id = create_slot_response.json()["slot"]["slot_id"]
+
+        binding_response = client.post(
+            "/slot-bindings",
+            json={"slot_id": slot_id, "item_id": 1, "binding_type": "primary"},
+        )
+        assert binding_response.status_code == 200
+        binding_id = binding_response.json()["binding_id"]
+
+        detail_response = client.get(f"/slots/{slot_id}")
+        balances_response = client.get(f"/inventory-balances?slot_id={slot_id}")
+        adjust_response = client.post(
+            "/inventory-adjustments",
+            json={"slot_id": slot_id, "item_id": 1, "mode": "set", "quantity": 6},
+        )
+        deactivate_response = client.delete(f"/slot-bindings/{binding_id}")
+
+    assert detail_response.status_code == 200
+    assert detail_response.json()["active_bindings"][0]["binding_type"] == "primary"
+    assert balances_response.status_code == 200
+    assert balances_response.json() == []
+    assert adjust_response.status_code == 200
+    assert adjust_response.json()["quantity_after"] == 6
+    assert deactivate_response.status_code == 200
+    assert deactivate_response.json()["is_active"] is False
+
+
 def _settings(tmp_path: Path, sqlite_filename: str) -> AppSettings:
     return AppSettings(
         data_dir=tmp_path,
