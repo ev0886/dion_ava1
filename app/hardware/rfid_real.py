@@ -3,7 +3,7 @@ from __future__ import annotations
 from app.domain.constants import DEFAULT_RFID_UID_FORMAT
 from app.domain.enums import HardwareEndpointType
 from app.hardware.dto import HardwareOperationResult, HardwareOperationStatus, RfidReadResult
-from app.hardware.exceptions import HardwareFailureError, HardwareUnavailableError
+from app.hardware.exceptions import HardwareFailureError
 from app.hardware.real_adapter_base import RealHardwareAdapterBase
 from app.hardware.transport_config import HardwareEndpointTransportConfig
 from app.hardware.transports import SerialRequestResponseTransport, TcpRequestResponseTransport
@@ -41,11 +41,7 @@ class RealRfidAdapter(RealHardwareAdapterBase):
                 device_type=self.device_type,
                 operation="ping",
             )
-        return HardwareOperationResult(
-            device_type=self.device_type,
-            status=HardwareOperationStatus.SUCCESS,
-            ok=True,
-        )
+        return self._success_result()
 
     def read_card(self) -> RfidReadResult:
         response = self._send_request(self._READ_REQUEST, operation="read_card")
@@ -88,33 +84,6 @@ class RealRfidAdapter(RealHardwareAdapterBase):
             status=HardwareOperationStatus.SUCCESS,
             ok=True,
         )
-
-    def _send_request(self, payload: bytes, *, operation: str) -> str:
-        self._raise_if_unavailable(operation=operation)
-        assert self._transport is not None
-        timeout_ms = self._config.endpoint.timeouts.read_timeout_ms if self._config is not None else None
-        try:
-            raw_response = self._transport.request(payload, timeout_ms=timeout_ms)
-        except NotImplementedError as error:
-            raise HardwareUnavailableError(
-                f"RFID reader transport I/O is not implemented yet: {error}",
-                device_type=self.device_type,
-                operation=operation,
-            ) from error
-        except OSError as error:
-            raise HardwareUnavailableError(
-                f"RFID reader transport request failed: {error}",
-                device_type=self.device_type,
-                operation=operation,
-            ) from error
-        try:
-            return raw_response.decode("ascii").strip()
-        except (AttributeError, TypeError, UnicodeDecodeError) as error:
-            raise HardwareFailureError(
-                "RFID reader returned a malformed response.",
-                device_type=self.device_type,
-                operation=operation,
-            ) from error
 
     @staticmethod
     def _normalize_uid(uid: str) -> str:

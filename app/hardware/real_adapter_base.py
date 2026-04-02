@@ -3,13 +3,25 @@ from __future__ import annotations
 from typing import Final
 
 from app.domain.enums import HardwareEndpointType
-from app.hardware.dto import HardwareOperationResult
-from app.hardware.exceptions import HardwareProtocolNotImplementedError, HardwareUnavailableError
+from app.hardware.dto import HardwareOperationResult, HardwareOperationStatus
+from app.hardware.exceptions import (
+    HardwareFailureError,
+    HardwareProtocolNotImplementedError,
+    HardwareTimeoutError,
+    HardwareUnavailableError,
+)
 from app.hardware.transport_config import HardwareEndpointTransportConfig
 from app.hardware.transports import SerialRequestResponseTransport, TcpRequestResponseTransport
 
 
 class RealHardwareAdapterBase:
+    """Shared fail-closed behavior for concrete real hardware adapters.
+
+    Real-provider endpoints are allowed to be misconfigured or temporarily offline.
+    Adapters surface those cases as per-device unavailability so startup can report
+    degraded readiness instead of crashing process startup.
+    """
+
     _PROTOCOL_MESSAGE: Final[str] = "Real hardware protocol is not implemented yet."
 
     def __init__(
@@ -36,6 +48,46 @@ class RealHardwareAdapterBase:
     @property
     def _device_label(self) -> str:
         return self.device_type.value.replace("_", " ")
+
+    def _send_request(self, payload: bytes, *, operation: str) -> str:
+        self._raise_if_unavailable(operation=operation)
+        assert self._transport is not None
+        timeout_ms = self._config.endpoint.timeouts.read_timeout_ms if self._config is not None else None
+        try:
+            raw_response = self._transport.request(payload, timeout_ms=timeout_ms)
+        except TimeoutError as error:
+            raise HardwareTimeoutError(
+                f"{self._device_label.capitalize()} transport request timed out: {error}",
+                device_type=self.device_type,
+                operation=operation,
+            ) from error
+        except NotImplementedError as error:
+            raise HardwareUnavailableError(
+                f"{self._device_label.capitalize()} transport I/O is not implemented yet: {error}",
+                device_type=self.device_type,
+                operation=operation,
+            ) from error
+        except OSError as error:
+            raise HardwareUnavailableError(
+                f"{self._device_label.capitalize()} transport request failed: {error}",
+                device_type=self.device_type,
+                operation=operation,
+            ) from error
+        try:
+            return raw_response.decode("ascii").strip()
+        except (AttributeError, TypeError, UnicodeDecodeError) as error:
+            raise HardwareFailureError(
+                f"{self._device_label.capitalize()} returned a malformed response.",
+                device_type=self.device_type,
+                operation=operation,
+            ) from error
+
+    def _success_result(self) -> HardwareOperationResult:
+        return HardwareOperationResult(
+            device_type=self.device_type,
+            status=HardwareOperationStatus.SUCCESS,
+            ok=True,
+        )
 
     def _raise_if_unavailable(self, *, operation: str) -> None:
         if self._config_error:

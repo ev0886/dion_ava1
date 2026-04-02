@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from app.domain.enums import HardwareEndpointType
 from app.hardware.dto import DrumPositionResult, HardwareOperationResult, HardwareOperationStatus
-from app.hardware.exceptions import HardwareFailureError, HardwareTimeoutError, HardwareUnavailableError
+from app.hardware.exceptions import HardwareFailureError
 from app.hardware.real_adapter_base import RealHardwareAdapterBase
 from app.hardware.transport_config import HardwareEndpointTransportConfig
 from app.hardware.transports import SerialRequestResponseTransport, TcpRequestResponseTransport
@@ -38,11 +38,7 @@ class RealDrumAdapter(RealHardwareAdapterBase):
                 device_type=self.device_type,
                 operation="ping",
             )
-        return HardwareOperationResult(
-            device_type=self.device_type,
-            status=HardwareOperationStatus.SUCCESS,
-            ok=True,
-        )
+        return self._success_result()
 
     def get_position(self) -> DrumPositionResult:
         response = self._send_request(self._GET_POSITION_REQUEST, operation="get_position")
@@ -80,39 +76,6 @@ class RealDrumAdapter(RealHardwareAdapterBase):
             ok=True,
             position=actual_position,
         )
-
-    def _send_request(self, payload: bytes, *, operation: str) -> str:
-        self._raise_if_unavailable(operation=operation)
-        assert self._transport is not None
-        timeout_ms = self._config.endpoint.timeouts.read_timeout_ms if self._config is not None else None
-        try:
-            raw_response = self._transport.request(payload, timeout_ms=timeout_ms)
-        except TimeoutError as error:
-            raise HardwareTimeoutError(
-                f"Drum controller transport request timed out: {error}",
-                device_type=self.device_type,
-                operation=operation,
-            ) from error
-        except NotImplementedError as error:
-            raise HardwareUnavailableError(
-                f"Drum controller transport I/O is not implemented yet: {error}",
-                device_type=self.device_type,
-                operation=operation,
-            ) from error
-        except OSError as error:
-            raise HardwareUnavailableError(
-                f"Drum controller transport request failed: {error}",
-                device_type=self.device_type,
-                operation=operation,
-            ) from error
-        try:
-            return raw_response.decode("ascii").strip()
-        except (AttributeError, TypeError, UnicodeDecodeError) as error:
-            raise HardwareFailureError(
-                "Drum controller returned a malformed response.",
-                device_type=self.device_type,
-                operation=operation,
-            ) from error
 
     def _parse_position(self, value: str, *, operation: str) -> int:
         try:

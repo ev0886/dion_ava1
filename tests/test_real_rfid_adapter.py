@@ -6,6 +6,7 @@ from app.config import AppSettings, HardwareProvider
 from app.hardware import (
     HardwareFailureError,
     HardwareOperationStatus,
+    HardwareTimeoutError,
     RealRfidAdapter,
     create_hardware_bundle,
 )
@@ -58,6 +59,13 @@ def test_real_rfid_adapter_clear_buffer_success() -> None:
     assert result.status is HardwareOperationStatus.SUCCESS
 
 
+def test_real_rfid_adapter_timeout_is_reported_as_safe_timeout() -> None:
+    adapter = RealRfidAdapter(config=_rfid_config(), transport=_RaisingTransport(TimeoutError("timed out")))
+
+    with pytest.raises(HardwareTimeoutError, match="timed out"):
+        adapter.read_card()
+
+
 def test_real_provider_composition_still_works_with_operational_rfid_transport() -> None:
     settings = AppSettings(
         hardware_provider=HardwareProvider.REAL,
@@ -94,6 +102,14 @@ class _FakeTransport:
             raise AssertionError("No fake transport responses remain.")
         response = self._responses.pop(0)
         return response  # type: ignore[return-value]
+
+
+class _RaisingTransport:
+    def __init__(self, error: Exception) -> None:
+        self._error = error
+
+    def request(self, payload: bytes, *, timeout_ms: int | None = None) -> bytes:
+        raise self._error
 
 
 def _rfid_config():

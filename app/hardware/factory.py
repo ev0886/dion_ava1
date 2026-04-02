@@ -46,6 +46,8 @@ def create_hardware_bundle(
     *,
     transport_overrides: dict[str, SerialRequestResponseTransport | TcpRequestResponseTransport] | None = None,
 ) -> HardwareBundle:
+    """Create the configured hardware bundle without changing provider-selection semantics."""
+
     provider = settings.hardware_provider
     if provider is HardwareProvider.STUB_REAL:
         return _build_stub_real_hardware(provider)
@@ -58,34 +60,14 @@ def _build_mock_hardware(provider: HardwareProvider) -> HardwareBundle:
     drum_controller = MockDrumAdapter()
     lock_controller = MockLockAdapter(lock_states={(1, 1): LockState.LOCKED})
     rfid_reader = MockRfidAdapter()
-    return HardwareBundle(
-        provider=provider,
-        drum_controller=drum_controller,
-        lock_controller=lock_controller,
-        rfid_reader=rfid_reader,
-        facade=HardwareFacade(
-            drum_controller=drum_controller,
-            lock_controller=lock_controller,
-            rfid_reader=rfid_reader,
-        ),
-    )
+    return _bundle_from_parts(provider, drum_controller=drum_controller, lock_controller=lock_controller, rfid_reader=rfid_reader)
 
 
 def _build_stub_real_hardware(provider: HardwareProvider) -> HardwareBundle:
     drum_controller = StubRealDrumAdapter()
     lock_controller = StubRealLockAdapter()
     rfid_reader = StubRealRfidAdapter()
-    return HardwareBundle(
-        provider=provider,
-        drum_controller=drum_controller,
-        lock_controller=lock_controller,
-        rfid_reader=rfid_reader,
-        facade=HardwareFacade(
-            drum_controller=drum_controller,
-            lock_controller=lock_controller,
-            rfid_reader=rfid_reader,
-        ),
-    )
+    return _bundle_from_parts(provider, drum_controller=drum_controller, lock_controller=lock_controller, rfid_reader=rfid_reader)
 
 
 def _build_real_hardware(
@@ -94,6 +76,8 @@ def _build_real_hardware(
     *,
     transport_overrides: dict[str, SerialRequestResponseTransport | TcpRequestResponseTransport],
 ) -> HardwareBundle:
+    """Build real adapters so each endpoint can fail independently and degrade readiness safely."""
+
     raw_configs = settings.hardware_real_endpoints
     drum_config = _parse_endpoint_config(raw_configs.get("drum_controller"), endpoint_name="drum_controller")
     lock_config = _parse_endpoint_config(raw_configs.get("lock_controller"), endpoint_name="lock_controller")
@@ -114,6 +98,16 @@ def _build_real_hardware(
         transport=transport_overrides.get("rfid_reader") or _create_transport_client(rfid_config.config),
         config_error=rfid_config.error_message,
     )
+    return _bundle_from_parts(provider, drum_controller=drum_controller, lock_controller=lock_controller, rfid_reader=rfid_reader)
+
+
+def _bundle_from_parts(
+    provider: HardwareProvider,
+    *,
+    drum_controller: DrumControllerContract,
+    lock_controller: LockControllerContract,
+    rfid_reader: RfidReaderContract,
+) -> HardwareBundle:
     return HardwareBundle(
         provider=provider,
         drum_controller=drum_controller,
@@ -133,9 +127,14 @@ def _parse_endpoint_config(raw_config: object, *, endpoint_name: str) -> ParsedE
     try:
         return ParsedEndpointConfig(config=HardwareEndpointTransportConfig.model_validate(raw_config))
     except ValidationError as error:
+        first_error = error.errors()[0]
+        location = ".".join(str(part) for part in first_error.get("loc", ()))
+        detail = first_error["msg"]
+        if location:
+            detail = f"{location}: {detail}"
         return ParsedEndpointConfig(
             config=None,
-            error_message=f"{endpoint_name} real transport config is invalid: {error.errors()[0]['msg']}",
+            error_message=f"{endpoint_name} real transport config is invalid: {detail}",
         )
 
 
