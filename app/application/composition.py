@@ -9,6 +9,7 @@ from app.application.auth_service import AuthService
 from app.application.dispense_service import DispenseOperationService
 from app.application.export_service import ExportService
 from app.application.inventory_service import InventoryService
+from app.application.query_service import LogQueryService, OperationQueryService
 from app.application.recovery_service import RecoveryService
 from app.application.refill_service import RefillOperationService
 from app.application.return_service import ReturnOperationService
@@ -51,6 +52,8 @@ class ServiceBundle:
     service_mode: ServiceModeService
     exports: ExportService
     startup: StartupOrchestrationService
+    operations_query: OperationQueryService
+    logs_query: LogQueryService
 
 
 @dataclass(slots=True)
@@ -95,6 +98,11 @@ def build_services(
         repositories.operations,
         repositories.inventory,
     )
+    operation_query_service = OperationQueryService(
+        repositories.operations,
+        repositories.inventory,
+        repositories.recovery,
+    )
     return ServiceBundle(
         auth=auth_service,
         inventory=inventory_service,
@@ -123,6 +131,11 @@ def build_services(
             db_session=session,
             hardware_facade=hardware.facade,
             recovery_service=recovery_service,
+        ),
+        operations_query=operation_query_service,
+        logs_query=LogQueryService(
+            audit_log_repository=repositories.audit_logs,
+            event_log_repository=repositories.event_logs,
         ),
     )
 

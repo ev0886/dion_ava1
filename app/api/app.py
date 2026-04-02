@@ -19,7 +19,11 @@ from app.api.schemas import (
 )
 from app.application.composition import ApplicationContainer
 from app.application.dto.auth import AuthRequest
+from app.application.dto.logs import AuditLogQueryFilters, EventLogQueryFilters
 from app.application.dto.operations import DispenseRequest, RefillRequest, ReturnRequest
+from app.application.dto.operations import OperationQueryFilters
+from app.application.dto.recovery import RecoveryCaseQueryFilters
+from app.domain.enums import OperationState, OperationType, RecoveryClassification, RecoveryStatus
 from app.bootstrap import bootstrap
 from app.config import AppSettings, get_settings
 from app.persistence.session import create_session_factory, create_sqlalchemy_engine
@@ -107,6 +111,44 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
         )
         return JSONResponse(to_api_payload(dto))
 
+    @app.get("/operations")
+    def list_operations(
+        operation_type: OperationType | None = None,
+        operation_state: OperationState | None = None,
+        user_id: int | None = None,
+        item_id: int | None = None,
+        slot_id: int | None = None,
+        session_id: int | None = None,
+        limit: int = 100,
+        container: ApplicationContainer = Depends(get_application_container),
+    ) -> JSONResponse:
+        dto = container.services.operations_query.list_operations(
+            OperationQueryFilters(
+                operation_type=operation_type,
+                operation_state=operation_state,
+                user_id=user_id,
+                item_id=item_id,
+                slot_id=slot_id,
+                session_id=session_id,
+                limit=limit,
+            )
+        )
+        return JSONResponse(to_api_payload(dto))
+
+    @app.get("/operations/{operation_id}")
+    def operation_detail(
+        operation_id: int,
+        container: ApplicationContainer = Depends(get_application_container),
+    ) -> JSONResponse:
+        return JSONResponse(to_api_payload(container.services.operations_query.get_operation(operation_id)))
+
+    @app.get("/operations/{operation_id}/history")
+    def operation_history(
+        operation_id: int,
+        container: ApplicationContainer = Depends(get_application_container),
+    ) -> JSONResponse:
+        return JSONResponse(to_api_payload(container.services.operations_query.get_operation_history(operation_id)))
+
     @app.post("/operations/refill")
     def refill_operation(
         payload: RefillOperationRequest,
@@ -129,12 +171,31 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
     def recovery_scan(container: ApplicationContainer = Depends(get_application_container)) -> JSONResponse:
         return JSONResponse(to_api_payload(container.services.recovery.scan_recovery_targets()))
 
+    @app.get("/recovery/cases")
+    def recovery_case_list(
+        status: RecoveryStatus | None = None,
+        classification: RecoveryClassification | None = None,
+        limit: int = 100,
+        container: ApplicationContainer = Depends(get_application_container),
+    ) -> JSONResponse:
+        return JSONResponse(
+            to_api_payload(
+                container.services.recovery.list_cases(
+                    RecoveryCaseQueryFilters(
+                        status=status,
+                        classification=classification,
+                        limit=limit,
+                    )
+                )
+            )
+        )
+
     @app.get("/recovery/cases/{recovery_case_id}")
     def recovery_case(
         recovery_case_id: int,
         container: ApplicationContainer = Depends(get_application_container),
     ) -> JSONResponse:
-        return JSONResponse(to_api_payload(container.services.recovery.get_case(recovery_case_id)))
+        return JSONResponse(to_api_payload(container.services.recovery.get_case_detail(recovery_case_id)))
 
     @app.get("/recovery/cases/{recovery_case_id}/manual-resolution")
     def recovery_manual_resolution(
@@ -187,6 +248,44 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
                     destination_path=payload.destination_path,
                     diagnostic_manifest=manifest,
                     comment=payload.comment,
+                )
+            )
+        )
+
+    @app.get("/audit-logs")
+    def list_audit_logs(
+        entity_type: str | None = None,
+        actor_user_id: int | None = None,
+        limit: int = 100,
+        container: ApplicationContainer = Depends(get_application_container),
+    ) -> JSONResponse:
+        return JSONResponse(
+            to_api_payload(
+                container.services.logs_query.list_audit_logs(
+                    AuditLogQueryFilters(
+                        entity_type=entity_type,
+                        actor_user_id=actor_user_id,
+                        limit=limit,
+                    )
+                )
+            )
+        )
+
+    @app.get("/event-logs")
+    def list_event_logs(
+        event_type: str | None = None,
+        level: str | None = None,
+        limit: int = 100,
+        container: ApplicationContainer = Depends(get_application_container),
+    ) -> JSONResponse:
+        return JSONResponse(
+            to_api_payload(
+                container.services.logs_query.list_event_logs(
+                    EventLogQueryFilters(
+                        event_type=event_type,
+                        level=level,
+                        limit=limit,
+                    )
                 )
             )
         )

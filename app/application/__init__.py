@@ -11,6 +11,7 @@ from app.application.composition import (
 from app.application.dispense_service import DispenseOperationService
 from app.application.export_service import ExportService
 from app.application.inventory_service import InventoryService
+from app.application.query_service import LogQueryService, OperationQueryService
 from app.application.recovery_service import RecoveryService
 from app.application.refill_service import RefillOperationService
 from app.application.service_mode_service import ServiceModeService
@@ -33,7 +34,9 @@ __all__ = [
     "DispenseOperationService",
     "ExportService",
     "InventoryService",
+    "LogQueryService",
     "OperationSessionService",
+    "OperationQueryService",
     "RecoveryService",
     "RefillOperationService",
     "ReturnOperationService",

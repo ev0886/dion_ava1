@@ -91,6 +91,50 @@ class OperationDTO:
 
 
 @dataclass(frozen=True, slots=True)
+class OperationQueryFilters:
+    operation_type: OperationType | None = None
+    operation_state: OperationState | None = None
+    user_id: int | None = None
+    item_id: int | None = None
+    slot_id: int | None = None
+    session_id: int | None = None
+    limit: int = 100
+
+
+@dataclass(frozen=True, slots=True)
+class OperationStateHistoryEntryDTO:
+    history_entry_id: int
+    operation_id: int
+    state: OperationState
+    comment: str | None
+    context: dict[str, object]
+    created_at: datetime | None
+
+
+@dataclass(frozen=True, slots=True)
+class OperationInventoryTransactionDTO:
+    transaction_id: int
+    operation_id: int | None
+    session_id: int | None
+    slot_id: int
+    item_id: int
+    transaction_type: str
+    quantity_delta: int
+    quantity_before: int
+    quantity_after: int
+    comment: str | None
+    created_at: datetime | None
+
+
+@dataclass(frozen=True, slots=True)
+class OperationDetailDTO:
+    operation: OperationDTO
+    state_history: tuple[OperationStateHistoryEntryDTO, ...]
+    inventory_transactions: tuple[OperationInventoryTransactionDTO, ...]
+    recovery_case_id: int | None
+
+
+@dataclass(frozen=True, slots=True)
 class OperationValidationResult:
     operation_type: OperationType
     valid: bool

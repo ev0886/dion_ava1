@@ -10,7 +10,16 @@ from typing import Any
 
 from app.application.composition import ApplicationContainer, create_bootstrapped_application_container
 from app.config import AppSettings
-from app.domain.enums import StartupReadinessStatus
+from app.application.dto.logs import AuditLogQueryFilters, EventLogQueryFilters
+from app.application.dto.operations import OperationQueryFilters
+from app.application.dto.recovery import RecoveryCaseQueryFilters
+from app.domain.enums import (
+    OperationState,
+    OperationType,
+    RecoveryClassification,
+    RecoveryStatus,
+    StartupReadinessStatus,
+)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -23,6 +32,39 @@ def build_parser() -> argparse.ArgumentParser:
     subparsers.add_parser("startup-check")
     subparsers.add_parser("hardware-health")
     subparsers.add_parser("recovery-scan")
+
+    list_operations = subparsers.add_parser("list-operations")
+    list_operations.add_argument("--operation-type", type=str, default=None)
+    list_operations.add_argument("--operation-state", type=str, default=None)
+    list_operations.add_argument("--user-id", type=int, default=None)
+    list_operations.add_argument("--item-id", type=int, default=None)
+    list_operations.add_argument("--slot-id", type=int, default=None)
+    list_operations.add_argument("--session-id", type=int, default=None)
+    list_operations.add_argument("--limit", type=int, default=100)
+
+    get_operation = subparsers.add_parser("get-operation")
+    get_operation.add_argument("--operation-id", type=int, required=True)
+
+    get_operation_history = subparsers.add_parser("get-operation-history")
+    get_operation_history.add_argument("--operation-id", type=int, required=True)
+
+    list_recovery_cases = subparsers.add_parser("list-recovery-cases")
+    list_recovery_cases.add_argument("--status", type=str, default=None)
+    list_recovery_cases.add_argument("--classification", type=str, default=None)
+    list_recovery_cases.add_argument("--limit", type=int, default=100)
+
+    get_recovery_case = subparsers.add_parser("get-recovery-case")
+    get_recovery_case.add_argument("--recovery-case-id", type=int, required=True)
+
+    list_audit_logs = subparsers.add_parser("list-audit-logs")
+    list_audit_logs.add_argument("--entity-type", type=str, default=None)
+    list_audit_logs.add_argument("--actor-user-id", type=int, default=None)
+    list_audit_logs.add_argument("--limit", type=int, default=100)
+
+    list_event_logs = subparsers.add_parser("list-event-logs")
+    list_event_logs.add_argument("--event-type", type=str, default=None)
+    list_event_logs.add_argument("--level", type=str, default=None)
+    list_event_logs.add_argument("--limit", type=int, default=100)
 
     export_plan = subparsers.add_parser("export-plan")
     export_plan.add_argument("--requested-by-user-id", type=int, required=True)
@@ -80,6 +122,69 @@ def _dispatch(args: argparse.Namespace, container: ApplicationContainer) -> int:
         print(_render(summary))
         return 0
 
+    if args.command == "list-operations":
+        result = container.services.operations_query.list_operations(
+            OperationQueryFilters(
+                operation_type=OperationType(args.operation_type) if args.operation_type else None,
+                operation_state=OperationState(args.operation_state) if args.operation_state else None,
+                user_id=args.user_id,
+                item_id=args.item_id,
+                slot_id=args.slot_id,
+                session_id=args.session_id,
+                limit=args.limit,
+            )
+        )
+        print(_render(result))
+        return 0
+
+    if args.command == "get-operation":
+        result = container.services.operations_query.get_operation(args.operation_id)
+        print(_render(result))
+        return 0
+
+    if args.command == "get-operation-history":
+        result = container.services.operations_query.get_operation_history(args.operation_id)
+        print(_render(result))
+        return 0
+
+    if args.command == "list-recovery-cases":
+        result = container.services.recovery.list_cases(
+            RecoveryCaseQueryFilters(
+                status=RecoveryStatus(args.status) if args.status else None,
+                classification=RecoveryClassification(args.classification) if args.classification else None,
+                limit=args.limit,
+            )
+        )
+        print(_render(result))
+        return 0
+
+    if args.command == "get-recovery-case":
+        result = container.services.recovery.get_case_detail(args.recovery_case_id)
+        print(_render(result))
+        return 0
+
+    if args.command == "list-audit-logs":
+        result = container.services.logs_query.list_audit_logs(
+            AuditLogQueryFilters(
+                entity_type=args.entity_type,
+                actor_user_id=args.actor_user_id,
+                limit=args.limit,
+            )
+        )
+        print(_render(result))
+        return 0
+
+    if args.command == "list-event-logs":
+        result = container.services.logs_query.list_event_logs(
+            EventLogQueryFilters(
+                event_type=args.event_type,
+                level=args.level,
+                limit=args.limit,
+            )
+        )
+        print(_render(result))
+        return 0
+
     if args.command == "export-plan":
         snapshot = container.services.service_mode.get_hardware_snapshot(session_id=None)
         manifest = container.services.exports.build_diagnostic_dump_manifest(session_id=None, snapshot=snapshot)
@@ -128,10 +233,14 @@ def _render(value: Any) -> str:
 
 
 def _to_jsonable(value: Any) -> Any:
+    from datetime import date, datetime
+
     if is_dataclass(value):
         return _to_jsonable(asdict(value))
     if isinstance(value, Enum):
         return value.value
+    if isinstance(value, (datetime, date)):
+        return value.isoformat()
     if isinstance(value, Path):
         return str(value)
     if isinstance(value, dict):

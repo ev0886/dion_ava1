@@ -18,6 +18,33 @@ class OperationRepository(Repository):
         statement = select(Operation).where(Operation.session_id == session_id)
         return list(self.session.execute(statement).scalars())
 
+    def list_filtered(
+        self,
+        *,
+        operation_type=None,
+        operation_state=None,
+        user_id: int | None = None,
+        item_id: int | None = None,
+        slot_id: int | None = None,
+        session_id: int | None = None,
+        limit: int = 100,
+    ) -> list[Operation]:
+        statement = select(Operation)
+        if operation_type is not None:
+            statement = statement.where(Operation.operation_type == operation_type)
+        if operation_state is not None:
+            statement = statement.where(Operation.operation_state == operation_state)
+        if user_id is not None:
+            statement = statement.where(Operation.user_id == user_id)
+        if item_id is not None:
+            statement = statement.where(Operation.item_id == item_id)
+        if slot_id is not None:
+            statement = statement.where(Operation.slot_id == slot_id)
+        if session_id is not None:
+            statement = statement.where(Operation.session_id == session_id)
+        statement = statement.order_by(Operation.id.desc()).limit(limit)
+        return list(self.session.execute(statement).scalars())
+
     def list_unfinished(self) -> list[Operation]:
         terminal_states = (
             OperationState.COMPLETED,

@@ -33,6 +33,13 @@ class RecoveryCaseDTO:
 
 
 @dataclass(frozen=True, slots=True)
+class RecoveryCaseQueryFilters:
+    status: RecoveryStatus | None = None
+    classification: RecoveryClassification | None = None
+    limit: int = 100
+
+
+@dataclass(frozen=True, slots=True)
 class RecoveryScanResult:
     open_case_count: int
     open_cases: tuple[RecoveryCaseDTO, ...]
@@ -83,6 +90,19 @@ class RecoveryActionDTO:
     comment: str | None
     context: dict[str, object]
     created_at: datetime | None
+
+
+@dataclass(frozen=True, slots=True)
+class RecoveryCaseDetailDTO:
+    recovery_case_id: int
+    classification: RecoveryClassification
+    status: RecoveryStatus
+    summary: str
+    context: dict[str, object]
+    created_at: datetime | None
+    resolved_at: datetime | None
+    impacted_entities: tuple[RecoveryCaseEntityDTO, ...]
+    recovery_actions: tuple[RecoveryActionDTO, ...]
 
 
 @dataclass(frozen=True, slots=True)

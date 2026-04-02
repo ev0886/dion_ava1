@@ -6,7 +6,11 @@ from app.application.dto.operations import TransitionCheckResult
 from app.application.dto.recovery import (
     RecoveryCandidateDTO,
     RecoveryCaseDTO,
+    RecoveryCaseDetailDTO,
+    RecoveryCaseEntityDTO,
+    RecoveryCaseQueryFilters,
     RecoveryContextDTO,
+    RecoveryActionDTO,
     RecoveryScanResult,
 )
 from app.application.exceptions import RecoveryError
@@ -43,6 +47,51 @@ class RecoveryService:
 
     def list_open_cases(self) -> tuple[RecoveryCaseDTO, ...]:
         return tuple(self._to_dto(case) for case in self.recovery_repository.list_open_cases())
+
+    def list_cases(self, filters: RecoveryCaseQueryFilters) -> tuple[RecoveryCaseDTO, ...]:
+        return tuple(
+            self._to_dto(case)
+            for case in self.recovery_repository.list_cases(
+                status=filters.status,
+                classification=filters.classification,
+                limit=filters.limit,
+            )
+        )
+
+    def get_case_detail(self, recovery_case_id: int) -> RecoveryCaseDetailDTO:
+        recovery_case = self.recovery_repository.get_by_id(recovery_case_id)
+        if recovery_case is None:
+            raise RecoveryError(f"Recovery case not found: {recovery_case_id}")
+        impacted_entities = tuple(
+            RecoveryCaseEntityDTO(
+                entity_type=entity.entity_type,
+                entity_id=entity.entity_id,
+                role=entity.role,
+                decision_outcome=entity.decision_outcome,
+            )
+            for entity in self.recovery_repository.list_entities_for_case(recovery_case_id)
+        )
+        recovery_actions = tuple(
+            RecoveryActionDTO(
+                action_type=action.action_type,
+                status=action.status.value,
+                comment=action.comment,
+                context=dict(action.context_json or {}),
+                created_at=action.created_at,
+            )
+            for action in self.recovery_repository.list_actions_for_case(recovery_case_id)
+        )
+        return RecoveryCaseDetailDTO(
+            recovery_case_id=recovery_case.id,
+            classification=recovery_case.classification,
+            status=recovery_case.status,
+            summary=recovery_case.summary,
+            context=dict(recovery_case.context_json or {}),
+            created_at=recovery_case.created_at,
+            resolved_at=recovery_case.resolved_at,
+            impacted_entities=impacted_entities,
+            recovery_actions=recovery_actions,
+        )
 
     def scan_recovery_targets(self) -> RecoveryScanResult:
         unfinished_operation_ids = tuple(operation.id for operation in self.operation_repository.list_unfinished())
