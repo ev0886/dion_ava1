@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from app.persistence.models import RecoveryAction, RecoveryCase, RecoveryCaseEntity
 from app.persistence.repositories.base import Repository
@@ -15,6 +15,19 @@ class RecoveryRepository(Repository):
 
     def list_open_cases(self) -> list[RecoveryCase]:
         statement = select(RecoveryCase).where(RecoveryCase.resolved_at.is_(None))
+        return list(self.session.execute(statement).scalars())
+
+    def count_open_cases(self) -> int:
+        statement = select(func.count(RecoveryCase.id)).where(RecoveryCase.resolved_at.is_(None))
+        return int(self.session.execute(statement).scalar_one())
+
+    def list_recent_open_cases(self, *, limit: int) -> list[RecoveryCase]:
+        statement = (
+            select(RecoveryCase)
+            .where(RecoveryCase.resolved_at.is_(None))
+            .order_by(RecoveryCase.created_at.desc(), RecoveryCase.id.desc())
+            .limit(limit)
+        )
         return list(self.session.execute(statement).scalars())
 
     def find_open_case_by_operation_id(self, operation_id: int) -> RecoveryCase | None:

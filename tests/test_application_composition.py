@@ -34,6 +34,7 @@ def test_all_expected_services_are_present(tmp_path: Path) -> None:
     container = create_bootstrapped_application_container(settings)
     try:
         assert container.services.auth is not None
+        assert container.services.dashboard is not None
         assert container.services.inventory is not None
         assert container.services.operation_sessions is not None
         assert container.services.dispense is not None

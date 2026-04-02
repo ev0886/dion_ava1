@@ -143,6 +143,67 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
     ) -> JSONResponse:
         return JSONResponse(to_api_payload(container.services.recovery.prepare_manual_resolution(recovery_case_id)))
 
+    @app.get("/dashboard/summary")
+    def dashboard_summary(
+        recent_window_days: int = 7,
+        container: ApplicationContainer = Depends(get_application_container),
+    ) -> JSONResponse:
+        return JSONResponse(
+            to_api_payload(container.services.dashboard.get_summary(recent_window_days=recent_window_days))
+        )
+
+    @app.get("/dashboard/low-stock")
+    def dashboard_low_stock(
+        limit: int = 10,
+        low_stock_only: bool = True,
+        container: ApplicationContainer = Depends(get_application_container),
+    ) -> JSONResponse:
+        return JSONResponse(
+            to_api_payload(
+                container.services.dashboard.get_low_stock_overview(
+                    limit=limit,
+                    low_stock_only=low_stock_only,
+                )
+            )
+        )
+
+    @app.get("/dashboard/recovery-overview")
+    def dashboard_recovery_overview(
+        limit: int = 10,
+        container: ApplicationContainer = Depends(get_application_container),
+    ) -> JSONResponse:
+        return JSONResponse(to_api_payload(container.services.dashboard.get_recovery_overview(limit=limit)))
+
+    @app.get("/dashboard/recent-operations")
+    def dashboard_recent_operations(
+        limit: int = 10,
+        recent_window_days: int = 7,
+        container: ApplicationContainer = Depends(get_application_container),
+    ) -> JSONResponse:
+        return JSONResponse(
+            to_api_payload(
+                container.services.dashboard.get_recent_operations(
+                    limit=limit,
+                    recent_window_days=recent_window_days,
+                )
+            )
+        )
+
+    @app.get("/dashboard/recent-activity")
+    def dashboard_recent_activity(
+        limit: int = 10,
+        recent_window_days: int = 7,
+        container: ApplicationContainer = Depends(get_application_container),
+    ) -> JSONResponse:
+        return JSONResponse(
+            to_api_payload(
+                container.services.dashboard.get_recent_activity(
+                    limit=limit,
+                    recent_window_days=recent_window_days,
+                )
+            )
+        )
+
     @app.post("/service-mode/start")
     def service_mode_start(
         payload: ServiceModeStartRequest,

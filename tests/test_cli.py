@@ -15,6 +15,10 @@ from app.application.dto.startup import (
 from app.cli import main
 from app.domain.enums import StartupReadinessStatus
 from app.hardware.dto import HardwareOperationStatus
+from app.application.composition import create_bootstrapped_application_container
+from app.config import AppSettings
+
+from tests.dashboard_seed import seed_dashboard_data
 
 
 def test_startup_check_returns_success_for_healthy_temp_environment(tmp_path: Path) -> None:
@@ -104,6 +108,45 @@ def test_recovery_scan_runs_and_prints_deterministic_summary(tmp_path: Path) -> 
     assert '"candidate_operation_ids": []' in stdout
     assert '"open_case_count": 0' in stdout
     assert '"unfinished_operation_ids": []' in stdout
+
+
+def test_dashboard_commands_print_compact_json(tmp_path: Path) -> None:
+    settings = AppSettings(
+        data_dir=tmp_path,
+        sqlite_filename="cli_dashboard.sqlite3",
+        alembic_config_path=Path("alembic.ini"),
+    )
+    container = create_bootstrapped_application_container(settings)
+    try:
+        seed_dashboard_data(container.session)
+    finally:
+        container.close()
+
+    base_argv = [
+        "--data-dir",
+        str(tmp_path),
+        "--sqlite-filename",
+        "cli_dashboard.sqlite3",
+        "--alembic-config-path",
+        "alembic.ini",
+    ]
+
+    summary = _run_cli([*base_argv, "get-dashboard-summary", "--recent-window-days", "7"])
+    low_stock = _run_cli([*base_argv, "get-dashboard-low-stock", "--limit", "5"])
+    recovery = _run_cli([*base_argv, "get-dashboard-recovery-overview", "--limit", "5"])
+    operations = _run_cli([*base_argv, "get-dashboard-recent-operations", "--limit", "3", "--recent-window-days", "7"])
+    activity = _run_cli([*base_argv, "get-dashboard-recent-activity", "--limit", "5", "--recent-window-days", "7"])
+
+    assert summary[0] == 0
+    assert '"open_recovery_case_count": 1' in summary[1]
+    assert low_stock[0] == 0
+    assert '"item_sku": "item-low"' in low_stock[1]
+    assert recovery[0] == 0
+    assert '"operation_id": 3' in recovery[1]
+    assert operations[0] == 0
+    assert '"total_count": 4' in operations[1]
+    assert activity[0] == 0
+    assert '"activity_kind": "audit"' in activity[1]
 
 
 @dataclass(slots=True)

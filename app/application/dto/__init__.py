@@ -1,4 +1,15 @@
 from app.application.dto.auth import AuthRequest, AuthenticatedUserDTO
+from app.application.dto.dashboard import (
+    DashboardSummaryDTO,
+    LowStockEntryDTO,
+    LowStockOverviewDTO,
+    RecentActivityEntryDTO,
+    RecentActivityOverviewDTO,
+    RecentOperationEntryDTO,
+    RecentOperationsOverviewDTO,
+    RecoveryOverviewDTO,
+    RecoveryOverviewEntryDTO,
+)
 from app.application.dto.inventory import InventoryBalanceDTO, InventoryLookupResult, SlotBindingDTO
 from app.application.dto.operations import (
     CreateOperationCommand,
@@ -46,6 +57,7 @@ __all__ = [
     "AuthenticatedUserDTO",
     "CreateOperationCommand",
     "CreateOperationSessionCommand",
+    "DashboardSummaryDTO",
     "DispenseRequest",
     "DatabaseReadinessDTO",
     "DiagnosticCommandResultDTO",
@@ -58,6 +70,8 @@ __all__ = [
     "HardwareReadinessEntryDTO",
     "InventoryBalanceDTO",
     "InventoryLookupResult",
+    "LowStockEntryDTO",
+    "LowStockOverviewDTO",
     "OperationContextDTO",
     "OperationDTO",
     "OperationSessionDTO",
@@ -71,7 +85,13 @@ __all__ = [
     "RecoveryCaseDTO",
     "RecoveryCaseEntityDTO",
     "RecoveryContextDTO",
+    "RecoveryOverviewDTO",
+    "RecoveryOverviewEntryDTO",
     "RecoveryScanResult",
+    "RecentActivityEntryDTO",
+    "RecentActivityOverviewDTO",
+    "RecentOperationEntryDTO",
+    "RecentOperationsOverviewDTO",
     "RefillRequest",
     "ReturnRequest",
     "RecoveryReadinessDTO",

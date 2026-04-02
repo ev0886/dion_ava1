@@ -6,6 +6,7 @@ from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.application.auth_service import AuthService
+from app.application.dashboard_service import DashboardService
 from app.application.dispense_service import DispenseOperationService
 from app.application.export_service import ExportService
 from app.application.inventory_service import InventoryService
@@ -42,6 +43,7 @@ class RepositoryBundle:
 @dataclass(frozen=True, slots=True)
 class ServiceBundle:
     auth: AuthService
+    dashboard: DashboardService
     inventory: InventoryService
     operation_sessions: OperationSessionService
     dispense: DispenseOperationService
@@ -97,6 +99,14 @@ def build_services(
     )
     return ServiceBundle(
         auth=auth_service,
+        dashboard=DashboardService(
+            user_repository=repositories.users,
+            inventory_repository=repositories.inventory,
+            operation_repository=repositories.operations,
+            recovery_repository=repositories.recovery,
+            event_log_repository=repositories.event_logs,
+            audit_log_repository=repositories.audit_logs,
+        ),
         inventory=inventory_service,
         operation_sessions=operation_session_service,
         dispense=DispenseOperationService(repositories.operations, repositories.inventory),

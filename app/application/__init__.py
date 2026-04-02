@@ -8,6 +8,7 @@ from app.application.composition import (
     build_services,
     create_bootstrapped_application_container,
 )
+from app.application.dashboard_service import DashboardService
 from app.application.dispense_service import DispenseOperationService
 from app.application.export_service import ExportService
 from app.application.inventory_service import InventoryService
@@ -30,6 +31,7 @@ __all__ = [
     "build_repositories",
     "build_services",
     "create_bootstrapped_application_container",
+    "DashboardService",
     "DispenseOperationService",
     "ExportService",
     "InventoryService",

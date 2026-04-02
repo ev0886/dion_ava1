@@ -8,6 +8,7 @@ from app.api import create_app
 from app.config import AppSettings
 from app.domain.enums import BindingType, ItemStatus, OperationState, RoleCode, SlotStatus, SlotType, UserStatus
 from app.persistence.models import InventoryBalance, Item, Operation, OperationStateHistory, RecoveryCase, Role, Slot, SlotItemBinding, User
+from tests.dashboard_seed import seed_dashboard_data
 
 
 def test_app_creation_smoke(tmp_path: Path) -> None:
@@ -90,6 +91,30 @@ def test_error_mapping_returns_400_for_validation_error(tmp_path: Path) -> None:
 
     assert response.status_code == 400
     assert response.json()["error"] == "validation_error"
+
+
+def test_dashboard_endpoints_happy_path(tmp_path: Path) -> None:
+    app = create_app(_settings(tmp_path, "api_dashboard.sqlite3"))
+    with app.state.session_factory() as session:
+        seed_dashboard_data(session)
+
+    with TestClient(app) as client:
+        summary = client.get("/dashboard/summary", params={"recent_window_days": 7})
+        low_stock = client.get("/dashboard/low-stock", params={"limit": 5})
+        recovery = client.get("/dashboard/recovery-overview", params={"limit": 5})
+        operations = client.get("/dashboard/recent-operations", params={"limit": 3, "recent_window_days": 7})
+        activity = client.get("/dashboard/recent-activity", params={"limit": 5, "recent_window_days": 7})
+
+    assert summary.status_code == 200
+    assert summary.json()["open_recovery_case_count"] == 1
+    assert low_stock.status_code == 200
+    assert low_stock.json()["entries"][0]["item_sku"] == "item-low"
+    assert recovery.status_code == 200
+    assert recovery.json()["entries"][0]["operation_id"] == 3
+    assert operations.status_code == 200
+    assert operations.json()["total_count"] == 4
+    assert activity.status_code == 200
+    assert activity.json()["entries"][0]["activity_kind"] == "audit"
 
 
 def _settings(tmp_path: Path, sqlite_filename: str) -> AppSettings:

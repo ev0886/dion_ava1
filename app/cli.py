@@ -4,6 +4,7 @@ import argparse
 import json
 import sys
 from dataclasses import asdict, is_dataclass
+from datetime import date, datetime
 from enum import Enum
 from pathlib import Path
 from typing import Any
@@ -23,6 +24,23 @@ def build_parser() -> argparse.ArgumentParser:
     subparsers.add_parser("startup-check")
     subparsers.add_parser("hardware-health")
     subparsers.add_parser("recovery-scan")
+    dashboard_summary = subparsers.add_parser("get-dashboard-summary")
+    dashboard_summary.add_argument("--recent-window-days", type=int, default=7)
+
+    dashboard_low_stock = subparsers.add_parser("get-dashboard-low-stock")
+    dashboard_low_stock.add_argument("--limit", type=int, default=10)
+    dashboard_low_stock.add_argument("--low-stock-only", type=_parse_bool, default=True)
+
+    dashboard_recovery = subparsers.add_parser("get-dashboard-recovery-overview")
+    dashboard_recovery.add_argument("--limit", type=int, default=10)
+
+    dashboard_recent_operations = subparsers.add_parser("get-dashboard-recent-operations")
+    dashboard_recent_operations.add_argument("--limit", type=int, default=10)
+    dashboard_recent_operations.add_argument("--recent-window-days", type=int, default=7)
+
+    dashboard_recent_activity = subparsers.add_parser("get-dashboard-recent-activity")
+    dashboard_recent_activity.add_argument("--limit", type=int, default=10)
+    dashboard_recent_activity.add_argument("--recent-window-days", type=int, default=7)
 
     export_plan = subparsers.add_parser("export-plan")
     export_plan.add_argument("--requested-by-user-id", type=int, required=True)
@@ -80,6 +98,47 @@ def _dispatch(args: argparse.Namespace, container: ApplicationContainer) -> int:
         print(_render(summary))
         return 0
 
+    if args.command == "get-dashboard-summary":
+        print(_render(container.services.dashboard.get_summary(recent_window_days=args.recent_window_days)))
+        return 0
+
+    if args.command == "get-dashboard-low-stock":
+        print(
+            _render(
+                container.services.dashboard.get_low_stock_overview(
+                    limit=args.limit,
+                    low_stock_only=args.low_stock_only,
+                )
+            )
+        )
+        return 0
+
+    if args.command == "get-dashboard-recovery-overview":
+        print(_render(container.services.dashboard.get_recovery_overview(limit=args.limit)))
+        return 0
+
+    if args.command == "get-dashboard-recent-operations":
+        print(
+            _render(
+                container.services.dashboard.get_recent_operations(
+                    limit=args.limit,
+                    recent_window_days=args.recent_window_days,
+                )
+            )
+        )
+        return 0
+
+    if args.command == "get-dashboard-recent-activity":
+        print(
+            _render(
+                container.services.dashboard.get_recent_activity(
+                    limit=args.limit,
+                    recent_window_days=args.recent_window_days,
+                )
+            )
+        )
+        return 0
+
     if args.command == "export-plan":
         snapshot = container.services.service_mode.get_hardware_snapshot(session_id=None)
         manifest = container.services.exports.build_diagnostic_dump_manifest(session_id=None, snapshot=snapshot)
@@ -132,6 +191,8 @@ def _to_jsonable(value: Any) -> Any:
         return _to_jsonable(asdict(value))
     if isinstance(value, Enum):
         return value.value
+    if isinstance(value, (datetime, date)):
+        return value.isoformat()
     if isinstance(value, Path):
         return str(value)
     if isinstance(value, dict):
@@ -139,6 +200,15 @@ def _to_jsonable(value: Any) -> Any:
     if isinstance(value, (list, tuple)):
         return [_to_jsonable(item) for item in value]
     return value
+
+
+def _parse_bool(value: str) -> bool:
+    normalized = value.strip().lower()
+    if normalized in {"1", "true", "yes", "on"}:
+        return True
+    if normalized in {"0", "false", "no", "off"}:
+        return False
+    raise argparse.ArgumentTypeError(f"Invalid boolean value: {value}")
 
 
 if __name__ == "__main__":
