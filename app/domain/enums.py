@@ -167,3 +167,9 @@ class BackupStatus(StrEnum):
     PENDING = "pending"
     COMPLETED = "completed"
     FAILED = "failed"
+
+
+class StartupReadinessStatus(StrEnum):
+    READY = "ready"
+    DEGRADED = "degraded"
+    NOT_READY = "not_ready"
