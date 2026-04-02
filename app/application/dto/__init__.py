@@ -1,4 +1,12 @@
 from app.application.dto.auth import AuthRequest, AuthenticatedUserDTO
+from app.application.dto.import_export import (
+    ExportPreparationRequest,
+    ExportPreparationResultDTO as DataExportPreparationResultDTO,
+    ImportExportArtifactPlanDTO,
+    ImportPreparationRequest,
+    ImportPreparationResultDTO,
+    NormalizedRowFieldDTO,
+)
 from app.application.dto.inventory import InventoryBalanceDTO, InventoryLookupResult, SlotBindingDTO
 from app.application.dto.operations import (
     CreateOperationCommand,
@@ -24,6 +32,7 @@ from app.application.dto.recovery import (
     RecoveryContextDTO,
     RecoveryScanResult,
 )
+from app.application.dto.rfid import RfidBindingResultDTO
 from app.application.dto.service_mode import (
     DiagnosticCommandResultDTO,
     DiagnosticDumpManifestDTO,
@@ -46,18 +55,23 @@ __all__ = [
     "AuthenticatedUserDTO",
     "CreateOperationCommand",
     "CreateOperationSessionCommand",
+    "DataExportPreparationResultDTO",
     "DispenseRequest",
     "DatabaseReadinessDTO",
     "DiagnosticCommandResultDTO",
     "DiagnosticDumpManifestDTO",
     "DiagnosticHardwareEntryDTO",
     "DiagnosticSnapshotDTO",
+    "ExportPreparationRequest",
     "ExportArtifactPlanDTO",
     "ExportPreparationResultDTO",
     "HardwareReadinessDTO",
     "HardwareReadinessEntryDTO",
     "InventoryBalanceDTO",
     "InventoryLookupResult",
+    "ImportExportArtifactPlanDTO",
+    "ImportPreparationRequest",
+    "ImportPreparationResultDTO",
     "OperationContextDTO",
     "OperationDTO",
     "OperationSessionDTO",
@@ -75,8 +89,10 @@ __all__ = [
     "RefillRequest",
     "ReturnRequest",
     "RecoveryReadinessDTO",
+    "RfidBindingResultDTO",
     "ServiceModeSessionDTO",
     "SlotBindingDTO",
     "StartupReadinessDTO",
+    "NormalizedRowFieldDTO",
     "TransitionCheckResult",
 ]

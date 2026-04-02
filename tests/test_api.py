@@ -7,7 +7,18 @@ from fastapi.testclient import TestClient
 from app.api import create_app
 from app.config import AppSettings
 from app.domain.enums import BindingType, ItemStatus, OperationState, RoleCode, SlotStatus, SlotType, UserStatus
-from app.persistence.models import InventoryBalance, Item, Operation, OperationStateHistory, RecoveryCase, Role, Slot, SlotItemBinding, User
+from app.persistence.models import (
+    InventoryBalance,
+    Item,
+    Operation,
+    OperationStateHistory,
+    RecoveryCase,
+    Role,
+    Slot,
+    SlotItemBinding,
+    User,
+    UserRfidCard,
+)
 
 
 def test_app_creation_smoke(tmp_path: Path) -> None:
@@ -30,6 +41,63 @@ def test_health_and_readiness(tmp_path: Path) -> None:
     assert health.status_code == 200
     assert readiness.status_code == 200
     assert readiness.json()["readiness_status"] == "ready"
+    assert readiness.json()["status_reasons"] == []
+    assert readiness.json()["hardware"]["device_count"] == 3
+
+
+def test_service_mode_and_export_endpoints_happy_path(tmp_path: Path) -> None:
+    app = create_app(_settings(tmp_path, "api_service_export.sqlite3"))
+    _seed_service_users(app)
+
+    with TestClient(app) as client:
+        start_response = client.post("/service-mode/start", json={"user_id": 2, "comment": " Maintenance start "})
+        assert start_response.status_code == 200
+        session_id = start_response.json()["session_id"]
+
+        finish_response = client.post(
+            "/service-mode/finish",
+            json={"session_id": session_id, "user_id": 2, "comment": " Maintenance done "},
+        )
+        export_response = client.post(
+            "/exports/create",
+            json={
+                "requested_by_user_id": 1,
+                "destination_type": " FILESYSTEM ",
+                "destination_path": " var/exports ",
+                "comment": " diagnostics ",
+            },
+        )
+
+    assert finish_response.status_code == 200
+    assert finish_response.json()["status"] == "completed"
+    assert finish_response.json()["context"]["finished_by_user_id"] == 2
+    assert export_response.status_code == 200
+    assert export_response.json()["destination_type"] == "filesystem"
+    assert export_response.json()["destination_path"] == "var/exports"
+    assert export_response.json()["artifact_count"] == 4
+    assert export_response.json()["manifest_included"] is True
+
+
+def test_service_mode_invalid_transition_and_export_validation_errors(tmp_path: Path) -> None:
+    app = create_app(_settings(tmp_path, "api_service_export_errors.sqlite3"))
+    _seed_service_users(app)
+
+    with TestClient(app) as client:
+        first_start = client.post("/service-mode/start", json={"user_id": 2})
+        second_start = client.post("/service-mode/start", json={"user_id": 2})
+        wrong_finish = client.post("/service-mode/finish", json={"session_id": 999, "user_id": 2})
+        bad_export = client.post(
+            "/exports/create",
+            json={"requested_by_user_id": 1, "destination_type": "s3", "destination_path": "var/exports"},
+        )
+
+    assert first_start.status_code == 200
+    assert second_start.status_code == 409
+    assert second_start.json()["error"] == "conflict"
+    assert "already active" in second_start.json()["detail"]
+    assert wrong_finish.status_code == 404
+    assert bad_export.status_code == 400
+    assert bad_export.json()["error"] == "validation_error"
 
 
 def test_auth_and_inventory_happy_path(tmp_path: Path) -> None:
@@ -92,6 +160,72 @@ def test_error_mapping_returns_400_for_validation_error(tmp_path: Path) -> None:
     assert response.json()["error"] == "validation_error"
 
 
+def test_rfid_and_import_export_preparation_endpoints(tmp_path: Path) -> None:
+    app = create_app(_settings(tmp_path, "api_rfid_prepare.sqlite3"))
+    _seed_service_users(app)
+    _seed_standard_user(app)
+
+    with TestClient(app) as client:
+        bind_response = client.post(
+            "/rfid/bind",
+            json={"actor_user_id": 1, "user_id": 3, "card_uid": "aa-bb", "comment": "bind"},
+        )
+        rebind_response = client.post(
+            "/rfid/rebind",
+            json={"actor_user_id": 1, "user_id": 3, "card_uid": "cc-dd", "comment": "rebind"},
+        )
+        user_import_response = client.post(
+            "/imports/prepare",
+            json={
+                "requested_by_user_id": 1,
+                "entity_type": "users",
+                "source_type": "filesystem",
+                "source_path": "var/imports/users.csv",
+                "format_type": "csv",
+            },
+        )
+        item_export_response = client.post(
+            "/data-exports/prepare",
+            json={
+                "requested_by_user_id": 1,
+                "entity_type": "items",
+                "destination_type": "filesystem",
+                "destination_path": "var/exports/items.xlsx",
+                "format_type": "xlsx",
+                "include_inactive": True,
+            },
+        )
+        unbind_response = client.post("/rfid/unbind", json={"actor_user_id": 1, "user_id": 3, "comment": "unbind"})
+        duplicate_response = client.post(
+            "/rfid/bind",
+            json={"actor_user_id": 1, "user_id": 2, "card_uid": "ee-ff"},
+        )
+        conflict_response = client.post(
+            "/rfid/bind",
+            json={"actor_user_id": 1, "user_id": 3, "card_uid": "ee-ff"},
+        )
+
+    assert bind_response.status_code == 200
+    assert bind_response.json()["card_uid"] == "AABB"
+    assert rebind_response.status_code == 200
+    assert rebind_response.json()["previous_card_uid"] == "AABB"
+    assert user_import_response.status_code == 200
+    assert user_import_response.json()["required_fields"] == [
+        "user_code",
+        "full_name",
+        "role_code",
+        "status",
+        "is_active",
+    ]
+    assert item_export_response.status_code == 200
+    assert item_export_response.json()["artifact_plan"][0]["file_name"] == "items_export.xlsx"
+    assert unbind_response.status_code == 200
+    assert unbind_response.json()["action"] == "unbind"
+    assert duplicate_response.status_code == 200
+    assert conflict_response.status_code == 409
+    assert conflict_response.json()["error"] == "conflict"
+
+
 def _settings(tmp_path: Path, sqlite_filename: str) -> AppSettings:
     return AppSettings(
         data_dir=tmp_path,
@@ -145,6 +279,52 @@ def _seed_base_domain(app) -> None:
             )
         )
         session.add(InventoryBalance(slot_id=slot.id, item_id=item.id, quantity=5))
+        session.commit()
+
+
+def _seed_service_users(app) -> None:
+    with app.state.session_factory() as session:
+        admin_role = Role(code=RoleCode.ADMIN, name="Admin")
+        operator_role = Role(code=RoleCode.OPERATOR, name="Operator")
+        session.add_all((admin_role, operator_role))
+        session.flush()
+        session.add_all(
+            (
+                User(
+                    role_id=admin_role.id,
+                    user_code="admin-1",
+                    full_name="Admin One",
+                    status=UserStatus.ACTIVE,
+                    is_active=True,
+                ),
+                User(
+                    role_id=operator_role.id,
+                    user_code="operator-1",
+                    full_name="Operator One",
+                    status=UserStatus.ACTIVE,
+                    is_active=True,
+                ),
+            )
+        )
+        session.commit()
+
+
+def _seed_standard_user(app) -> None:
+    with app.state.session_factory() as session:
+        user_role = session.query(Role).filter_by(code=RoleCode.USER).one_or_none()
+        if user_role is None:
+            user_role = Role(code=RoleCode.USER, name="User")
+            session.add(user_role)
+            session.flush()
+        session.add(
+            User(
+                role_id=user_role.id,
+                user_code="user-3",
+                full_name="User Three",
+                status=UserStatus.ACTIVE,
+                is_active=True,
+            )
+        )
         session.commit()
 
 

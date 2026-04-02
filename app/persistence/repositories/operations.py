@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from sqlalchemy import or_, select
 
-from app.domain.enums import OperationState
+from app.domain.enums import OperationState, SessionStatus, SessionType
 from app.persistence.models import Operation, OperationSession, OperationStateHistory
 from app.persistence.repositories.base import Repository
 
@@ -71,6 +71,17 @@ class OperationRepository(Repository):
 class OperationSessionRepository(Repository):
     def get_by_id(self, session_id: int) -> OperationSession | None:
         return self.session.get(OperationSession, session_id)
+
+    def list_active_service_sessions(self) -> list[OperationSession]:
+        statement = (
+            select(OperationSession)
+            .where(
+                OperationSession.session_type == SessionType.SERVICE,
+                OperationSession.status == SessionStatus.ACTIVE,
+            )
+            .order_by(OperationSession.id.asc())
+        )
+        return list(self.session.execute(statement).scalars())
 
     def add(self, session: OperationSession) -> None:
         self.session.add(session)

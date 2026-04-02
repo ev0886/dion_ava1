@@ -9,8 +9,12 @@ from app.api.dependencies import get_application_container
 from app.api.errors import register_exception_handlers
 from app.api.schemas import (
     AuthResolveRequest,
+    DataExportPrepareRequest,
+    DataImportPrepareRequest,
     DispenseOperationRequest,
     ExportCreateRequest,
+    RfidBindRequest,
+    RfidUnbindRequest,
     RefillOperationRequest,
     ReturnOperationRequest,
     ServiceModeFinishRequest,
@@ -19,6 +23,7 @@ from app.api.schemas import (
 )
 from app.application.composition import ApplicationContainer
 from app.application.dto.auth import AuthRequest
+from app.application.dto.import_export import ExportPreparationRequest, ImportPreparationRequest
 from app.application.dto.operations import DispenseRequest, RefillRequest, ReturnRequest
 from app.bootstrap import bootstrap
 from app.config import AppSettings, get_settings
@@ -187,6 +192,92 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
                     destination_path=payload.destination_path,
                     diagnostic_manifest=manifest,
                     comment=payload.comment,
+                )
+            )
+        )
+
+    @app.post("/rfid/bind")
+    def rfid_bind(
+        payload: RfidBindRequest,
+        container: ApplicationContainer = Depends(get_application_container),
+    ) -> JSONResponse:
+        return JSONResponse(
+            to_api_payload(
+                container.services.rfid.bind_card(
+                    actor_user_id=payload.actor_user_id,
+                    user_id=payload.user_id,
+                    card_uid=payload.card_uid,
+                    comment=payload.comment,
+                )
+            )
+        )
+
+    @app.post("/rfid/rebind")
+    def rfid_rebind(
+        payload: RfidBindRequest,
+        container: ApplicationContainer = Depends(get_application_container),
+    ) -> JSONResponse:
+        return JSONResponse(
+            to_api_payload(
+                container.services.rfid.rebind_card(
+                    actor_user_id=payload.actor_user_id,
+                    user_id=payload.user_id,
+                    card_uid=payload.card_uid,
+                    comment=payload.comment,
+                )
+            )
+        )
+
+    @app.post("/rfid/unbind")
+    def rfid_unbind(
+        payload: RfidUnbindRequest,
+        container: ApplicationContainer = Depends(get_application_container),
+    ) -> JSONResponse:
+        return JSONResponse(
+            to_api_payload(
+                container.services.rfid.unbind_card(
+                    actor_user_id=payload.actor_user_id,
+                    user_id=payload.user_id,
+                    comment=payload.comment,
+                )
+            )
+        )
+
+    @app.post("/imports/prepare")
+    def import_prepare(
+        payload: DataImportPrepareRequest,
+        container: ApplicationContainer = Depends(get_application_container),
+    ) -> JSONResponse:
+        return JSONResponse(
+            to_api_payload(
+                container.services.import_export.prepare_import(
+                    ImportPreparationRequest(
+                        requested_by_user_id=payload.requested_by_user_id,
+                        entity_type=payload.entity_type,
+                        source_type=payload.source_type,
+                        source_path=payload.source_path,
+                        format_type=payload.format_type,
+                    )
+                )
+            )
+        )
+
+    @app.post("/data-exports/prepare")
+    def data_export_prepare(
+        payload: DataExportPrepareRequest,
+        container: ApplicationContainer = Depends(get_application_container),
+    ) -> JSONResponse:
+        return JSONResponse(
+            to_api_payload(
+                container.services.import_export.prepare_export(
+                    ExportPreparationRequest(
+                        requested_by_user_id=payload.requested_by_user_id,
+                        entity_type=payload.entity_type,
+                        destination_type=payload.destination_type,
+                        destination_path=payload.destination_path,
+                        format_type=payload.format_type,
+                        include_inactive=payload.include_inactive,
+                    )
                 )
             )
         )

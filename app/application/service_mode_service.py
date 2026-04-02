@@ -9,6 +9,7 @@ from app.application.dto.service_mode import (
     DiagnosticSnapshotDTO,
     ServiceModeSessionDTO,
 )
+from app.application.exceptions import InvalidStateTransitionError, NotFoundError
 from app.application.time import utc_now
 from app.domain.enums import RoleCode, SessionStatus, SessionType
 from app.hardware import HardwareFacade
@@ -37,13 +38,19 @@ class ServiceModeService:
 
     def enter_service_mode(self, *, user_id: int, comment: str | None = None) -> ServiceModeSessionDTO:
         user = self._require_service_user(user_id)
+        existing_session = self._get_active_service_session()
+        if existing_session is not None:
+            raise InvalidStateTransitionError(
+                f"Service mode is already active for session {existing_session.id}; finish it before starting a new one."
+            )
+        normalized_comment = self._normalize_comment(comment)
         session = OperationSession(
             session_type=SessionType.SERVICE,
             status=SessionStatus.ACTIVE,
             started_by_user_id=user.user_id,
             started_at=utc_now(),
             finished_at=None,
-            comment=comment,
+            comment=normalized_comment,
             context_json={"entered_via": "service_mode_service"},
         )
         self.session_repository.add(session)
@@ -53,14 +60,14 @@ class ServiceModeService:
             session_id=session.id,
             user_id=user.user_id,
             result="active",
-            comment=comment,
+            comment=normalized_comment,
         )
         self._record_audit(
             entity_type="operation_session",
             entity_id=str(session.id),
             actor_user_id=user.user_id,
             action="service_mode_enter",
-            comment=comment,
+            comment=normalized_comment,
         )
         self.session_repository.session.commit()
         return self._to_session_dto(session, operator_role=user.role_code)
@@ -69,23 +76,36 @@ class ServiceModeService:
         user = self._require_service_user(user_id)
         session = self.session_repository.get_by_id(session_id)
         if session is None:
-            raise ValueError(f"Operation session not found: {session_id}")
+            raise NotFoundError(f"Operation session not found: {session_id}")
+        if session.session_type is not SessionType.SERVICE:
+            raise InvalidStateTransitionError(f"Operation session {session_id} is not a service-mode session.")
+        if session.status is not SessionStatus.ACTIVE:
+            raise InvalidStateTransitionError(
+                f"Service mode session {session_id} is not active; current status is {session.status.value}."
+            )
+        if session.finished_at is not None:
+            raise InvalidStateTransitionError(f"Service mode session {session_id} is already finished.")
+        normalized_comment = self._normalize_comment(comment)
         session.status = SessionStatus.COMPLETED
         session.finished_at = utc_now()
-        session.comment = comment or session.comment
+        session.comment = normalized_comment or session.comment
+        context = dict(session.context_json or {})
+        context["finished_via"] = "service_mode_service"
+        context["finished_by_user_id"] = user.user_id
+        session.context_json = context
         self._record_event(
             event_type="service_mode_exited",
             session_id=session.id,
             user_id=user.user_id,
             result="completed",
-            comment=comment,
+            comment=normalized_comment,
         )
         self._record_audit(
             entity_type="operation_session",
             entity_id=str(session.id),
             actor_user_id=user.user_id,
             action="service_mode_exit",
-            comment=comment,
+            comment=normalized_comment,
         )
         self.session_repository.session.commit()
         return self._to_session_dto(session, operator_role=user.role_code)
@@ -202,6 +222,19 @@ class ServiceModeService:
 
             raise AuthorizationError(f"User role is not allowed for service mode: {user.role_code}")
         return user
+
+    def _get_active_service_session(self) -> OperationSession | None:
+        for session in self.session_repository.list_active_service_sessions():
+            if session.finished_at is None:
+                return session
+        return None
+
+    @staticmethod
+    def _normalize_comment(comment: str | None) -> str | None:
+        if comment is None:
+            return None
+        normalized = comment.strip()
+        return normalized or None
 
     @staticmethod
     def _to_session_dto(session: OperationSession, *, operator_role: RoleCode | None) -> ServiceModeSessionDTO:

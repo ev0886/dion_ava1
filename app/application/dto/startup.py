@@ -26,6 +26,9 @@ class HardwareReadinessEntryDTO:
 class HardwareReadinessDTO:
     ok: bool
     degraded: bool
+    device_count: int
+    available_device_count: int
+    unavailable_device_count: int
     entries: tuple[HardwareReadinessEntryDTO, ...]
     message: str | None
 
@@ -46,4 +49,5 @@ class StartupReadinessDTO:
     hardware: HardwareReadinessDTO
     recovery: RecoveryReadinessDTO
     readiness_status: StartupReadinessStatus
+    status_reasons: tuple[str, ...]
     message: str | None

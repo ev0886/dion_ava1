@@ -8,10 +8,11 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.application.auth_service import AuthService
+from app.application.exceptions import InvalidStateTransitionError, NotFoundError, ValidationError
 from app.application.export_service import ExportService
 from app.application.service_mode_service import ServiceModeService
 from app.config import AppSettings
-from app.domain.enums import ExportStatus, ItemStatus, RoleCode, SessionStatus, SlotStatus, SlotType, UserStatus
+from app.domain.enums import ExportStatus, ItemStatus, RoleCode, SessionStatus, SessionType, SlotStatus, SlotType, UserStatus
 from app.hardware import HardwareFacade, LockState, MockDrumAdapter, MockHardwareMode, MockLockAdapter, MockRfidAdapter
 from app.persistence.base import Base
 from app.persistence.models import Export, Item, OperationSession, Role, Slot, User
@@ -40,6 +41,57 @@ def test_service_mode_entry_and_exit_result_shape(session_factory: sessionmaker[
         assert exited.finished_at is not None
         assert db_session is not None
         assert db_session.status is SessionStatus.COMPLETED
+        assert db_session.context_json["finished_by_user_id"] == ids.operator_user_id
+
+
+def test_service_mode_start_rejects_second_active_session(session_factory: sessionmaker[Session]) -> None:
+    with session_factory() as session:
+        ids = _seed_users(session)
+        service = _service_mode_service(session)
+
+        first = service.enter_service_mode(user_id=ids.operator_user_id, comment=" first ")
+
+        with pytest.raises(InvalidStateTransitionError, match="already active"):
+            service.enter_service_mode(user_id=ids.admin_user_id, comment="second")
+
+        stored = session.get(OperationSession, first.session_id)
+        assert stored is not None
+        assert stored.comment == "first"
+
+
+def test_service_mode_finish_rejects_non_service_session(session_factory: sessionmaker[Session]) -> None:
+    with session_factory() as session:
+        ids = _seed_users(session)
+        session_row = OperationSession(
+            session_type=SessionType.REFILL,
+            status=SessionStatus.ACTIVE,
+            started_by_user_id=ids.operator_user_id,
+            started_at=None,
+            finished_at=None,
+            comment=None,
+            context_json={},
+        )
+        session.add(session_row)
+        session.commit()
+        service = _service_mode_service(session)
+
+        with pytest.raises(InvalidStateTransitionError, match="not a service-mode session"):
+            service.exit_service_mode(session_id=session_row.id, user_id=ids.operator_user_id)
+
+
+def test_service_mode_finish_rejects_missing_or_completed_session(session_factory: sessionmaker[Session]) -> None:
+    with session_factory() as session:
+        ids = _seed_users(session)
+        service = _service_mode_service(session)
+
+        with pytest.raises(NotFoundError, match="Operation session not found"):
+            service.exit_service_mode(session_id=999, user_id=ids.operator_user_id)
+
+        opened = service.enter_service_mode(user_id=ids.operator_user_id)
+        service.exit_service_mode(session_id=opened.session_id or 0, user_id=ids.operator_user_id)
+
+        with pytest.raises(InvalidStateTransitionError, match="is not active"):
+            service.exit_service_mode(session_id=opened.session_id or 0, user_id=ids.operator_user_id)
 
 
 def test_drum_diagnostic_success_path(session_factory: sessionmaker[Session]) -> None:
@@ -112,10 +164,45 @@ def test_export_preparation_result_shape(session_factory: sessionmaker[Session])
         export_row = session.get(Export, result.export_id)
         assert result.export_id is not None
         assert result.status is ExportStatus.PENDING
+        assert result.artifact_count == 4
+        assert result.manifest_included is True
         assert result.manifest is not None
         assert len(result.artifact_plan) == 4
         assert export_row is not None
         assert export_row.destination_path == "var/exports"
+
+
+def test_export_preparation_normalizes_and_validates_request(session_factory: sessionmaker[Session]) -> None:
+    with session_factory() as session:
+        ids = _seed_users(session)
+        export_service = _export_service(session)
+
+        result = export_service.prepare_export(
+            requested_by_user_id=ids.admin_user_id,
+            destination_type=" FILESYSTEM ",
+            destination_path=" var/exports/manual ",
+            comment="  export now  ",
+        )
+
+        assert result.destination_type == "filesystem"
+        assert result.destination_path == "var/exports/manual"
+        assert result.comment == "export now"
+        assert result.artifact_count == len(result.artifact_plan)
+        assert result.manifest_included is False
+
+        with pytest.raises(ValidationError, match="Unsupported destination_type"):
+            export_service.prepare_export(
+                requested_by_user_id=ids.admin_user_id,
+                destination_type="s3",
+                destination_path="var/exports",
+            )
+
+        with pytest.raises(ValidationError, match="destination_path must not be empty"):
+            export_service.prepare_export(
+                requested_by_user_id=ids.admin_user_id,
+                destination_type="filesystem",
+                destination_path="   ",
+            )
 
 
 class _SeedIds:
@@ -187,6 +274,7 @@ def _service_mode_service(
 
 def _export_service(session: Session) -> ExportService:
     return ExportService(
+        auth_service=AuthService(UserRepository(session)),
         export_repository=ExportRepository(session),
         event_log_repository=EventLogRepository(session),
         audit_log_repository=AuditLogRepository(session),

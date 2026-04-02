@@ -37,7 +37,15 @@ class StartupOrchestrationService:
         if not database.ok:
             return StartupReadinessDTO(
                 database=database,
-                hardware=HardwareReadinessDTO(ok=False, degraded=False, entries=(), message=None),
+                hardware=HardwareReadinessDTO(
+                    ok=False,
+                    degraded=False,
+                    device_count=0,
+                    available_device_count=0,
+                    unavailable_device_count=0,
+                    entries=(),
+                    message=None,
+                ),
                 recovery=RecoveryReadinessDTO(
                     ok=False,
                     recovery_candidates_found=False,
@@ -47,6 +55,7 @@ class StartupOrchestrationService:
                     message=None,
                 ),
                 readiness_status=StartupReadinessStatus.NOT_READY,
+                status_reasons=("database_unavailable",),
                 message=database.message,
             )
 
@@ -64,6 +73,7 @@ class StartupOrchestrationService:
                     message=None,
                 ),
                 readiness_status=StartupReadinessStatus.NOT_READY,
+                status_reasons=("hardware_unavailable",),
                 message=hardware.message,
             )
 
@@ -74,6 +84,7 @@ class StartupOrchestrationService:
                 hardware=hardware,
                 recovery=recovery,
                 readiness_status=StartupReadinessStatus.NOT_READY,
+                status_reasons=("recovery_check_failed",),
                 message=recovery.message,
             )
 
@@ -83,6 +94,7 @@ class StartupOrchestrationService:
             hardware=hardware,
             recovery=recovery,
             readiness_status=readiness_status,
+            status_reasons=self._status_reasons(readiness_status, hardware=hardware, recovery=recovery),
             message=self._build_message(readiness_status, hardware=hardware, recovery=recovery),
         )
 
@@ -121,15 +133,23 @@ class StartupOrchestrationService:
             return HardwareReadinessDTO(
                 ok=False,
                 degraded=False,
+                device_count=0,
+                available_device_count=0,
+                unavailable_device_count=0,
                 entries=(),
                 message=f"Hardware readiness check failed: {error}",
             )
 
         entries = self._to_hardware_entries(snapshot)
+        unavailable_device_count = sum(1 for entry in entries if not entry.is_available)
+        available_device_count = len(entries) - unavailable_device_count
         if snapshot.all_ok:
             return HardwareReadinessDTO(
                 ok=True,
                 degraded=False,
+                device_count=len(entries),
+                available_device_count=available_device_count,
+                unavailable_device_count=unavailable_device_count,
                 entries=entries,
                 message=None,
             )
@@ -138,6 +158,9 @@ class StartupOrchestrationService:
         return HardwareReadinessDTO(
             ok=True,
             degraded=True,
+            device_count=len(entries),
+            available_device_count=available_device_count,
+            unavailable_device_count=unavailable_device_count,
             entries=entries,
             message="One or more hardware endpoints reported unavailable status.",
         )
@@ -201,6 +224,22 @@ class StartupOrchestrationService:
         if recovery.recovery_candidates_found:
             reasons.append("recovery candidates detected")
         return "Startup checks completed with degraded readiness: " + ", ".join(reasons) + "."
+
+    @staticmethod
+    def _status_reasons(
+        readiness_status: StartupReadinessStatus,
+        *,
+        hardware: HardwareReadinessDTO,
+        recovery: RecoveryReadinessDTO,
+    ) -> tuple[str, ...]:
+        if readiness_status is StartupReadinessStatus.READY:
+            return ()
+        reasons: list[str] = []
+        if hardware.degraded:
+            reasons.append("hardware_degraded")
+        if recovery.recovery_candidates_found:
+            reasons.append("recovery_candidates_detected")
+        return tuple(reasons)
 
 
 StartupService = StartupOrchestrationService

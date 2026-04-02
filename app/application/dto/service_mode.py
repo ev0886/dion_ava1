@@ -91,6 +91,8 @@ class ExportPreparationResultDTO:
     destination_path: str
     export_type: str
     status: ExportStatus
+    artifact_count: int
+    manifest_included: bool
     artifact_plan: tuple[ExportArtifactPlanDTO, ...]
     manifest: DiagnosticDumpManifestDTO | None
     comment: str | None

@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from app.application.composition import ApplicationContainer, create_bootstrapped_application_container
+from app.application.dto.import_export import ExportPreparationRequest, ImportPreparationRequest
 from app.config import AppSettings
 from app.domain.enums import StartupReadinessStatus
 
@@ -29,6 +30,38 @@ def build_parser() -> argparse.ArgumentParser:
     export_plan.add_argument("--destination-type", type=str, default="filesystem")
     export_plan.add_argument("--destination-path", type=str, default="var/exports")
     export_plan.add_argument("--comment", type=str, default=None)
+
+    rfid_bind = subparsers.add_parser("rfid-bind")
+    rfid_bind.add_argument("--actor-user-id", type=int, required=True)
+    rfid_bind.add_argument("--user-id", type=int, required=True)
+    rfid_bind.add_argument("--card-uid", type=str, required=True)
+    rfid_bind.add_argument("--comment", type=str, default=None)
+
+    rfid_rebind = subparsers.add_parser("rfid-rebind")
+    rfid_rebind.add_argument("--actor-user-id", type=int, required=True)
+    rfid_rebind.add_argument("--user-id", type=int, required=True)
+    rfid_rebind.add_argument("--card-uid", type=str, required=True)
+    rfid_rebind.add_argument("--comment", type=str, default=None)
+
+    rfid_unbind = subparsers.add_parser("rfid-unbind")
+    rfid_unbind.add_argument("--actor-user-id", type=int, required=True)
+    rfid_unbind.add_argument("--user-id", type=int, required=True)
+    rfid_unbind.add_argument("--comment", type=str, default=None)
+
+    import_plan = subparsers.add_parser("import-plan")
+    import_plan.add_argument("--requested-by-user-id", type=int, required=True)
+    import_plan.add_argument("--entity-type", type=str, required=True)
+    import_plan.add_argument("--source-type", type=str, default="filesystem")
+    import_plan.add_argument("--source-path", type=str, required=True)
+    import_plan.add_argument("--format-type", type=str, default="csv")
+
+    data_export_plan = subparsers.add_parser("data-export-plan")
+    data_export_plan.add_argument("--requested-by-user-id", type=int, required=True)
+    data_export_plan.add_argument("--entity-type", type=str, required=True)
+    data_export_plan.add_argument("--destination-type", type=str, default="filesystem")
+    data_export_plan.add_argument("--destination-path", type=str, required=True)
+    data_export_plan.add_argument("--format-type", type=str, default="csv")
+    data_export_plan.add_argument("--include-inactive", action="store_true")
 
     service_mode_open = subparsers.add_parser("service-mode-open")
     service_mode_open.add_argument("--user-id", type=int, required=True)
@@ -106,6 +139,62 @@ def _dispatch(args: argparse.Namespace, container: ApplicationContainer) -> int:
             session_id=args.session_id,
             user_id=args.user_id,
             comment=args.comment,
+        )
+        print(_render(result))
+        return 0
+
+    if args.command == "rfid-bind":
+        result = container.services.rfid.bind_card(
+            actor_user_id=args.actor_user_id,
+            user_id=args.user_id,
+            card_uid=args.card_uid,
+            comment=args.comment,
+        )
+        print(_render(result))
+        return 0
+
+    if args.command == "rfid-rebind":
+        result = container.services.rfid.rebind_card(
+            actor_user_id=args.actor_user_id,
+            user_id=args.user_id,
+            card_uid=args.card_uid,
+            comment=args.comment,
+        )
+        print(_render(result))
+        return 0
+
+    if args.command == "rfid-unbind":
+        result = container.services.rfid.unbind_card(
+            actor_user_id=args.actor_user_id,
+            user_id=args.user_id,
+            comment=args.comment,
+        )
+        print(_render(result))
+        return 0
+
+    if args.command == "import-plan":
+        result = container.services.import_export.prepare_import(
+            ImportPreparationRequest(
+                requested_by_user_id=args.requested_by_user_id,
+                entity_type=args.entity_type,
+                source_type=args.source_type,
+                source_path=args.source_path,
+                format_type=args.format_type,
+            )
+        )
+        print(_render(result))
+        return 0
+
+    if args.command == "data-export-plan":
+        result = container.services.import_export.prepare_export(
+            ExportPreparationRequest(
+                requested_by_user_id=args.requested_by_user_id,
+                entity_type=args.entity_type,
+                destination_type=args.destination_type,
+                destination_path=args.destination_path,
+                format_type=args.format_type,
+                include_inactive=args.include_inactive,
+            )
         )
         print(_render(result))
         return 0

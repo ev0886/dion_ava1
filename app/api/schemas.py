@@ -60,6 +60,36 @@ class ExportCreateRequest(ApiModel):
     comment: str | None = None
 
 
+class RfidBindRequest(ApiModel):
+    actor_user_id: int
+    user_id: int
+    card_uid: str
+    comment: str | None = None
+
+
+class RfidUnbindRequest(ApiModel):
+    actor_user_id: int
+    user_id: int
+    comment: str | None = None
+
+
+class DataImportPrepareRequest(ApiModel):
+    requested_by_user_id: int
+    entity_type: str
+    source_type: str = "filesystem"
+    source_path: str
+    format_type: str = "csv"
+
+
+class DataExportPrepareRequest(ApiModel):
+    requested_by_user_id: int
+    entity_type: str
+    destination_type: str = "filesystem"
+    destination_path: str
+    format_type: str = "csv"
+    include_inactive: bool = False
+
+
 class ErrorResponse(ApiModel):
     error: str
     detail: str

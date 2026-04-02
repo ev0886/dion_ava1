@@ -8,9 +8,11 @@ from sqlalchemy.orm import Session, sessionmaker
 from app.application.auth_service import AuthService
 from app.application.dispense_service import DispenseOperationService
 from app.application.export_service import ExportService
+from app.application.import_export_service import ImportExportPreparationService
 from app.application.inventory_service import InventoryService
 from app.application.recovery_service import RecoveryService
 from app.application.refill_service import RefillOperationService
+from app.application.rfid_binding_service import RfidBindingService
 from app.application.return_service import ReturnOperationService
 from app.application.service_mode_service import ServiceModeService
 from app.application.startup_service import StartupOrchestrationService
@@ -42,6 +44,8 @@ class RepositoryBundle:
 @dataclass(frozen=True, slots=True)
 class ServiceBundle:
     auth: AuthService
+    rfid: RfidBindingService
+    import_export: ImportExportPreparationService
     inventory: InventoryService
     operation_sessions: OperationSessionService
     dispense: DispenseOperationService
@@ -97,6 +101,13 @@ def build_services(
     )
     return ServiceBundle(
         auth=auth_service,
+        rfid=RfidBindingService(
+            auth_service=auth_service,
+            user_repository=repositories.users,
+            event_log_repository=repositories.event_logs,
+            audit_log_repository=repositories.audit_logs,
+        ),
+        import_export=ImportExportPreparationService(auth_service=auth_service),
         inventory=inventory_service,
         operation_sessions=operation_session_service,
         dispense=DispenseOperationService(repositories.operations, repositories.inventory),
@@ -115,6 +126,7 @@ def build_services(
             hardware_facade=hardware.facade,
         ),
         exports=ExportService(
+            auth_service=auth_service,
             export_repository=repositories.exports,
             event_log_repository=repositories.event_logs,
             audit_log_repository=repositories.audit_logs,
