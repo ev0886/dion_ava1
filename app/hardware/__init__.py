@@ -13,6 +13,7 @@ from app.hardware.dto import (
     UnlockTimeResult,
 )
 from app.hardware.drum_mock import MockDrumAdapter
+from app.hardware.drum_stub_real import StubRealDrumAdapter
 from app.hardware.exceptions import (
     HardwareBusyError,
     HardwareError,
@@ -21,13 +22,17 @@ from app.hardware.exceptions import (
     HardwareUnavailableError,
 )
 from app.hardware.facade import HardwareFacade
+from app.hardware.factory import HardwareBundle, create_hardware_bundle
 from app.hardware.lock_mock import MockLockAdapter
+from app.hardware.lock_stub_real import StubRealLockAdapter
 from app.hardware.rfid_mock import MockRfidAdapter
+from app.hardware.rfid_stub_real import StubRealRfidAdapter
 
 __all__ = [
     "DrumControllerContract",
     "DrumPositionResult",
     "HardwareBusyError",
+    "HardwareBundle",
     "HardwareError",
     "HardwareFacade",
     "HardwareFailureError",
@@ -46,6 +51,10 @@ __all__ = [
     "MockRfidAdapter",
     "RfidReadResult",
     "RfidReaderContract",
+    "StubRealDrumAdapter",
+    "StubRealLockAdapter",
+    "StubRealRfidAdapter",
     "UnlockResult",
     "UnlockTimeResult",
+    "create_hardware_bundle",
 ]

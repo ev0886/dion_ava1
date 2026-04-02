@@ -17,7 +17,7 @@ from app.application.startup_service import StartupOrchestrationService
 from app.application.session_service import OperationSessionService
 from app.bootstrap import bootstrap
 from app.config import AppSettings, get_settings
-from app.hardware import HardwareFacade, LockState, MockDrumAdapter, MockLockAdapter, MockRfidAdapter
+from app.hardware import HardwareBundle, create_hardware_bundle
 from app.persistence.repositories.inventory import InventoryRepository
 from app.persistence.repositories.logs import AuditLogRepository, EventLogRepository
 from app.persistence.repositories.operations import OperationRepository, OperationSessionRepository
@@ -37,14 +37,6 @@ class RepositoryBundle:
     event_logs: EventLogRepository
     audit_logs: AuditLogRepository
     exports: ExportRepository
-
-
-@dataclass(frozen=True, slots=True)
-class MockHardwareBundle:
-    drum_controller: MockDrumAdapter
-    lock_controller: MockLockAdapter
-    rfid_reader: MockRfidAdapter
-    facade: HardwareFacade
 
 
 @dataclass(frozen=True, slots=True)
@@ -68,7 +60,7 @@ class ApplicationContainer:
     session_factory: sessionmaker[Session]
     session: Session
     repositories: RepositoryBundle
-    hardware: MockHardwareBundle
+    hardware: HardwareBundle
     services: ServiceBundle
 
     def close(self) -> None:
@@ -89,27 +81,11 @@ def build_repositories(session: Session) -> RepositoryBundle:
     )
 
 
-def build_mock_hardware() -> MockHardwareBundle:
-    drum_controller = MockDrumAdapter()
-    lock_controller = MockLockAdapter(lock_states={(1, 1): LockState.LOCKED})
-    rfid_reader = MockRfidAdapter()
-    return MockHardwareBundle(
-        drum_controller=drum_controller,
-        lock_controller=lock_controller,
-        rfid_reader=rfid_reader,
-        facade=HardwareFacade(
-            drum_controller=drum_controller,
-            lock_controller=lock_controller,
-            rfid_reader=rfid_reader,
-        ),
-    )
-
-
 def build_services(
     *,
     session: Session,
     repositories: RepositoryBundle,
-    hardware: MockHardwareBundle,
+    hardware: HardwareBundle,
 ) -> ServiceBundle:
     auth_service = AuthService(repositories.users)
     inventory_service = InventoryService(repositories.inventory)
@@ -159,7 +135,7 @@ def build_application_container(
     session: Session,
 ) -> ApplicationContainer:
     repositories = build_repositories(session)
-    hardware = build_mock_hardware()
+    hardware = create_hardware_bundle(settings)
     services = build_services(session=session, repositories=repositories, hardware=hardware)
     return ApplicationContainer(
         settings=settings,

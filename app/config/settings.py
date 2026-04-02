@@ -1,9 +1,15 @@
 from __future__ import annotations
 
 from pathlib import Path
+from enum import StrEnum
 
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+class HardwareProvider(StrEnum):
+    MOCK = "mock"
+    STUB_REAL = "stub-real"
 
 
 class AppSettings(BaseSettings):
@@ -18,6 +24,7 @@ class AppSettings(BaseSettings):
     data_dir: Path = Field(default=Path("var"))
     sqlite_filename: str = "dion_aba1.sqlite3"
     alembic_config_path: Path = Field(default=Path("alembic.ini"))
+    hardware_provider: HardwareProvider = HardwareProvider.MOCK
 
     @property
     def sqlite_path(self) -> Path:
