@@ -1,7 +1,8 @@
 from __future__ import annotations
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 
+from app.domain.enums import OperationState
 from app.persistence.models import Operation, OperationSession, OperationStateHistory
 from app.persistence.repositories.base import Repository
 
@@ -15,6 +16,44 @@ class OperationRepository(Repository):
 
     def list_by_session(self, session_id: int) -> list[Operation]:
         statement = select(Operation).where(Operation.session_id == session_id)
+        return list(self.session.execute(statement).scalars())
+
+    def list_unfinished(self) -> list[Operation]:
+        terminal_states = (
+            OperationState.COMPLETED,
+            OperationState.SESSION_COMPLETED,
+            OperationState.DEGRADED_READY,
+            OperationState.SYSTEM_READY,
+            OperationState.REJECTED,
+            OperationState.CANCELLED,
+            OperationState.TIMED_OUT,
+            OperationState.FAILED,
+            OperationState.RECOVERY_REQUIRED,
+        )
+        statement = select(Operation).where(Operation.operation_state.not_in(terminal_states)).order_by(Operation.id.asc())
+        return list(self.session.execute(statement).scalars())
+
+    def list_recovery_scan_candidates(self) -> list[Operation]:
+        non_recoverable_terminal_states = (
+            OperationState.COMPLETED,
+            OperationState.SESSION_COMPLETED,
+            OperationState.DEGRADED_READY,
+            OperationState.SYSTEM_READY,
+            OperationState.REJECTED,
+            OperationState.CANCELLED,
+            OperationState.TIMED_OUT,
+            OperationState.FAILED,
+        )
+        statement = (
+            select(Operation)
+            .where(
+                or_(
+                    Operation.operation_state.not_in(non_recoverable_terminal_states),
+                    Operation.operation_state == OperationState.RECOVERY_REQUIRED,
+                )
+            )
+            .order_by(Operation.id.asc())
+        )
         return list(self.session.execute(statement).scalars())
 
     def add_state_history(self, history_entry: OperationStateHistory) -> None:

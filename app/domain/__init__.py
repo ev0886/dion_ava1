@@ -23,6 +23,7 @@ from app.domain.enums import (
     SessionType,
     SlotStatus,
     SlotType,
+    StartupReadinessStatus,
     UserStatus,
 )
 
@@ -49,5 +50,6 @@ __all__ = [
     "SessionType",
     "SlotStatus",
     "SlotType",
+    "StartupReadinessStatus",
     "UserStatus",
 ]
