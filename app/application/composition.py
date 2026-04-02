@@ -9,11 +9,14 @@ from app.application.auth_service import AuthService
 from app.application.dispense_service import DispenseOperationService
 from app.application.export_service import ExportService
 from app.application.inventory_service import InventoryService
+from app.application.item_management_service import ItemManagementService
+from app.application.permission_service import PermissionService
 from app.application.recovery_service import RecoveryService
 from app.application.refill_service import RefillOperationService
 from app.application.return_service import ReturnOperationService
 from app.application.service_mode_service import ServiceModeService
 from app.application.startup_service import StartupOrchestrationService
+from app.application.user_management_service import UserManagementService
 from app.application.session_service import OperationSessionService
 from app.bootstrap import bootstrap
 from app.config import AppSettings, get_settings
@@ -43,6 +46,9 @@ class RepositoryBundle:
 class ServiceBundle:
     auth: AuthService
     inventory: InventoryService
+    users: UserManagementService
+    items: ItemManagementService
+    permissions: PermissionService
     operation_sessions: OperationSessionService
     dispense: DispenseOperationService
     return_ops: ReturnOperationService
@@ -89,6 +95,8 @@ def build_services(
 ) -> ServiceBundle:
     auth_service = AuthService(repositories.users)
     inventory_service = InventoryService(repositories.inventory)
+    user_management_service = UserManagementService(repositories.users, repositories.audit_logs)
+    item_management_service = ItemManagementService(repositories.inventory, repositories.audit_logs)
     operation_session_service = OperationSessionService(repositories.operation_sessions)
     recovery_service = RecoveryService(
         repositories.recovery,
@@ -98,6 +106,9 @@ def build_services(
     return ServiceBundle(
         auth=auth_service,
         inventory=inventory_service,
+        users=user_management_service,
+        items=item_management_service,
+        permissions=PermissionService(repositories.users, repositories.inventory, repositories.audit_logs),
         operation_sessions=operation_session_service,
         dispense=DispenseOperationService(repositories.operations, repositories.inventory),
         return_ops=ReturnOperationService(repositories.operations, repositories.inventory),

@@ -9,6 +9,10 @@ class ValidationError(ApplicationError):
     """Raised when incoming application data is invalid."""
 
 
+class ConflictError(ApplicationError):
+    """Raised when an operation conflicts with existing persisted state."""
+
+
 class AuthorizationError(ApplicationError):
     """Raised when a user is not allowed to perform an action."""
 

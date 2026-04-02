@@ -4,7 +4,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict
 
-from app.domain.enums import RoleCode
+from app.domain.enums import ItemStatus, RoleCode, UserStatus
 
 
 class ApiModel(BaseModel):
@@ -58,6 +58,76 @@ class ExportCreateRequest(ApiModel):
     destination_type: str = "filesystem"
     destination_path: str = "var/exports"
     comment: str | None = None
+
+
+class UserCreateRequest(ApiModel):
+    user_code: str
+    full_name: str
+    role_id: int
+    actor_user_id: int | None = None
+    comment: str | None = None
+
+
+class UserUpdateRequest(ApiModel):
+    user_code: str | None = None
+    full_name: str | None = None
+    role_id: int | None = None
+    is_active: bool | None = None
+    actor_user_id: int | None = None
+    comment: str | None = None
+
+
+class ItemCreateRequest(ApiModel):
+    sku: str
+    name: str
+    unit: str
+    item_group_id: int | None = None
+    description: str | None = None
+    return_allowed: bool = False
+    min_level: int = 0
+    actor_user_id: int | None = None
+    comment: str | None = None
+
+
+class ItemUpdateRequest(ApiModel):
+    sku: str | None = None
+    name: str | None = None
+    unit: str | None = None
+    item_group_id: int | None = None
+    description: str | None = None
+    return_allowed: bool | None = None
+    min_level: int | None = None
+    is_active: bool | None = None
+    actor_user_id: int | None = None
+    comment: str | None = None
+
+
+class PermissionAssignRequest(ApiModel):
+    user_id: int
+    item_id: int | None = None
+    item_group_id: int | None = None
+    can_dispense: bool = False
+    can_return: bool = False
+    actor_user_id: int | None = None
+    comment: str | None = None
+
+
+class PermissionRevokeRequest(ApiModel):
+    actor_user_id: int | None = None
+    comment: str | None = None
+
+
+class UserListQuery(ApiModel):
+    role_id: int | None = None
+    status: UserStatus | None = None
+    is_active: bool | None = None
+    search: str | None = None
+
+
+class ItemListQuery(ApiModel):
+    item_group_id: int | None = None
+    status: ItemStatus | None = None
+    search: str | None = None
 
 
 class ErrorResponse(ApiModel):

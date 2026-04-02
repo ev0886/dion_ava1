@@ -35,6 +35,9 @@ def test_all_expected_services_are_present(tmp_path: Path) -> None:
     try:
         assert container.services.auth is not None
         assert container.services.inventory is not None
+        assert container.services.users is not None
+        assert container.services.items is not None
+        assert container.services.permissions is not None
         assert container.services.operation_sessions is not None
         assert container.services.dispense is not None
         assert container.services.return_ops is not None

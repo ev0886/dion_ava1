@@ -11,10 +11,18 @@ from app.api.schemas import (
     AuthResolveRequest,
     DispenseOperationRequest,
     ExportCreateRequest,
+    ItemCreateRequest,
+    ItemUpdateRequest,
+    ItemListQuery,
+    PermissionAssignRequest,
+    PermissionRevokeRequest,
     RefillOperationRequest,
     ReturnOperationRequest,
     ServiceModeFinishRequest,
     ServiceModeStartRequest,
+    UserCreateRequest,
+    UserListQuery,
+    UserUpdateRequest,
     to_api_payload,
 )
 from app.application.composition import ApplicationContainer
@@ -190,5 +198,180 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
                 )
             )
         )
+
+    @app.post("/users")
+    def create_user(
+        payload: UserCreateRequest,
+        container: ApplicationContainer = Depends(get_application_container),
+    ) -> JSONResponse:
+        result = container.services.users.create_user(
+            user_code=payload.user_code,
+            full_name=payload.full_name,
+            role_id=payload.role_id,
+            actor_user_id=payload.actor_user_id,
+            comment=payload.comment,
+        )
+        return JSONResponse(to_api_payload(result))
+
+    @app.patch("/users/{user_id}")
+    def update_user(
+        user_id: int,
+        payload: UserUpdateRequest,
+        container: ApplicationContainer = Depends(get_application_container),
+    ) -> JSONResponse:
+        if payload.is_active is not None:
+            result = container.services.users.set_user_active(
+                user_id=user_id,
+                is_active=payload.is_active,
+                actor_user_id=payload.actor_user_id,
+                comment=payload.comment,
+            )
+        else:
+            result = container.services.users.update_user(
+                user_id=user_id,
+                user_code=payload.user_code,
+                full_name=payload.full_name,
+                role_id=payload.role_id,
+                actor_user_id=payload.actor_user_id,
+                comment=payload.comment,
+            )
+        return JSONResponse(to_api_payload(result))
+
+    @app.get("/users/{user_id}")
+    def get_user(
+        user_id: int,
+        container: ApplicationContainer = Depends(get_application_container),
+    ) -> JSONResponse:
+        return JSONResponse(to_api_payload(container.services.users.get_user_details(user_id)))
+
+    @app.get("/users")
+    def list_users(
+        role_id: int | None = None,
+        status: str | None = None,
+        is_active: bool | None = None,
+        search: str | None = None,
+        container: ApplicationContainer = Depends(get_application_container),
+    ) -> JSONResponse:
+        query = UserListQuery(role_id=role_id, status=status, is_active=is_active, search=search)
+        return JSONResponse(
+            to_api_payload(
+                container.services.users.list_users(
+                    role_id=query.role_id,
+                    status=query.status,
+                    is_active=query.is_active,
+                    search=query.search,
+                )
+            )
+        )
+
+    @app.post("/items")
+    def create_item(
+        payload: ItemCreateRequest,
+        container: ApplicationContainer = Depends(get_application_container),
+    ) -> JSONResponse:
+        result = container.services.items.create_item(
+            sku=payload.sku,
+            name=payload.name,
+            unit=payload.unit,
+            item_group_id=payload.item_group_id,
+            description=payload.description,
+            return_allowed=payload.return_allowed,
+            min_level=payload.min_level,
+            actor_user_id=payload.actor_user_id,
+            comment=payload.comment,
+        )
+        return JSONResponse(to_api_payload(result))
+
+    @app.patch("/items/{item_id}")
+    def update_item(
+        item_id: int,
+        payload: ItemUpdateRequest,
+        container: ApplicationContainer = Depends(get_application_container),
+    ) -> JSONResponse:
+        if payload.is_active is not None:
+            result = container.services.items.set_item_active(
+                item_id=item_id,
+                is_active=payload.is_active,
+                actor_user_id=payload.actor_user_id,
+                comment=payload.comment,
+            )
+        else:
+            result = container.services.items.update_item(
+                item_id=item_id,
+                sku=payload.sku,
+                name=payload.name,
+                unit=payload.unit,
+                item_group_id=payload.item_group_id,
+                description=payload.description,
+                return_allowed=payload.return_allowed,
+                min_level=payload.min_level,
+                actor_user_id=payload.actor_user_id,
+                comment=payload.comment,
+            )
+        return JSONResponse(to_api_payload(result))
+
+    @app.get("/items/{item_id}")
+    def get_item(
+        item_id: int,
+        container: ApplicationContainer = Depends(get_application_container),
+    ) -> JSONResponse:
+        return JSONResponse(to_api_payload(container.services.items.get_item_details(item_id)))
+
+    @app.get("/items")
+    def list_items(
+        item_group_id: int | None = None,
+        status: str | None = None,
+        search: str | None = None,
+        container: ApplicationContainer = Depends(get_application_container),
+    ) -> JSONResponse:
+        query = ItemListQuery(item_group_id=item_group_id, status=status, search=search)
+        return JSONResponse(
+            to_api_payload(
+                container.services.items.list_items(
+                    item_group_id=query.item_group_id,
+                    status=query.status,
+                    search=query.search,
+                )
+            )
+        )
+
+    @app.post("/permissions")
+    def assign_permission(
+        payload: PermissionAssignRequest,
+        container: ApplicationContainer = Depends(get_application_container),
+    ) -> JSONResponse:
+        result = container.services.permissions.assign_permission(
+            user_id=payload.user_id,
+            item_id=payload.item_id,
+            item_group_id=payload.item_group_id,
+            can_dispense=payload.can_dispense,
+            can_return=payload.can_return,
+            actor_user_id=payload.actor_user_id,
+            comment=payload.comment,
+        )
+        return JSONResponse(to_api_payload(result))
+
+    @app.delete("/permissions/{permission_id}")
+    def revoke_permission(
+        permission_id: int,
+        payload: PermissionRevokeRequest,
+        container: ApplicationContainer = Depends(get_application_container),
+    ) -> JSONResponse:
+        return JSONResponse(
+            to_api_payload(
+                container.services.permissions.revoke_permission(
+                    permission_id=permission_id,
+                    actor_user_id=payload.actor_user_id,
+                    comment=payload.comment,
+                )
+            )
+        )
+
+    @app.get("/users/{user_id}/permissions")
+    def list_user_permissions(
+        user_id: int,
+        container: ApplicationContainer = Depends(get_application_container),
+    ) -> JSONResponse:
+        return JSONResponse(to_api_payload(container.services.permissions.list_permissions_for_user(user_id)))
 
     return app

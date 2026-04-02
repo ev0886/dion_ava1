@@ -5,6 +5,7 @@ from fastapi.responses import JSONResponse
 
 from app.application.exceptions import (
     AuthorizationError,
+    ConflictError,
     InvalidStateTransitionError,
     NotFoundError,
     RecoveryError,
@@ -26,6 +27,10 @@ def register_exception_handlers(app: FastAPI) -> None:
 
     @app.exception_handler(RecoveryError)
     async def _recovery_conflict_handler(_: Request, error: RecoveryError) -> JSONResponse:
+        return JSONResponse(status_code=409, content={"error": "conflict", "detail": str(error)})
+
+    @app.exception_handler(ConflictError)
+    async def _conflict_handler(_: Request, error: ConflictError) -> JSONResponse:
         return JSONResponse(status_code=409, content={"error": "conflict", "detail": str(error)})
 
     @app.exception_handler(InvalidStateTransitionError)

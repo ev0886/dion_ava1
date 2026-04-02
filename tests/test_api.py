@@ -5,9 +5,24 @@ from pathlib import Path
 from fastapi.testclient import TestClient
 
 from app.api import create_app
+from app.application.time import utc_now
 from app.config import AppSettings
 from app.domain.enums import BindingType, ItemStatus, OperationState, RoleCode, SlotStatus, SlotType, UserStatus
-from app.persistence.models import InventoryBalance, Item, Operation, OperationStateHistory, RecoveryCase, Role, Slot, SlotItemBinding, User
+from app.persistence.models import (
+    AuditLog,
+    InventoryBalance,
+    Item,
+    ItemGroup,
+    Operation,
+    OperationStateHistory,
+    Permission,
+    RecoveryCase,
+    Role,
+    Slot,
+    SlotItemBinding,
+    User,
+    UserRfidCard,
+)
 
 
 def test_app_creation_smoke(tmp_path: Path) -> None:
@@ -90,6 +105,71 @@ def test_error_mapping_returns_400_for_validation_error(tmp_path: Path) -> None:
 
     assert response.status_code == 400
     assert response.json()["error"] == "validation_error"
+
+
+def test_management_endpoints_happy_path(tmp_path: Path) -> None:
+    app = create_app(_settings(tmp_path, "api_management.sqlite3"))
+    _seed_management_domain(app)
+
+    with TestClient(app) as client:
+        create_user = client.post(
+            "/users",
+            json={
+                "user_code": "api-user-2",
+                "full_name": "API User Two",
+                "role_id": 1,
+                "actor_user_id": 1,
+            },
+        )
+        list_users = client.get("/users")
+        create_item = client.post(
+            "/items",
+            json={
+                "sku": "api-item-2",
+                "name": "API Item Two",
+                "unit": "pcs",
+                "item_group_id": 1,
+                "actor_user_id": 1,
+            },
+        )
+
+        user_id = create_user.json()["user_id"]
+        item_id = create_item.json()["item_id"]
+
+        update_user = client.patch(f"/users/{user_id}", json={"is_active": False, "actor_user_id": 1})
+        update_item = client.patch(f"/items/{item_id}", json={"is_active": False, "actor_user_id": 1})
+        get_user = client.get(f"/users/{user_id}")
+        get_item = client.get(f"/items/{item_id}")
+        list_items = client.get("/items")
+        assign_permission = client.post(
+            "/permissions",
+            json={"user_id": user_id, "item_id": item_id, "can_dispense": True, "actor_user_id": 1},
+        )
+        list_permissions = client.get(f"/users/{user_id}/permissions")
+        revoke_permission = client.request(
+            "DELETE",
+            f"/permissions/{assign_permission.json()['permission_id']}",
+            json={"actor_user_id": 1},
+        )
+
+    assert create_user.status_code == 200
+    assert list_users.status_code == 200
+    assert create_item.status_code == 200
+    assert update_user.status_code == 200
+    assert update_user.json()["status"] == "inactive"
+    assert update_item.status_code == 200
+    assert update_item.json()["status"] == "inactive"
+    assert get_user.status_code == 200
+    assert get_user.json()["user_code"] == "api-user-2"
+    assert get_item.status_code == 200
+    assert get_item.json()["sku"] == "api-item-2"
+    assert list_items.status_code == 200
+    assert len(list_items.json()["items"]) >= 1
+    assert assign_permission.status_code == 200
+    assert list_permissions.status_code == 200
+    assert len(list_permissions.json()["permissions"]) == 1
+    assert revoke_permission.status_code == 200
+    assert revoke_permission.json()["is_active"] is False
 
 
 def _settings(tmp_path: Path, sqlite_filename: str) -> AppSettings:
@@ -177,4 +257,61 @@ def _seed_recovery_operation(app) -> None:
                 context_json={},
             )
         )
+        session.commit()
+
+
+def _seed_management_domain(app) -> None:
+    with app.state.session_factory() as session:
+        role = Role(code=RoleCode.ADMIN, name="Admin")
+        item_group = ItemGroup(code="api-group", name="API Group", description=None, is_active=True)
+        session.add_all((role, item_group))
+        session.flush()
+        user = User(
+            role_id=role.id,
+            user_code="api-admin",
+            full_name="API Admin",
+            status=UserStatus.ACTIVE,
+            is_active=True,
+        )
+        item = Item(
+            item_group_id=item_group.id,
+            sku="api-item-1",
+            name="API Item One",
+            description=None,
+            unit="pcs",
+            return_allowed=True,
+            min_level=1,
+            status=ItemStatus.ACTIVE,
+        )
+        slot = Slot(
+            code="api-slot-1",
+            slot_type=SlotType.UNIVERSAL,
+            drum_position=1,
+            board_address=1,
+            lock_number=1,
+            capacity=10,
+            status=SlotStatus.ACTIVE,
+        )
+        session.add_all((user, item, slot))
+        session.flush()
+        session.add(
+            UserRfidCard(
+                user_id=user.id,
+                card_uid="CARD-001",
+                is_active=True,
+                issued_at=utc_now(),
+                revoked_at=None,
+            )
+        )
+        session.add(
+            SlotItemBinding(
+                slot_id=slot.id,
+                item_id=item.id,
+                binding_type=BindingType.PRIMARY,
+                is_active=True,
+                valid_from=None,
+                valid_to=None,
+            )
+        )
+        session.add(InventoryBalance(slot_id=slot.id, item_id=item.id, quantity=9))
         session.commit()
