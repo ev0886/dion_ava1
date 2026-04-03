@@ -13,6 +13,14 @@ class AuthorizationError(ApplicationError):
     """Raised when a user is not allowed to perform an action."""
 
 
+class AuthenticationError(ApplicationError):
+    """Raised when transport credentials are missing or invalid."""
+
+
+class ActorConflictError(ApplicationError):
+    """Raised when transport and payload actor identities conflict."""
+
+
 class NotFoundError(ApplicationError):
     """Raised when a required entity is missing."""
 

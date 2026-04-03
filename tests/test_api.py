@@ -47,12 +47,13 @@ def test_auth_and_inventory_happy_path(tmp_path: Path) -> None:
 
 
 def test_dispense_operation_happy_path(tmp_path: Path) -> None:
-    app = create_app(_settings(tmp_path, "api_dispense.sqlite3"))
+    app = create_app(_settings(tmp_path, "api_dispense.sqlite3", auth_static_tokens={"token-user-1": "user-1"}))
     _seed_base_domain(app)
 
     with TestClient(app) as client:
         response = client.post(
             "/operations/dispense",
+            headers={"Authorization": "Bearer token-user-1"},
             json={"user_id": 1, "item_id": 1, "slot_id": 1, "quantity": 1},
         )
 
@@ -62,12 +63,12 @@ def test_dispense_operation_happy_path(tmp_path: Path) -> None:
 
 
 def test_recovery_endpoints_happy_path(tmp_path: Path) -> None:
-    app = create_app(_settings(tmp_path, "api_recovery.sqlite3"))
+    app = create_app(_settings(tmp_path, "api_recovery.sqlite3", auth_static_tokens={"token-operator-1": "operator-1"}))
     _seed_base_domain(app)
     _seed_recovery_operation(app)
 
     with TestClient(app) as client:
-        scan_response = client.post("/recovery/scan")
+        scan_response = client.post("/recovery/scan", headers={"X-API-Key": "token-operator-1"})
 
         assert scan_response.status_code == 200
         payload = scan_response.json()
@@ -92,25 +93,169 @@ def test_error_mapping_returns_400_for_validation_error(tmp_path: Path) -> None:
     assert response.json()["error"] == "validation_error"
 
 
-def _settings(tmp_path: Path, sqlite_filename: str) -> AppSettings:
+def test_authenticated_admin_access_to_export_route(tmp_path: Path) -> None:
+    app = create_app(_settings(tmp_path, "api_export.sqlite3", auth_static_tokens={"token-admin-1": "admin-1"}))
+    _seed_base_domain(app)
+
+    with TestClient(app) as client:
+        response = client.post(
+            "/exports/create",
+            headers={"Authorization": "Bearer token-admin-1"},
+            json={"requested_by_user_id": 2},
+        )
+
+    assert response.status_code == 200
+    assert response.json()["requested_by_user_id"] == 2
+    assert response.json()["status"] == "pending"
+
+
+def test_authenticated_operator_access_to_service_mode_route(tmp_path: Path) -> None:
+    app = create_app(_settings(tmp_path, "api_service_mode.sqlite3", auth_static_tokens={"token-operator-1": "operator-1"}))
+    _seed_base_domain(app)
+
+    with TestClient(app) as client:
+        response = client.post(
+            "/service-mode/start",
+            headers={"Authorization": "Bearer token-operator-1"},
+            json={"user_id": 3, "comment": "maintenance"},
+        )
+
+    assert response.status_code == 200
+    assert response.json()["started_by_user_id"] == 3
+    assert response.json()["status"] == "active"
+
+
+def test_protected_route_rejects_missing_credentials(tmp_path: Path) -> None:
+    app = create_app(_settings(tmp_path, "api_missing_credentials.sqlite3"))
+    _seed_base_domain(app)
+
+    with TestClient(app) as client:
+        response = client.post("/operations/dispense", json={"item_id": 1, "slot_id": 1, "quantity": 1})
+
+    assert response.status_code == 401
+    assert response.json() == {"error": "authentication_error", "detail": "Missing credentials"}
+
+
+def test_protected_route_rejects_invalid_credentials(tmp_path: Path) -> None:
+    app = create_app(_settings(tmp_path, "api_invalid_credentials.sqlite3", auth_static_tokens={"token-user-1": "user-1"}))
+    _seed_base_domain(app)
+
+    with TestClient(app) as client:
+        response = client.post(
+            "/operations/dispense",
+            headers={"Authorization": "Bearer wrong-token"},
+            json={"item_id": 1, "slot_id": 1, "quantity": 1},
+        )
+
+    assert response.status_code == 401
+    assert response.json() == {"error": "authentication_error", "detail": "Invalid credentials"}
+
+
+def test_blocked_actor_is_rejected_even_with_valid_credential(tmp_path: Path) -> None:
+    app = create_app(
+        _settings(tmp_path, "api_blocked_credentials.sqlite3", auth_static_tokens={"token-blocked-1": "blocked-1"})
+    )
+    _seed_base_domain(app)
+
+    with TestClient(app) as client:
+        response = client.post(
+            "/operations/dispense",
+            headers={"Authorization": "Bearer token-blocked-1"},
+            json={"item_id": 1, "slot_id": 1, "quantity": 1},
+        )
+
+    assert response.status_code == 403
+    assert response.json() == {"error": "authorization_error", "detail": "User is blocked"}
+
+
+def test_transport_actor_conflict_with_payload_actor_is_rejected(tmp_path: Path) -> None:
+    app = create_app(_settings(tmp_path, "api_actor_conflict.sqlite3", auth_static_tokens={"token-user-1": "user-1"}))
+    _seed_base_domain(app)
+
+    with TestClient(app) as client:
+        response = client.post(
+            "/operations/dispense",
+            headers={"Authorization": "Bearer token-user-1"},
+            json={"user_id": 2, "item_id": 1, "slot_id": 1, "quantity": 1},
+        )
+
+    assert response.status_code == 409
+    assert response.json() == {
+        "error": "actor_conflict",
+        "detail": "user_id does not match authenticated actor",
+    }
+
+
+def test_unprotected_routes_remain_open(tmp_path: Path) -> None:
+    app = create_app(_settings(tmp_path, "api_open_routes.sqlite3"))
+    _seed_base_domain(app)
+
+    with TestClient(app) as client:
+        health_response = client.get("/health")
+        inventory_response = client.get("/inventory/1/1")
+
+    assert health_response.status_code == 200
+    assert inventory_response.status_code == 200
+
+
+def test_transport_actor_can_replace_legacy_payload_actor_id(tmp_path: Path) -> None:
+    app = create_app(_settings(tmp_path, "api_transport_actor.sqlite3", auth_static_tokens={"token-user-1": "user-1"}))
+    _seed_base_domain(app)
+
+    with TestClient(app) as client:
+        response = client.post(
+            "/operations/dispense",
+            headers={"Authorization": "Bearer token-user-1"},
+            json={"item_id": 1, "slot_id": 1, "quantity": 1},
+        )
+
+    assert response.status_code == 200
+    assert response.json()["user_id"] == 1
+
+
+def _settings(tmp_path: Path, sqlite_filename: str, auth_static_tokens: dict[str, str] | None = None) -> AppSettings:
     return AppSettings(
         data_dir=tmp_path,
         sqlite_filename=sqlite_filename,
         alembic_config_path=Path("alembic.ini"),
+        auth_static_tokens=auth_static_tokens or {},
     )
 
 
 def _seed_base_domain(app) -> None:
     with app.state.session_factory() as session:
-        role = Role(code=RoleCode.USER, name="User")
-        session.add(role)
+        user_role = Role(code=RoleCode.USER, name="User")
+        admin_role = Role(code=RoleCode.ADMIN, name="Admin")
+        operator_role = Role(code=RoleCode.OPERATOR, name="Operator")
+        session.add_all((user_role, admin_role, operator_role))
         session.flush()
 
         user = User(
-            role_id=role.id,
+            role_id=user_role.id,
             user_code="user-1",
             full_name="User One",
             status=UserStatus.ACTIVE,
+            is_active=True,
+        )
+        admin = User(
+            role_id=admin_role.id,
+            user_code="admin-1",
+            full_name="Admin One",
+            status=UserStatus.ACTIVE,
+            is_active=True,
+        )
+        operator = User(
+            role_id=operator_role.id,
+            user_code="operator-1",
+            full_name="Operator One",
+            status=UserStatus.ACTIVE,
+            is_active=True,
+        )
+        blocked = User(
+            role_id=user_role.id,
+            user_code="blocked-1",
+            full_name="Blocked User",
+            status=UserStatus.BLOCKED,
             is_active=True,
         )
         item = Item(
@@ -132,7 +277,7 @@ def _seed_base_domain(app) -> None:
             capacity=10,
             status=SlotStatus.ACTIVE,
         )
-        session.add_all((user, item, slot))
+        session.add_all((user, admin, operator, blocked, item, slot))
         session.flush()
         session.add(
             SlotItemBinding(

@@ -5,6 +5,7 @@ from contextlib import asynccontextmanager
 from fastapi import Depends, FastAPI
 from fastapi.responses import JSONResponse
 
+from app.api.auth import RequestActor, require_actor, resolve_request_actor_id
 from app.api.dependencies import get_application_container
 from app.api.errors import register_exception_handlers
 from app.api.schemas import (
@@ -22,6 +23,7 @@ from app.application.dto.auth import AuthRequest
 from app.application.dto.operations import DispenseRequest, RefillRequest, ReturnRequest
 from app.bootstrap import bootstrap
 from app.config import AppSettings, get_settings
+from app.domain.enums import RoleCode
 from app.persistence.session import create_session_factory, create_sqlalchemy_engine
 
 
@@ -76,11 +78,12 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
     @app.post("/operations/dispense")
     def dispense_operation(
         payload: DispenseOperationRequest,
+        actor: RequestActor = Depends(require_actor()),
         container: ApplicationContainer = Depends(get_application_container),
     ) -> JSONResponse:
         dto = container.services.dispense.execute(
             DispenseRequest(
-                user_id=payload.user_id,
+                user_id=resolve_request_actor_id(actor, payload.user_id, field_name="user_id"),
                 item_id=payload.item_id,
                 slot_id=payload.slot_id,
                 quantity=payload.quantity,
@@ -93,11 +96,12 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
     @app.post("/operations/return")
     def return_operation(
         payload: ReturnOperationRequest,
+        actor: RequestActor = Depends(require_actor()),
         container: ApplicationContainer = Depends(get_application_container),
     ) -> JSONResponse:
         dto = container.services.return_ops.execute(
             ReturnRequest(
-                user_id=payload.user_id,
+                user_id=resolve_request_actor_id(actor, payload.user_id, field_name="user_id"),
                 item_id=payload.item_id,
                 slot_id=payload.slot_id,
                 quantity=payload.quantity,
@@ -110,11 +114,12 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
     @app.post("/operations/refill")
     def refill_operation(
         payload: RefillOperationRequest,
+        actor: RequestActor = Depends(require_actor(allowed_roles=(RoleCode.ADMIN, RoleCode.OPERATOR))),
         container: ApplicationContainer = Depends(get_application_container),
     ) -> JSONResponse:
         dto = container.services.refill.execute(
             RefillRequest(
-                operator_user_id=payload.operator_user_id,
+                operator_user_id=resolve_request_actor_id(actor, payload.operator_user_id, field_name="operator_user_id"),
                 item_id=payload.item_id,
                 slot_id=payload.slot_id,
                 quantity=payload.quantity,
@@ -126,7 +131,10 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
         return JSONResponse(to_api_payload(dto))
 
     @app.post("/recovery/scan")
-    def recovery_scan(container: ApplicationContainer = Depends(get_application_container)) -> JSONResponse:
+    def recovery_scan(
+        _: RequestActor = Depends(require_actor(allowed_roles=(RoleCode.ADMIN, RoleCode.OPERATOR))),
+        container: ApplicationContainer = Depends(get_application_container),
+    ) -> JSONResponse:
         return JSONResponse(to_api_payload(container.services.recovery.scan_recovery_targets()))
 
     @app.get("/recovery/cases/{recovery_case_id}")
@@ -146,12 +154,13 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
     @app.post("/service-mode/start")
     def service_mode_start(
         payload: ServiceModeStartRequest,
+        actor: RequestActor = Depends(require_actor(allowed_roles=(RoleCode.ADMIN, RoleCode.OPERATOR))),
         container: ApplicationContainer = Depends(get_application_container),
     ) -> JSONResponse:
         return JSONResponse(
             to_api_payload(
                 container.services.service_mode.enter_service_mode(
-                    user_id=payload.user_id,
+                    user_id=resolve_request_actor_id(actor, payload.user_id, field_name="user_id"),
                     comment=payload.comment,
                 )
             )
@@ -160,13 +169,14 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
     @app.post("/service-mode/finish")
     def service_mode_finish(
         payload: ServiceModeFinishRequest,
+        actor: RequestActor = Depends(require_actor(allowed_roles=(RoleCode.ADMIN, RoleCode.OPERATOR))),
         container: ApplicationContainer = Depends(get_application_container),
     ) -> JSONResponse:
         return JSONResponse(
             to_api_payload(
                 container.services.service_mode.exit_service_mode(
                     session_id=payload.session_id,
-                    user_id=payload.user_id,
+                    user_id=resolve_request_actor_id(actor, payload.user_id, field_name="user_id"),
                     comment=payload.comment,
                 )
             )
@@ -175,6 +185,7 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
     @app.post("/exports/create")
     def export_create(
         payload: ExportCreateRequest,
+        actor: RequestActor = Depends(require_actor(allowed_roles=(RoleCode.ADMIN,))),
         container: ApplicationContainer = Depends(get_application_container),
     ) -> JSONResponse:
         snapshot = container.services.service_mode.get_hardware_snapshot(session_id=None)
@@ -182,7 +193,11 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
         return JSONResponse(
             to_api_payload(
                 container.services.exports.prepare_export(
-                    requested_by_user_id=payload.requested_by_user_id,
+                    requested_by_user_id=resolve_request_actor_id(
+                        actor,
+                        payload.requested_by_user_id,
+                        field_name="requested_by_user_id",
+                    ),
                     destination_type=payload.destination_type,
                     destination_path=payload.destination_path,
                     diagnostic_manifest=manifest,

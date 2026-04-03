@@ -4,6 +4,8 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
 from app.application.exceptions import (
+    ActorConflictError,
+    AuthenticationError,
     AuthorizationError,
     InvalidStateTransitionError,
     NotFoundError,
@@ -23,6 +25,14 @@ def register_exception_handlers(app: FastAPI) -> None:
     @app.exception_handler(AuthorizationError)
     async def _authorization_handler(_: Request, error: AuthorizationError) -> JSONResponse:
         return JSONResponse(status_code=403, content={"error": "authorization_error", "detail": str(error)})
+
+    @app.exception_handler(AuthenticationError)
+    async def _authentication_handler(_: Request, error: AuthenticationError) -> JSONResponse:
+        return JSONResponse(status_code=401, content={"error": "authentication_error", "detail": str(error)})
+
+    @app.exception_handler(ActorConflictError)
+    async def _actor_conflict_handler(_: Request, error: ActorConflictError) -> JSONResponse:
+        return JSONResponse(status_code=409, content={"error": "actor_conflict", "detail": str(error)})
 
     @app.exception_handler(RecoveryError)
     async def _recovery_conflict_handler(_: Request, error: RecoveryError) -> JSONResponse:

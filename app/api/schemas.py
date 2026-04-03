@@ -18,7 +18,7 @@ class AuthResolveRequest(ApiModel):
 
 
 class DispenseOperationRequest(ApiModel):
-    user_id: int
+    user_id: int | None = None
     item_id: int
     slot_id: int
     quantity: int = 1
@@ -26,7 +26,7 @@ class DispenseOperationRequest(ApiModel):
 
 
 class ReturnOperationRequest(ApiModel):
-    user_id: int
+    user_id: int | None = None
     item_id: int
     slot_id: int | None = None
     quantity: int = 1
@@ -34,7 +34,7 @@ class ReturnOperationRequest(ApiModel):
 
 
 class RefillOperationRequest(ApiModel):
-    operator_user_id: int
+    operator_user_id: int | None = None
     item_id: int
     slot_id: int
     quantity: int
@@ -43,18 +43,18 @@ class RefillOperationRequest(ApiModel):
 
 
 class ServiceModeStartRequest(ApiModel):
-    user_id: int
+    user_id: int | None = None
     comment: str | None = None
 
 
 class ServiceModeFinishRequest(ApiModel):
     session_id: int
-    user_id: int
+    user_id: int | None = None
     comment: str | None = None
 
 
 class ExportCreateRequest(ApiModel):
-    requested_by_user_id: int
+    requested_by_user_id: int | None = None
     destination_type: str = "filesystem"
     destination_path: str = "var/exports"
     comment: str | None = None
