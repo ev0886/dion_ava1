@@ -37,6 +37,13 @@ class HardwareOperationResult:
 
 
 @dataclass(frozen=True, slots=True)
+class HardwareEndpointDescriptor:
+    endpoint_kind: str
+    configured_transport_mode: str | None
+    active_transport_mode: str
+
+
+@dataclass(frozen=True, slots=True)
 class DrumPositionResult:
     device_type: HardwareEndpointType
     status: HardwareOperationStatus
@@ -92,6 +99,11 @@ class HardwareHealthEntry:
     device_type: HardwareEndpointType
     is_available: bool
     status: HardwareOperationStatus
+    normalized_status: str
+    endpoint_kind: str
+    configured_transport_mode: str | None
+    active_transport_mode: str
+    detail: str | None = None
     message: str | None = None
 
 

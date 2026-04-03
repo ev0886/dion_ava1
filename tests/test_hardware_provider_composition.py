@@ -166,6 +166,35 @@ def test_real_mode_with_invalid_or_incomplete_transport_config_fails_safely(tmp_
         assert drum_entry.message is not None
         assert "invalid" in drum_entry.message
         assert "transport.serial.port" in drum_entry.message
+        assert drum_entry.normalized_status == "unavailable"
+        assert drum_entry.endpoint_kind == "real"
+        assert drum_entry.configured_transport_mode is None
+        assert drum_entry.active_transport_mode == "unconfigured"
+    finally:
+        container.close()
+
+
+def test_real_mode_with_serial_port_whitespace_is_rejected_early_and_clearly(tmp_path: Path) -> None:
+    settings = AppSettings(
+        data_dir=tmp_path,
+        sqlite_filename="real_invalid_serial_port.sqlite3",
+        alembic_config_path=Path("alembic.ini"),
+        hardware_provider=HardwareProvider.REAL,
+        hardware_real_endpoints={
+            "drum_controller": _serial_endpoint_config(code="drum-1", driver_name="drum-driver", port="COM 1"),
+        },
+    )
+
+    container = create_bootstrapped_application_container(settings)
+    try:
+        result = container.services.startup.run_startup_checks()
+
+        assert result.readiness_status is StartupReadinessStatus.DEGRADED
+        drum_entry = next(entry for entry in result.hardware.entries if entry.device_type == "drum_controller")
+        assert drum_entry.message is not None
+        assert "transport.serial.port" in drum_entry.message
+        assert "whitespace" in drum_entry.message
+        assert drum_entry.normalized_status == "unavailable"
     finally:
         container.close()
 
@@ -193,6 +222,7 @@ def test_real_mode_with_obviously_invalid_tcp_host_fails_early_but_stays_degrade
         assert lock_entry.message is not None
         assert "transport.tcp.host" in lock_entry.message
         assert "reachable remote host" in lock_entry.message
+        assert lock_entry.normalized_status == "unavailable"
     finally:
         container.close()
 
@@ -220,6 +250,9 @@ def test_readiness_in_real_mode_is_still_degraded_without_working_real_transport
         entries = {entry.device_type: entry for entry in result.hardware.entries}
         assert entries["drum_controller"].is_available is False
         assert entries["drum_controller"].message is not None
+        assert entries["drum_controller"].endpoint_kind == "real"
+        assert entries["drum_controller"].configured_transport_mode == "serial"
+        assert entries["drum_controller"].active_transport_mode == "serial"
         assert any(entry.is_available is False for entry in entries.values())
     finally:
         container.close()

@@ -32,41 +32,53 @@ class SerialTransport:
 
     def request(self, payload: bytes, *, timeout_ms: int | None = None) -> bytes:
         effective_read_timeout_ms = timeout_ms if timeout_ms is not None else self._timeouts.read_timeout_ms
-        connection = None
-        start = time.monotonic()
-        try:
-            serial_module = self._serial_module_loader()
-            connection = serial_module.Serial(
-                port=self._settings.port,
-                baudrate=self._settings.baudrate,
-                bytesize=self._settings.data_bits,
-                parity=_serial_parity(self._settings.parity),
-                stopbits=self._settings.stop_bits,
-                timeout=effective_read_timeout_ms / 1000,
-                write_timeout=self._timeouts.write_timeout_ms / 1000,
-            )
-            if (time.monotonic() - start) * 1000 > self._timeouts.connect_timeout_ms:
-                raise TimeoutError("Serial transport open timed out.")
-            if hasattr(connection, "reset_input_buffer"):
-                connection.reset_input_buffer()
-            if hasattr(connection, "reset_output_buffer"):
-                connection.reset_output_buffer()
-            connection.write(payload)
-            response = connection.read_until(b"\n")
-            if not response:
-                raise TimeoutError("Serial transport read timed out.")
-            return response
-        except ModuleNotFoundError as error:
-            raise OSError("pyserial dependency is not available.") from error
-        except TimeoutError:
-            raise
-        except OSError:
-            raise
-        except Exception as error:
-            raise OSError(f"Serial transport request failed: {error}") from error
-        finally:
-            if connection is not None and hasattr(connection, "close"):
-                connection.close()
+        for attempt in range(2):
+            connection = None
+            start = time.monotonic()
+            try:
+                serial_module = self._serial_module_loader()
+                connection = serial_module.Serial(
+                    port=self._settings.port,
+                    baudrate=self._settings.baudrate,
+                    bytesize=self._settings.data_bits,
+                    parity=_serial_parity(self._settings.parity),
+                    stopbits=self._settings.stop_bits,
+                    timeout=effective_read_timeout_ms / 1000,
+                    write_timeout=self._timeouts.write_timeout_ms / 1000,
+                )
+                if (time.monotonic() - start) * 1000 > self._timeouts.connect_timeout_ms:
+                    raise TimeoutError("Serial transport open timed out.")
+                if not hasattr(connection, "write") or not hasattr(connection, "read_until"):
+                    raise OSError("Serial connection does not support request/response operations.")
+                if hasattr(connection, "reset_input_buffer"):
+                    connection.reset_input_buffer()
+                if hasattr(connection, "reset_output_buffer"):
+                    connection.reset_output_buffer()
+                bytes_written = connection.write(payload)
+                if isinstance(bytes_written, int) and bytes_written < len(payload):
+                    raise TimeoutError("Serial transport write timed out.")
+                response = connection.read_until(b"\n")
+                if not response:
+                    raise TimeoutError("Serial transport read timed out.")
+                return response
+            except ModuleNotFoundError as error:
+                raise OSError("pyserial dependency is not available.") from error
+            except InterruptedError as error:
+                if attempt == 0:
+                    continue
+                raise OSError(f"Serial transport request interrupted: {error}") from error
+            except TimeoutError:
+                raise
+            except socket.timeout as error:
+                raise TimeoutError("Serial transport request timed out.") from error
+            except OSError:
+                raise
+            except Exception as error:
+                raise OSError(f"Serial transport request failed: {error}") from error
+            finally:
+                if connection is not None and hasattr(connection, "close"):
+                    connection.close()
+        raise OSError("Serial transport request interrupted.")
 
 
 class TcpTransport:
@@ -83,25 +95,35 @@ class TcpTransport:
 
     def request(self, payload: bytes, *, timeout_ms: int | None = None) -> bytes:
         effective_read_timeout_ms = timeout_ms if timeout_ms is not None else self._timeouts.read_timeout_ms
-        sock = None
-        try:
-            sock = self._socket_factory(
-                (self._settings.host, self._settings.port),
-                self._timeouts.connect_timeout_ms / 1000,
-            )
-            sock.settimeout(self._timeouts.write_timeout_ms / 1000)
-            sock.sendall(payload)
-            sock.settimeout(effective_read_timeout_ms / 1000)
-            return _recv_until_newline(sock)
-        except TimeoutError:
-            raise
-        except OSError:
-            raise
-        except Exception as error:
-            raise OSError(f"TCP transport request failed: {error}") from error
-        finally:
-            if sock is not None:
-                sock.close()
+        for attempt in range(2):
+            sock = None
+            try:
+                sock = self._socket_factory(
+                    (self._settings.host, self._settings.port),
+                    self._timeouts.connect_timeout_ms / 1000,
+                )
+                if not hasattr(sock, "sendall") or not hasattr(sock, "recv") or not hasattr(sock, "settimeout"):
+                    raise OSError("TCP transport client does not support request/response operations.")
+                sock.settimeout(self._timeouts.write_timeout_ms / 1000)
+                sock.sendall(payload)
+                sock.settimeout(effective_read_timeout_ms / 1000)
+                return _recv_until_newline(sock)
+            except InterruptedError as error:
+                if attempt == 0:
+                    continue
+                raise OSError(f"TCP transport request interrupted: {error}") from error
+            except TimeoutError:
+                raise
+            except socket.timeout as error:
+                raise TimeoutError("TCP transport request timed out.") from error
+            except OSError:
+                raise
+            except Exception as error:
+                raise OSError(f"TCP transport request failed: {error}") from error
+            finally:
+                if sock is not None:
+                    sock.close()
+        raise OSError("TCP transport request interrupted.")
 
 
 class SerialTransportSkeleton:

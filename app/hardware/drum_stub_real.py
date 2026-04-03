@@ -1,12 +1,19 @@
 from __future__ import annotations
 
 from app.domain.enums import HardwareEndpointType
-from app.hardware.dto import DrumPositionResult, HardwareOperationResult, HardwareOperationStatus
+from app.hardware.dto import DrumPositionResult, HardwareEndpointDescriptor, HardwareOperationResult, HardwareOperationStatus
 from app.hardware.exceptions import HardwareUnavailableError
 
 
 class StubRealDrumAdapter:
     device_type = HardwareEndpointType.DRUM_CONTROLLER
+
+    def describe_endpoint(self) -> HardwareEndpointDescriptor:
+        return HardwareEndpointDescriptor(
+            endpoint_kind="stub_real",
+            configured_transport_mode=None,
+            active_transport_mode="stub_real",
+        )
 
     def ping(self) -> HardwareOperationResult:
         raise HardwareUnavailableError(

@@ -4,7 +4,13 @@ from collections import deque
 
 from app.domain.constants import DEFAULT_RFID_UID_FORMAT
 from app.domain.enums import HardwareEndpointType
-from app.hardware.dto import HardwareOperationResult, HardwareOperationStatus, MockHardwareMode, RfidReadResult
+from app.hardware.dto import (
+    HardwareEndpointDescriptor,
+    HardwareOperationResult,
+    HardwareOperationStatus,
+    MockHardwareMode,
+    RfidReadResult,
+)
 from app.hardware.exceptions import HardwareBusyError, HardwareFailureError, HardwareTimeoutError
 
 
@@ -33,6 +39,13 @@ class MockRfidAdapter:
     def queue_card(self, uid: str) -> None:
         normalized_uid = self._normalize_uid(uid)
         self._queued_reads.append(normalized_uid)
+
+    def describe_endpoint(self) -> HardwareEndpointDescriptor:
+        return HardwareEndpointDescriptor(
+            endpoint_kind="mock",
+            configured_transport_mode=None,
+            active_transport_mode="mock",
+        )
 
     def ping(self) -> HardwareOperationResult:
         self._raise_for_mode(self._ping_mode, operation="ping")

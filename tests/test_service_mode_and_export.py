@@ -91,6 +91,26 @@ def test_diagnostic_snapshot_shape(session_factory: sessionmaker[Session]) -> No
         assert len(snapshot.entries) == 3
         assert isinstance(snapshot.overall_ok, bool)
         assert snapshot.entries[0].device_type == "drum_controller"
+        assert snapshot.entries[0].endpoint_kind == "mock"
+        assert snapshot.entries[0].active_transport_mode == "mock"
+        assert snapshot.entries[0].normalized_status == "ok"
+        assert snapshot.entries[0].detail == "responsive"
+
+
+def test_diagnostic_snapshot_reports_compact_normalized_failure_detail(session_factory: sessionmaker[Session]) -> None:
+    with session_factory() as session:
+        snapshot = _service_mode_service(session, lock_ping_mode=MockHardwareMode.TIMEOUT).get_hardware_snapshot(session_id=19)
+
+        lock_entry = next(entry for entry in snapshot.entries if entry.device_type == "lock_controller")
+
+        assert snapshot.overall_ok is False
+        assert lock_entry.is_available is False
+        assert lock_entry.status.value == "timeout"
+        assert lock_entry.normalized_status == "timeout"
+        assert lock_entry.endpoint_kind == "mock"
+        assert lock_entry.active_transport_mode == "mock"
+        assert lock_entry.detail is not None
+        assert "timed out" in lock_entry.detail
 
 
 def test_export_preparation_result_shape(session_factory: sessionmaker[Session]) -> None:
@@ -171,6 +191,7 @@ def _service_mode_service(
     session: Session,
     *,
     drum_mode: MockHardwareMode = MockHardwareMode.SUCCESS,
+    lock_ping_mode: MockHardwareMode = MockHardwareMode.SUCCESS,
 ) -> ServiceModeService:
     return ServiceModeService(
         auth_service=AuthService(UserRepository(session)),
@@ -179,7 +200,11 @@ def _service_mode_service(
         audit_log_repository=AuditLogRepository(session),
         hardware_facade=HardwareFacade(
             drum_controller=MockDrumAdapter(initial_position=0, move_mode=drum_mode),
-            lock_controller=MockLockAdapter(lock_states={(1, 1): LockState.LOCKED}, unlock_times={1: 5}),
+            lock_controller=MockLockAdapter(
+                ping_mode=lock_ping_mode,
+                lock_states={(1, 1): LockState.LOCKED},
+                unlock_times={1: 5},
+            ),
             rfid_reader=MockRfidAdapter(),
         ),
     )

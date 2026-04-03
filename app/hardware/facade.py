@@ -4,6 +4,7 @@ from app.domain.enums import HardwareEndpointType
 from app.hardware.contracts import DrumControllerContract, LockControllerContract, RfidReaderContract
 from app.hardware.dto import (
     DrumPositionResult,
+    HardwareEndpointDescriptor,
     HardwareHealthEntry,
     HardwareHealthSnapshot,
     LockStatusResult,
@@ -57,17 +58,19 @@ class HardwareFacade:
         return self._rfid_reader.clear_buffer()
 
     def _ping_entry(self, device_type: HardwareEndpointType) -> HardwareHealthEntry:
+        adapter = self._adapter_for(device_type)
+        descriptor = self._describe_adapter(adapter)
         try:
-            if device_type is HardwareEndpointType.DRUM_CONTROLLER:
-                result = self._drum_controller.ping()
-            elif device_type is HardwareEndpointType.LOCK_CONTROLLER:
-                result = self._lock_controller.ping()
-            else:
-                result = self._rfid_reader.ping()
+            result = adapter.ping()
             return HardwareHealthEntry(
                 device_type=device_type,
                 is_available=result.ok,
                 status=result.status,
+                normalized_status="ok" if result.ok else "failure",
+                endpoint_kind=descriptor.endpoint_kind,
+                configured_transport_mode=descriptor.configured_transport_mode,
+                active_transport_mode=descriptor.active_transport_mode,
+                detail=result.message or "responsive",
                 message=result.message,
             )
         except HardwareError as error:
@@ -75,6 +78,11 @@ class HardwareFacade:
                 device_type=device_type,
                 is_available=False,
                 status=self._status_from_error(error),
+                normalized_status=self._normalized_status_from_error(error),
+                endpoint_kind=descriptor.endpoint_kind,
+                configured_transport_mode=descriptor.configured_transport_mode,
+                active_transport_mode=descriptor.active_transport_mode,
+                detail=self._detail_from_message(str(error)),
                 message=str(error),
             )
 
@@ -97,3 +105,47 @@ class HardwareFacade:
         if isinstance(error, HardwareFailureError):
             return HardwareOperationStatus.FAILURE
         return HardwareOperationStatus.FAILURE
+
+    @staticmethod
+    def _normalized_status_from_error(error: HardwareError) -> str:
+        from app.hardware.exceptions import (
+            HardwareBusyError,
+            HardwareFailureError,
+            HardwareTimeoutError,
+            HardwareUnavailableError,
+        )
+
+        if isinstance(error, HardwareBusyError):
+            return "busy"
+        if isinstance(error, HardwareTimeoutError):
+            return "timeout"
+        if isinstance(error, HardwareUnavailableError):
+            return "unavailable"
+        if isinstance(error, HardwareFailureError):
+            return "failure"
+        return "failure"
+
+    @staticmethod
+    def _detail_from_message(message: str) -> str:
+        compact = " ".join(part for part in message.strip().split())
+        return compact[:120] if len(compact) > 120 else compact
+
+    def _adapter_for(self, device_type: HardwareEndpointType):
+        if device_type is HardwareEndpointType.DRUM_CONTROLLER:
+            return self._drum_controller
+        if device_type is HardwareEndpointType.LOCK_CONTROLLER:
+            return self._lock_controller
+        return self._rfid_reader
+
+    @staticmethod
+    def _describe_adapter(adapter) -> HardwareEndpointDescriptor:
+        describe_endpoint = getattr(adapter, "describe_endpoint", None)
+        if callable(describe_endpoint):
+            descriptor = describe_endpoint()
+            if isinstance(descriptor, HardwareEndpointDescriptor):
+                return descriptor
+        return HardwareEndpointDescriptor(
+            endpoint_kind="unknown",
+            configured_transport_mode=None,
+            active_transport_mode="unknown",
+        )

@@ -65,6 +65,11 @@ def test_hardware_degraded_readiness_when_one_mock_device_is_unavailable(tmp_pat
         assert result.hardware.ok is True
         assert result.hardware.degraded is True
         assert result.readiness_status is StartupReadinessStatus.DEGRADED
+        lock_entry = next(entry for entry in result.hardware.entries if entry.device_type == "lock_controller")
+        assert lock_entry.normalized_status == "failure"
+        assert lock_entry.endpoint_kind == "mock"
+        assert lock_entry.active_transport_mode == "mock"
+        assert lock_entry.detail == "lock controller unavailable"
     finally:
         session.close()
 

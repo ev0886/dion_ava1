@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from app.domain.enums import HardwareEndpointType
 from app.hardware.dto import (
+    HardwareEndpointDescriptor,
     HardwareOperationResult,
     HardwareOperationStatus,
     LockState,
@@ -44,6 +45,13 @@ class MockLockAdapter:
 
     def set_lock_state(self, board_address: int, lock_number: int, state: LockState) -> None:
         self._lock_states[(board_address, lock_number)] = state
+
+    def describe_endpoint(self) -> HardwareEndpointDescriptor:
+        return HardwareEndpointDescriptor(
+            endpoint_kind="mock",
+            configured_transport_mode=None,
+            active_transport_mode="mock",
+        )
 
     def ping(self) -> HardwareOperationResult:
         self._raise_for_mode(self._ping_mode, operation="ping")

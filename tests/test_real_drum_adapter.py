@@ -4,6 +4,7 @@ import pytest
 
 from app.config import AppSettings, HardwareProvider
 from app.hardware import (
+    HardwareBusyError,
     DrumPositionResult,
     HardwareFailureError,
     HardwareOperationStatus,
@@ -47,6 +48,13 @@ def test_real_drum_adapter_malformed_response_returns_safe_failure() -> None:
 
     with pytest.raises(HardwareFailureError, match="malformed response"):
         adapter.get_position()
+
+
+def test_real_drum_adapter_busy_response_is_normalized() -> None:
+    adapter = RealDrumAdapter(config=_drum_config(), transport=_FakeTransport([b"BUSY\n"]))
+
+    with pytest.raises(HardwareBusyError, match="busy status"):
+        adapter.ping()
 
 
 def test_real_drum_adapter_transport_timeout_and_error_handling_stays_safe() -> None:

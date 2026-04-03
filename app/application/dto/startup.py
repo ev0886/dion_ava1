@@ -19,6 +19,11 @@ class HardwareReadinessEntryDTO:
     device_type: str
     is_available: bool
     status: HardwareOperationStatus
+    normalized_status: str
+    endpoint_kind: str
+    configured_transport_mode: str | None
+    active_transport_mode: str
+    detail: str | None
     message: str | None
 
 

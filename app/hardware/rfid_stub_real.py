@@ -1,12 +1,19 @@
 from __future__ import annotations
 
 from app.domain.enums import HardwareEndpointType
-from app.hardware.dto import HardwareOperationResult, RfidReadResult
+from app.hardware.dto import HardwareEndpointDescriptor, HardwareOperationResult, RfidReadResult
 from app.hardware.exceptions import HardwareUnavailableError
 
 
 class StubRealRfidAdapter:
     device_type = HardwareEndpointType.RFID_READER
+
+    def describe_endpoint(self) -> HardwareEndpointDescriptor:
+        return HardwareEndpointDescriptor(
+            endpoint_kind="stub_real",
+            configured_transport_mode=None,
+            active_transport_mode="stub_real",
+        )
 
     def ping(self) -> HardwareOperationResult:
         raise HardwareUnavailableError(

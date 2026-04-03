@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ipaddress
 from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -46,6 +47,8 @@ class SerialTransportSettings(BaseModel):
         cleaned = value.strip()
         if not cleaned:
             raise ValueError("must not be blank")
+        if any(character.isspace() for character in cleaned):
+            raise ValueError("must not contain whitespace")
         return cleaned
 
 
@@ -64,6 +67,16 @@ class TcpTransportSettings(BaseModel):
             raise ValueError("must not be blank")
         if cleaned == "0.0.0.0":
             raise ValueError("must be a reachable remote host, not 0.0.0.0")
+        if "://" in cleaned:
+            raise ValueError("must be a hostname or IP address, not a URL")
+        if "/" in cleaned or "\\" in cleaned:
+            raise ValueError("must not contain path separators")
+        try:
+            parsed = ipaddress.ip_address(cleaned)
+        except ValueError:
+            return cleaned
+        if parsed.is_unspecified:
+            raise ValueError("must be a reachable host, not an unspecified address")
         return cleaned
 
 

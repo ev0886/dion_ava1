@@ -89,6 +89,13 @@ def test_real_lock_adapter_malformed_response_raises_safe_failure() -> None:
         adapter.get_lock_status(1, 1)
 
 
+def test_real_lock_adapter_error_response_is_normalized_to_failure() -> None:
+    adapter = RealLockAdapter(config=_lock_config(), transport=_FakeTransport([b"ERR: board fault\n"]))
+
+    with pytest.raises(HardwareFailureError, match="board fault"):
+        adapter.ping()
+
+
 def test_real_lock_adapter_transport_timeout_and_error_handling_stays_safe() -> None:
     timeout_adapter = RealLockAdapter(config=_lock_config(), transport=_RaisingTransport(TimeoutError("timed out")))
     error_adapter = RealLockAdapter(config=_lock_config(), transport=_RaisingTransport(OSError("connect failed")))

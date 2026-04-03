@@ -50,6 +50,13 @@ def test_real_rfid_adapter_malformed_response_raises_safe_failure() -> None:
         adapter.read_card()
 
 
+def test_real_rfid_adapter_truncated_response_raises_safe_failure() -> None:
+    adapter = RealRfidAdapter(config=_rfid_config(), transport=_FakeTransport([b"UID:ABCD"]))
+
+    with pytest.raises(HardwareFailureError, match="truncated response"):
+        adapter.read_card()
+
+
 def test_real_rfid_adapter_clear_buffer_success() -> None:
     adapter = RealRfidAdapter(config=_rfid_config(), transport=_FakeTransport([b"CLEARED\n"]))
 

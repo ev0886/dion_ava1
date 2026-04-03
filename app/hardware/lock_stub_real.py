@@ -1,12 +1,19 @@
 from __future__ import annotations
 
 from app.domain.enums import HardwareEndpointType
-from app.hardware.dto import HardwareOperationResult, LockStatusResult, UnlockResult, UnlockTimeResult
+from app.hardware.dto import HardwareEndpointDescriptor, HardwareOperationResult, LockStatusResult, UnlockResult, UnlockTimeResult
 from app.hardware.exceptions import HardwareUnavailableError
 
 
 class StubRealLockAdapter:
     device_type = HardwareEndpointType.LOCK_CONTROLLER
+
+    def describe_endpoint(self) -> HardwareEndpointDescriptor:
+        return HardwareEndpointDescriptor(
+            endpoint_kind="stub_real",
+            configured_transport_mode=None,
+            active_transport_mode="stub_real",
+        )
 
     def ping(self) -> HardwareOperationResult:
         raise HardwareUnavailableError(

@@ -181,6 +181,11 @@ class StartupOrchestrationService:
                 device_type=entry.device_type.value,
                 is_available=entry.is_available,
                 status=entry.status,
+                normalized_status=entry.normalized_status,
+                endpoint_kind=entry.endpoint_kind,
+                configured_transport_mode=entry.configured_transport_mode,
+                active_transport_mode=entry.active_transport_mode,
+                detail=entry.detail,
                 message=entry.message,
             )
             for entry in (snapshot.drum, snapshot.lock, snapshot.rfid)
