@@ -9,6 +9,7 @@ from app.application.auth_service import AuthService
 from app.application.dispense_service import DispenseOperationService
 from app.application.export_service import ExportService
 from app.application.inventory_service import InventoryService
+from app.application.query_service import QueryService
 from app.application.recovery_service import RecoveryService
 from app.application.refill_service import RefillOperationService
 from app.application.return_service import ReturnOperationService
@@ -18,6 +19,7 @@ from app.application.session_service import OperationSessionService
 from app.bootstrap import bootstrap
 from app.config import AppSettings, get_settings
 from app.hardware import HardwareBundle, create_hardware_bundle
+from app.persistence.repositories.catalog import CatalogRepository
 from app.persistence.repositories.inventory import InventoryRepository
 from app.persistence.repositories.logs import AuditLogRepository, EventLogRepository
 from app.persistence.repositories.operations import OperationRepository, OperationSessionRepository
@@ -30,6 +32,7 @@ from app.persistence.session import create_session_factory, create_sqlalchemy_en
 @dataclass(frozen=True, slots=True)
 class RepositoryBundle:
     users: UserRepository
+    catalog: CatalogRepository
     inventory: InventoryRepository
     operations: OperationRepository
     operation_sessions: OperationSessionRepository
@@ -43,6 +46,7 @@ class RepositoryBundle:
 class ServiceBundle:
     auth: AuthService
     inventory: InventoryService
+    queries: QueryService
     operation_sessions: OperationSessionService
     dispense: DispenseOperationService
     return_ops: ReturnOperationService
@@ -71,6 +75,7 @@ class ApplicationContainer:
 def build_repositories(session: Session) -> RepositoryBundle:
     return RepositoryBundle(
         users=UserRepository(session),
+        catalog=CatalogRepository(session),
         inventory=InventoryRepository(session),
         operations=OperationRepository(session),
         operation_sessions=OperationSessionRepository(session),
@@ -89,6 +94,14 @@ def build_services(
 ) -> ServiceBundle:
     auth_service = AuthService(repositories.users)
     inventory_service = InventoryService(repositories.inventory)
+    query_service = QueryService(
+        users=repositories.users,
+        catalog=repositories.catalog,
+        operations=repositories.operations,
+        recovery=repositories.recovery,
+        event_logs=repositories.event_logs,
+        audit_logs=repositories.audit_logs,
+    )
     operation_session_service = OperationSessionService(repositories.operation_sessions)
     recovery_service = RecoveryService(
         repositories.recovery,
@@ -98,6 +111,7 @@ def build_services(
     return ServiceBundle(
         auth=auth_service,
         inventory=inventory_service,
+        queries=query_service,
         operation_sessions=operation_session_service,
         dispense=DispenseOperationService(repositories.operations, repositories.inventory),
         return_ops=ReturnOperationService(repositories.operations, repositories.inventory),

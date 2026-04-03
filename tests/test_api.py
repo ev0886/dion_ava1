@@ -6,8 +6,26 @@ from fastapi.testclient import TestClient
 
 from app.api import create_app
 from app.config import AppSettings
-from app.domain.enums import BindingType, ItemStatus, OperationState, RoleCode, SlotStatus, SlotType, UserStatus
-from app.persistence.models import InventoryBalance, Item, Operation, OperationStateHistory, RecoveryCase, Role, Slot, SlotItemBinding, User
+from app.domain.enums import (
+    BindingType,
+    ItemStatus,
+    OperationState,
+    OperationType,
+    RoleCode,
+    SlotStatus,
+    SlotType,
+    UserStatus,
+)
+from app.persistence.models import (
+    InventoryBalance,
+    Item,
+    Operation,
+    OperationStateHistory,
+    Role,
+    Slot,
+    SlotItemBinding,
+    User,
+)
 
 
 def test_app_creation_smoke(tmp_path: Path) -> None:
@@ -90,6 +108,62 @@ def test_error_mapping_returns_400_for_validation_error(tmp_path: Path) -> None:
 
     assert response.status_code == 400
     assert response.json()["error"] == "validation_error"
+
+
+def test_users_list_returns_paginated_response_shape(tmp_path: Path) -> None:
+    app = create_app(_settings(tmp_path, "api_users_list.sqlite3"))
+    _seed_base_domain(app)
+    _seed_extra_user(app, user_code="user-2", full_name="User Two", status=UserStatus.ACTIVE)
+
+    with TestClient(app) as client:
+        response = client.get("/users", params={"limit": 1, "offset": 1})
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["limit"] == 1
+    assert payload["offset"] == 1
+    assert payload["total"] == 2
+    assert len(payload["items"]) == 1
+    assert payload["items"][0]["user_code"] == "user-2"
+
+
+def test_operations_list_applies_filter_and_pagination(tmp_path: Path) -> None:
+    app = create_app(_settings(tmp_path, "api_operations_list.sqlite3"))
+    _seed_base_domain(app)
+    _seed_operation_listing_data(app)
+
+    with TestClient(app) as client:
+        response = client.get(
+            "/operations",
+            params={"state": "completed", "limit": 1, "offset": 1},
+        )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["limit"] == 1
+    assert payload["offset"] == 1
+    assert payload["total"] == 2
+    assert [item["operation_id"] for item in payload["items"]] == [2]
+    assert payload["items"][0]["operation_state"] == "completed"
+
+
+def test_authorization_error_payload_is_consistent(tmp_path: Path) -> None:
+    app = create_app(_settings(tmp_path, "api_authorization_error.sqlite3"))
+    _seed_base_domain(app)
+    _seed_extra_user(app, user_code="blocked-user", full_name="Blocked User", status=UserStatus.BLOCKED)
+
+    with TestClient(app) as client:
+        response = client.post("/auth/resolve", json={"user_id": 2})
+
+    assert response.status_code == 403
+    payload = response.json()
+    assert payload == {
+        "error": "authorization_error",
+        "detail": "User is blocked",
+        "message": "User is blocked",
+        "reason_code": "authorization_error",
+        "action": None,
+    }
 
 
 def _settings(tmp_path: Path, sqlite_filename: str) -> AppSettings:
@@ -175,6 +249,81 @@ def _seed_recovery_operation(app) -> None:
                 state=OperationState.USER_ACTION_PENDING,
                 comment="seeded recovery candidate",
                 context_json={},
+            )
+        )
+        session.commit()
+
+
+def _seed_extra_user(app, *, user_code: str, full_name: str, status: UserStatus) -> None:
+    with app.state.session_factory() as session:
+        role = session.query(Role).filter(Role.code == RoleCode.USER).one()
+        session.add(
+            User(
+                role_id=role.id,
+                user_code=user_code,
+                full_name=full_name,
+                status=status,
+                is_active=status is not UserStatus.INACTIVE,
+            )
+        )
+        session.commit()
+
+
+def _seed_operation_listing_data(app) -> None:
+    with app.state.session_factory() as session:
+        session.add_all(
+            (
+                Operation(
+                    session_id=None,
+                    operation_type=OperationType.DISPENSE,
+                    operation_state=OperationState.COMPLETED,
+                    user_id=1,
+                    item_id=1,
+                    slot_id=1,
+                    qty_requested=1,
+                    qty_confirmed=1,
+                    result="ok",
+                    error_code=None,
+                    error_message=None,
+                    hardware_context_json={},
+                    business_context_json={},
+                    started_at=None,
+                    finished_at=None,
+                ),
+                Operation(
+                    session_id=None,
+                    operation_type=OperationType.RETURN,
+                    operation_state=OperationState.COMPLETED,
+                    user_id=1,
+                    item_id=1,
+                    slot_id=1,
+                    qty_requested=1,
+                    qty_confirmed=1,
+                    result="ok",
+                    error_code=None,
+                    error_message=None,
+                    hardware_context_json={},
+                    business_context_json={},
+                    started_at=None,
+                    finished_at=None,
+                ),
+                Operation(
+                    session_id=None,
+                    operation_type=OperationType.REFILL_ITEM,
+                    operation_state=OperationState.FAILED,
+                    user_id=1,
+                    item_id=1,
+                    slot_id=1,
+                    qty_requested=5,
+                    qty_confirmed=None,
+                    result="error",
+                    error_code="hardware_error",
+                    error_message="motor jam",
+                    hardware_context_json={},
+                    business_context_json={},
+                    started_at=None,
+                    finished_at=None,
+                ),
             )
         )
         session.commit()

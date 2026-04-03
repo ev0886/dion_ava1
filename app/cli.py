@@ -4,13 +4,15 @@ import argparse
 import json
 import sys
 from dataclasses import asdict, is_dataclass
+from datetime import datetime
 from enum import Enum
 from pathlib import Path
 from typing import Any
 
 from app.application.composition import ApplicationContainer, create_bootstrapped_application_container
+from app.application.dto.query import OperationListFilters, Pagination
 from app.config import AppSettings
-from app.domain.enums import StartupReadinessStatus
+from app.domain.enums import OperationState, OperationType, StartupReadinessStatus
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -23,6 +25,16 @@ def build_parser() -> argparse.ArgumentParser:
     subparsers.add_parser("startup-check")
     subparsers.add_parser("hardware-health")
     subparsers.add_parser("recovery-scan")
+
+    operations_list = subparsers.add_parser("operations-list")
+    operations_list.add_argument("--limit", type=int, default=50)
+    operations_list.add_argument("--offset", type=int, default=0)
+    operations_list.add_argument("--state", type=OperationState, default=None)
+    operations_list.add_argument("--operation-type", type=OperationType, default=None)
+    operations_list.add_argument("--user-id", type=int, default=None)
+    operations_list.add_argument("--item-id", type=int, default=None)
+    operations_list.add_argument("--slot-id", type=int, default=None)
+    operations_list.add_argument("--session-id", type=int, default=None)
 
     export_plan = subparsers.add_parser("export-plan")
     export_plan.add_argument("--requested-by-user-id", type=int, required=True)
@@ -80,6 +92,21 @@ def _dispatch(args: argparse.Namespace, container: ApplicationContainer) -> int:
         print(_render(summary))
         return 0
 
+    if args.command == "operations-list":
+        result = container.services.queries.list_operations(
+            pagination=Pagination(limit=args.limit, offset=args.offset),
+            filters=OperationListFilters(
+                operation_state=args.state,
+                operation_type=args.operation_type,
+                user_id=args.user_id,
+                item_id=args.item_id,
+                slot_id=args.slot_id,
+                session_id=args.session_id,
+            ),
+        )
+        print(_render(result))
+        return 0
+
     if args.command == "export-plan":
         snapshot = container.services.service_mode.get_hardware_snapshot(session_id=None)
         manifest = container.services.exports.build_diagnostic_dump_manifest(session_id=None, snapshot=snapshot)
@@ -134,6 +161,8 @@ def _to_jsonable(value: Any) -> Any:
         return value.value
     if isinstance(value, Path):
         return str(value)
+    if isinstance(value, datetime):
+        return value.isoformat()
     if isinstance(value, dict):
         return {str(key): _to_jsonable(item) for key, item in value.items()}
     if isinstance(value, (list, tuple)):

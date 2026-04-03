@@ -63,6 +63,9 @@ class ExportCreateRequest(ApiModel):
 class ErrorResponse(ApiModel):
     error: str
     detail: str
+    message: str
+    reason_code: str | None = None
+    action: str | None = None
 
 
 def to_api_payload(value: Any) -> Any:

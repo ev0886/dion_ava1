@@ -1,7 +1,10 @@
 from __future__ import annotations
 
-from sqlalchemy import select
+from datetime import datetime
 
+from sqlalchemy import func, select
+
+from app.domain.enums import RecoveryClassification, RecoveryStatus
 from app.persistence.models import RecoveryAction, RecoveryCase, RecoveryCaseEntity
 from app.persistence.repositories.base import Repository
 
@@ -16,6 +19,46 @@ class RecoveryRepository(Repository):
     def list_open_cases(self) -> list[RecoveryCase]:
         statement = select(RecoveryCase).where(RecoveryCase.resolved_at.is_(None))
         return list(self.session.execute(statement).scalars())
+
+    def list_cases(
+        self,
+        *,
+        limit: int,
+        offset: int,
+        status: RecoveryStatus | None = None,
+        classification: RecoveryClassification | None = None,
+        created_from: datetime | None = None,
+        created_to: datetime | None = None,
+    ) -> list[RecoveryCase]:
+        statement = select(RecoveryCase).order_by(RecoveryCase.id.asc()).limit(limit).offset(offset)
+        if status is not None:
+            statement = statement.where(RecoveryCase.status == status)
+        if classification is not None:
+            statement = statement.where(RecoveryCase.classification == classification)
+        if created_from is not None:
+            statement = statement.where(RecoveryCase.created_at >= created_from)
+        if created_to is not None:
+            statement = statement.where(RecoveryCase.created_at <= created_to)
+        return list(self.session.execute(statement).scalars())
+
+    def count_cases(
+        self,
+        *,
+        status: RecoveryStatus | None = None,
+        classification: RecoveryClassification | None = None,
+        created_from: datetime | None = None,
+        created_to: datetime | None = None,
+    ) -> int:
+        statement = select(func.count()).select_from(RecoveryCase)
+        if status is not None:
+            statement = statement.where(RecoveryCase.status == status)
+        if classification is not None:
+            statement = statement.where(RecoveryCase.classification == classification)
+        if created_from is not None:
+            statement = statement.where(RecoveryCase.created_at >= created_from)
+        if created_to is not None:
+            statement = statement.where(RecoveryCase.created_at <= created_to)
+        return int(self.session.execute(statement).scalar_one())
 
     def find_open_case_by_operation_id(self, operation_id: int) -> RecoveryCase | None:
         statement = (

@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from sqlalchemy import or_, select
+from sqlalchemy import func, or_, select
 
-from app.domain.enums import OperationState
+from app.domain.enums import OperationState, OperationType
 from app.persistence.models import Operation, OperationSession, OperationStateHistory
 from app.persistence.repositories.base import Repository
 
@@ -55,6 +55,58 @@ class OperationRepository(Repository):
             .order_by(Operation.id.asc())
         )
         return list(self.session.execute(statement).scalars())
+
+    def list_operations(
+        self,
+        *,
+        limit: int,
+        offset: int,
+        operation_state: OperationState | None = None,
+        operation_type: OperationType | None = None,
+        user_id: int | None = None,
+        item_id: int | None = None,
+        slot_id: int | None = None,
+        session_id: int | None = None,
+    ) -> list[Operation]:
+        statement = select(Operation).order_by(Operation.id.asc()).limit(limit).offset(offset)
+        if operation_state is not None:
+            statement = statement.where(Operation.operation_state == operation_state)
+        if operation_type is not None:
+            statement = statement.where(Operation.operation_type == operation_type)
+        if user_id is not None:
+            statement = statement.where(Operation.user_id == user_id)
+        if item_id is not None:
+            statement = statement.where(Operation.item_id == item_id)
+        if slot_id is not None:
+            statement = statement.where(Operation.slot_id == slot_id)
+        if session_id is not None:
+            statement = statement.where(Operation.session_id == session_id)
+        return list(self.session.execute(statement).scalars())
+
+    def count_operations(
+        self,
+        *,
+        operation_state: OperationState | None = None,
+        operation_type: OperationType | None = None,
+        user_id: int | None = None,
+        item_id: int | None = None,
+        slot_id: int | None = None,
+        session_id: int | None = None,
+    ) -> int:
+        statement = select(func.count()).select_from(Operation)
+        if operation_state is not None:
+            statement = statement.where(Operation.operation_state == operation_state)
+        if operation_type is not None:
+            statement = statement.where(Operation.operation_type == operation_type)
+        if user_id is not None:
+            statement = statement.where(Operation.user_id == user_id)
+        if item_id is not None:
+            statement = statement.where(Operation.item_id == item_id)
+        if slot_id is not None:
+            statement = statement.where(Operation.slot_id == slot_id)
+        if session_id is not None:
+            statement = statement.where(Operation.session_id == session_id)
+        return int(self.session.execute(statement).scalar_one())
 
     def add_state_history(self, history_entry: OperationStateHistory) -> None:
         self.session.add(history_entry)
