@@ -62,8 +62,11 @@ def test_real_rfid_adapter_clear_buffer_success() -> None:
 def test_real_rfid_adapter_timeout_is_reported_as_safe_timeout() -> None:
     adapter = RealRfidAdapter(config=_rfid_config(), transport=_RaisingTransport(TimeoutError("timed out")))
 
-    with pytest.raises(HardwareTimeoutError, match="timed out"):
+    with pytest.raises(HardwareTimeoutError) as error:
         adapter.read_card()
+
+    assert error.value.normalized_status is HardwareOperationStatus.TIMEOUT
+    assert error.value.detail["kind"] == "timeout"
 
 
 def test_real_provider_composition_still_works_with_operational_rfid_transport() -> None:

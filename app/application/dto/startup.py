@@ -17,16 +17,21 @@ class DatabaseReadinessDTO:
 @dataclass(frozen=True, slots=True)
 class HardwareReadinessEntryDTO:
     device_type: str
+    ok: bool
     is_available: bool
+    is_critical: bool
     status: HardwareOperationStatus
     message: str | None
+    detail: dict[str, object] | None
 
 
 @dataclass(frozen=True, slots=True)
 class HardwareReadinessDTO:
+    provider_mode: str
     ok: bool
     degraded: bool
     entries: tuple[HardwareReadinessEntryDTO, ...]
+    critical_failures: tuple[str, ...]
     message: str | None
 
 

@@ -79,7 +79,7 @@ def test_hardware_failure_returned_as_structured_diagnostic_failure(session_fact
         result = service.test_drum_positioning(session_id=None, position=3)
 
         assert result.ok is False
-        assert result.status == "failure"
+        assert result.status == "timeout"
         assert result.device_type == "drum_controller"
 
 
@@ -88,9 +88,12 @@ def test_diagnostic_snapshot_shape(session_factory: sessionmaker[Session]) -> No
         snapshot = _service_mode_service(session).get_hardware_snapshot(session_id=11)
 
         assert snapshot.session_id == 11
+        assert snapshot.provider_mode == "mock"
         assert len(snapshot.entries) == 3
         assert isinstance(snapshot.overall_ok, bool)
+        assert snapshot.overall_status == "ready"
         assert snapshot.entries[0].device_type == "drum_controller"
+        assert snapshot.entries[0].provider_mode == "mock"
 
 
 def test_export_preparation_result_shape(session_factory: sessionmaker[Session]) -> None:

@@ -159,18 +159,20 @@ def test_real_mode_with_invalid_or_incomplete_transport_config_fails_safely(tmp_
     try:
         result = container.services.startup.run_startup_checks()
 
-        assert result.readiness_status is StartupReadinessStatus.DEGRADED
-        assert result.hardware.degraded is True
-        assert all(entry.is_available is False for entry in result.hardware.entries)
+        assert result.readiness_status is StartupReadinessStatus.NOT_READY
+        assert result.hardware.ok is False
+        assert result.hardware.degraded is False
+        assert result.hardware.critical_failures == ("drum_controller", "lock_controller")
         drum_entry = next(entry for entry in result.hardware.entries if entry.device_type == "drum_controller")
         assert drum_entry.message is not None
         assert "invalid" in drum_entry.message
         assert "transport.serial.port" in drum_entry.message
+        assert drum_entry.status.value == "unavailable"
     finally:
         container.close()
 
 
-def test_real_mode_with_obviously_invalid_tcp_host_fails_early_but_stays_degraded(tmp_path: Path) -> None:
+def test_real_mode_with_obviously_invalid_tcp_host_fails_early_and_is_not_ready(tmp_path: Path) -> None:
     settings = AppSettings(
         data_dir=tmp_path,
         sqlite_filename="real_invalid_host.sqlite3",
@@ -187,7 +189,7 @@ def test_real_mode_with_obviously_invalid_tcp_host_fails_early_but_stays_degrade
     try:
         result = container.services.startup.run_startup_checks()
 
-        assert result.readiness_status is StartupReadinessStatus.DEGRADED
+        assert result.readiness_status is StartupReadinessStatus.NOT_READY
         lock_entry = next(entry for entry in result.hardware.entries if entry.device_type == "lock_controller")
         assert lock_entry.is_available is False
         assert lock_entry.message is not None
@@ -197,7 +199,7 @@ def test_real_mode_with_obviously_invalid_tcp_host_fails_early_but_stays_degrade
         container.close()
 
 
-def test_readiness_in_real_mode_is_still_degraded_without_working_real_transports(tmp_path: Path) -> None:
+def test_readiness_in_real_mode_is_not_ready_without_working_critical_real_transports(tmp_path: Path) -> None:
     settings = AppSettings(
         data_dir=tmp_path,
         sqlite_filename="real_protocol_unavailable.sqlite3",
@@ -214,13 +216,65 @@ def test_readiness_in_real_mode_is_still_degraded_without_working_real_transport
     try:
         result = container.services.startup.run_startup_checks()
 
-        assert result.readiness_status is StartupReadinessStatus.DEGRADED
-        assert result.hardware.ok is True
-        assert result.hardware.degraded is True
+        assert result.readiness_status is StartupReadinessStatus.NOT_READY
+        assert result.hardware.ok is False
+        assert result.hardware.degraded is False
+        assert result.hardware.critical_failures == ("drum_controller", "lock_controller")
         entries = {entry.device_type: entry for entry in result.hardware.entries}
         assert entries["drum_controller"].is_available is False
         assert entries["drum_controller"].message is not None
         assert any(entry.is_available is False for entry in entries.values())
+    finally:
+        container.close()
+
+
+def test_readiness_in_real_mode_is_degraded_when_only_non_critical_rfid_is_unavailable(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    from app.hardware import factory as hardware_factory
+
+    class _FakeTransport:
+        def __init__(self, response: bytes) -> None:
+            self._response = response
+
+        def request(self, payload: bytes, *, timeout_ms: int | None = None) -> bytes:
+            return self._response
+
+    def fake_create_transport_client(config):
+        if config is None:
+            return None
+        if config.endpoint.code == "rfid-1":
+            return None
+        return _FakeTransport(b"PONG\n")
+
+    monkeypatch.setattr(hardware_factory, "_create_transport_client", fake_create_transport_client)
+
+    settings = AppSettings(
+        data_dir=tmp_path,
+        sqlite_filename="real_rfid_degraded.sqlite3",
+        alembic_config_path=Path("alembic.ini"),
+        hardware_provider=HardwareProvider.REAL,
+        hardware_real_endpoints={
+            "drum_controller": _serial_endpoint_config(code="drum-1", driver_name="drum-driver", port="COM1"),
+            "lock_controller": _tcp_endpoint_config(code="lock-1", driver_name="lock-driver", host="127.0.0.1", port=9001),
+            "rfid_reader": _serial_endpoint_config(code="rfid-1", driver_name="rfid-driver", port="COM2"),
+        },
+    )
+
+    container = create_bootstrapped_application_container(settings)
+    try:
+        result = container.services.startup.run_startup_checks()
+
+        assert result.readiness_status is StartupReadinessStatus.DEGRADED
+        assert result.hardware.ok is True
+        assert result.hardware.degraded is True
+        assert result.hardware.critical_failures == ()
+        entries = {entry.device_type: entry for entry in result.hardware.entries}
+        assert entries["drum_controller"].is_available is True
+        assert entries["lock_controller"].is_available is True
+        assert entries["rfid_reader"].is_available is False
+        assert entries["rfid_reader"].is_critical is False
     finally:
         container.close()
 

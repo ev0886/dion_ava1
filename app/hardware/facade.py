@@ -66,34 +66,23 @@ class HardwareFacade:
                 result = self._rfid_reader.ping()
             return HardwareHealthEntry(
                 device_type=device_type,
+                ok=result.ok,
                 is_available=result.ok,
                 status=result.status,
                 message=result.message,
+                detail=None,
             )
         except HardwareError as error:
             return HardwareHealthEntry(
                 device_type=device_type,
+                ok=False,
                 is_available=False,
-                status=self._status_from_error(error),
+                status=error.normalized_status,
                 message=str(error),
+                detail={
+                    "operation": error.operation,
+                    **error.detail,
+                }
+                if error.detail
+                else {"operation": error.operation},
             )
-
-    @staticmethod
-    def _status_from_error(error: HardwareError):
-        from app.hardware.dto import HardwareOperationStatus
-        from app.hardware.exceptions import (
-            HardwareBusyError,
-            HardwareFailureError,
-            HardwareTimeoutError,
-            HardwareUnavailableError,
-        )
-
-        if isinstance(error, HardwareBusyError):
-            return HardwareOperationStatus.BUSY
-        if isinstance(error, HardwareTimeoutError):
-            return HardwareOperationStatus.TIMEOUT
-        if isinstance(error, HardwareUnavailableError):
-            return HardwareOperationStatus.FAILURE
-        if isinstance(error, HardwareFailureError):
-            return HardwareOperationStatus.FAILURE
-        return HardwareOperationStatus.FAILURE

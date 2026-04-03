@@ -51,6 +51,10 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
     def readiness(container: ApplicationContainer = Depends(get_application_container)) -> JSONResponse:
         return JSONResponse(to_api_payload(container.services.startup.run_startup_checks()))
 
+    @app.get("/hardware/diagnostics")
+    def hardware_diagnostics(container: ApplicationContainer = Depends(get_application_container)) -> JSONResponse:
+        return JSONResponse(to_api_payload(container.services.service_mode.get_hardware_snapshot(session_id=None)))
+
     @app.post("/auth/resolve")
     def auth_resolve(
         payload: AuthResolveRequest,

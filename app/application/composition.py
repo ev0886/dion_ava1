@@ -113,6 +113,7 @@ def build_services(
             event_log_repository=repositories.event_logs,
             audit_log_repository=repositories.audit_logs,
             hardware_facade=hardware.facade,
+            hardware_provider=hardware.provider,
         ),
         exports=ExportService(
             export_repository=repositories.exports,
@@ -123,6 +124,7 @@ def build_services(
             db_session=session,
             hardware_facade=hardware.facade,
             recovery_service=recovery_service,
+            hardware_provider=hardware.provider,
         ),
     )
 

@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from app.application.dto.recovery import RecoveryCaseDTO, RecoveryScanResult
 from app.application.startup_service import StartupOrchestrationService
 from app.bootstrap import run_database_migrations
-from app.config import AppSettings
+from app.config import AppSettings, HardwareProvider
 from app.domain.enums import (
     HardwareEndpointType,
     RecoveryClassification,
@@ -46,7 +46,7 @@ def test_db_readiness_success(tmp_path: Path) -> None:
         session.close()
 
 
-def test_hardware_degraded_readiness_when_one_mock_device_is_unavailable(tmp_path: Path) -> None:
+def test_hardware_not_ready_when_critical_real_device_is_unavailable(tmp_path: Path) -> None:
     session = _migrated_session(tmp_path, "startup_degraded_hardware.sqlite3")
     try:
         service = StartupOrchestrationService(
@@ -57,13 +57,39 @@ def test_hardware_degraded_readiness_when_one_mock_device_is_unavailable(tmp_pat
                 rfid_reader=MockRfidAdapter(),
             ),
             recovery_service=_FakeRecoveryService(_recovery_scan_result()),
+            hardware_provider=HardwareProvider.REAL,
         )
 
         result = service.run_startup_checks()
 
         assert result.database.ok is True
+        assert result.hardware.ok is False
+        assert result.hardware.degraded is False
+        assert result.hardware.critical_failures == ("lock_controller",)
+        assert result.readiness_status is StartupReadinessStatus.NOT_READY
+    finally:
+        session.close()
+
+
+def test_hardware_degraded_readiness_when_non_critical_real_device_is_unavailable(tmp_path: Path) -> None:
+    session = _migrated_session(tmp_path, "startup_degraded_non_critical.sqlite3")
+    try:
+        service = StartupOrchestrationService(
+            db_session=session,
+            hardware_facade=HardwareFacade(
+                drum_controller=MockDrumAdapter(),
+                lock_controller=MockLockAdapter(lock_states={(1, 1): LockState.LOCKED}),
+                rfid_reader=_FailingPingRfidAdapter(),
+            ),
+            recovery_service=_FakeRecoveryService(_recovery_scan_result()),
+            hardware_provider=HardwareProvider.REAL,
+        )
+
+        result = service.run_startup_checks()
+
         assert result.hardware.ok is True
         assert result.hardware.degraded is True
+        assert result.hardware.critical_failures == ()
         assert result.readiness_status is StartupReadinessStatus.DEGRADED
     finally:
         session.close()
@@ -125,6 +151,15 @@ class _FailingPingLockAdapter(MockLockAdapter):
         raise HardwareFailureError(
             "lock controller unavailable",
             device_type=HardwareEndpointType.LOCK_CONTROLLER,
+            operation="ping",
+        )
+
+
+class _FailingPingRfidAdapter(MockRfidAdapter):
+    def ping(self) -> HardwareOperationResult:
+        raise HardwareFailureError(
+            "rfid unavailable",
+            device_type=HardwareEndpointType.RFID_READER,
             operation="ping",
         )
 

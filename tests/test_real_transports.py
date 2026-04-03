@@ -67,8 +67,11 @@ def test_transport_timeout_error_is_mapped_to_safe_adapter_timeout() -> None:
         ),
     )
 
-    with pytest.raises(HardwareTimeoutError, match="read timed out"):
+    with pytest.raises(HardwareTimeoutError) as error:
         adapter.ping()
+
+    assert error.value.normalized_status.value == "timeout"
+    assert error.value.detail["kind"] == "timeout"
 
 
 def test_real_provider_composition_uses_actual_transport_implementations_by_default() -> None:

@@ -93,10 +93,15 @@ def test_real_lock_adapter_transport_timeout_and_error_handling_stays_safe() -> 
     timeout_adapter = RealLockAdapter(config=_lock_config(), transport=_RaisingTransport(TimeoutError("timed out")))
     error_adapter = RealLockAdapter(config=_lock_config(), transport=_RaisingTransport(OSError("connect failed")))
 
-    with pytest.raises(HardwareTimeoutError, match="timed out"):
+    with pytest.raises(HardwareTimeoutError) as timeout_error:
         timeout_adapter.ping()
-    with pytest.raises(HardwareUnavailableError, match="connect failed"):
+    with pytest.raises(HardwareUnavailableError) as unavailable_error:
         error_adapter.ping()
+
+    assert timeout_error.value.normalized_status is HardwareOperationStatus.TIMEOUT
+    assert timeout_error.value.detail["kind"] == "timeout"
+    assert unavailable_error.value.normalized_status is HardwareOperationStatus.UNAVAILABLE
+    assert unavailable_error.value.detail["kind"] == "io_error"
 
 
 def test_real_provider_composition_still_works_with_operational_lock_transport() -> None:

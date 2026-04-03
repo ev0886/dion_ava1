@@ -8,6 +8,7 @@ from app.domain.enums import HardwareEndpointType
 
 class HardwareOperationStatus(StrEnum):
     SUCCESS = "success"
+    UNAVAILABLE = "unavailable"
     BUSY = "busy"
     TIMEOUT = "timeout"
     FAILURE = "failure"
@@ -90,9 +91,11 @@ class RfidReadResult:
 @dataclass(frozen=True, slots=True)
 class HardwareHealthEntry:
     device_type: HardwareEndpointType
+    ok: bool
     is_available: bool
     status: HardwareOperationStatus
     message: str | None = None
+    detail: dict[str, object] | None = None
 
 
 @dataclass(frozen=True, slots=True)

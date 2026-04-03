@@ -16,7 +16,8 @@ from app.application.dto.startup import (
     StartupReadinessDTO,
 )
 from app.application.exceptions import ApplicationError, RecoveryError
-from app.domain.enums import StartupReadinessStatus
+from app.domain.enums import HardwareEndpointType, StartupReadinessStatus
+from app.config import HardwareProvider
 from app.hardware import HardwareFacade
 from app.hardware.dto import HardwareHealthSnapshot
 from app.hardware.exceptions import HardwareError
@@ -31,13 +32,21 @@ class StartupOrchestrationService:
     db_session: Session
     hardware_facade: HardwareFacade
     recovery_service: RecoveryStartupScanner
+    hardware_provider: HardwareProvider = HardwareProvider.MOCK
 
     def run_startup_checks(self) -> StartupReadinessDTO:
         database = self._check_database_readiness()
         if not database.ok:
             return StartupReadinessDTO(
                 database=database,
-                hardware=HardwareReadinessDTO(ok=False, degraded=False, entries=(), message=None),
+                hardware=HardwareReadinessDTO(
+                    provider_mode=self.hardware_provider.value,
+                    ok=False,
+                    degraded=False,
+                    entries=(),
+                    critical_failures=(),
+                    message=None,
+                ),
                 recovery=RecoveryReadinessDTO(
                     ok=False,
                     recovery_candidates_found=False,
@@ -119,26 +128,42 @@ class StartupOrchestrationService:
             snapshot = self.hardware_facade.hardware_healthcheck()
         except HardwareError as error:
             return HardwareReadinessDTO(
+                provider_mode=self.hardware_provider.value,
                 ok=False,
                 degraded=False,
                 entries=(),
+                critical_failures=(),
                 message=f"Hardware readiness check failed: {error}",
             )
 
         entries = self._to_hardware_entries(snapshot)
+        critical_failures = tuple(entry.device_type for entry in entries if entry.is_critical and not entry.ok)
+        if critical_failures:
+            return HardwareReadinessDTO(
+                provider_mode=self.hardware_provider.value,
+                ok=False,
+                degraded=False,
+                entries=entries,
+                critical_failures=critical_failures,
+                message="Critical hardware startup dependencies are unavailable.",
+            )
         if snapshot.all_ok:
             return HardwareReadinessDTO(
+                provider_mode=self.hardware_provider.value,
                 ok=True,
                 degraded=False,
                 entries=entries,
+                critical_failures=(),
                 message=None,
             )
         # Hardware is treated as degradable at startup so misconfigured or offline
         # real endpoints remain visible to operators without taking down the process.
         return HardwareReadinessDTO(
+            provider_mode=self.hardware_provider.value,
             ok=True,
             degraded=True,
             entries=entries,
+            critical_failures=(),
             message="One or more hardware endpoints reported unavailable status.",
         )
 
@@ -174,14 +199,16 @@ class StartupOrchestrationService:
             return StartupReadinessStatus.DEGRADED
         return StartupReadinessStatus.READY
 
-    @staticmethod
-    def _to_hardware_entries(snapshot: HardwareHealthSnapshot) -> tuple[HardwareReadinessEntryDTO, ...]:
+    def _to_hardware_entries(self, snapshot: HardwareHealthSnapshot) -> tuple[HardwareReadinessEntryDTO, ...]:
         return tuple(
             HardwareReadinessEntryDTO(
                 device_type=entry.device_type.value,
+                ok=entry.ok,
                 is_available=entry.is_available,
+                is_critical=self._is_critical_startup_dependency(entry.device_type),
                 status=entry.status,
                 message=entry.message,
+                detail=entry.detail,
             )
             for entry in (snapshot.drum, snapshot.lock, snapshot.rfid)
         )
@@ -196,11 +223,21 @@ class StartupOrchestrationService:
         if readiness_status is StartupReadinessStatus.READY:
             return "Startup checks passed."
         reasons: list[str] = []
+        if hardware.critical_failures:
+            reasons.append("critical hardware unavailable")
         if hardware.degraded:
             reasons.append("hardware degraded")
         if recovery.recovery_candidates_found:
             reasons.append("recovery candidates detected")
         return "Startup checks completed with degraded readiness: " + ", ".join(reasons) + "."
+
+    def _is_critical_startup_dependency(self, device_type: HardwareEndpointType) -> bool:
+        if self.hardware_provider is not HardwareProvider.REAL:
+            return False
+        return device_type in {
+            HardwareEndpointType.DRUM_CONTROLLER,
+            HardwareEndpointType.LOCK_CONTROLLER,
+        }
 
 
 StartupService = StartupOrchestrationService

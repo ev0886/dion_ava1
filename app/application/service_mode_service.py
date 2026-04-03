@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from app.application.auth_service import AuthService
+from app.config import HardwareProvider
 from app.application.dto.service_mode import (
     DiagnosticCommandResultDTO,
     DiagnosticHardwareEntryDTO,
@@ -34,6 +35,7 @@ class ServiceModeService:
     event_log_repository: EventLogRepository
     audit_log_repository: AuditLogRepository
     hardware_facade: HardwareFacade
+    hardware_provider: HardwareProvider = HardwareProvider.MOCK
 
     def enter_service_mode(self, *, user_id: int, comment: str | None = None) -> ServiceModeSessionDTO:
         user = self._require_service_user(user_id)
@@ -96,7 +98,9 @@ class ServiceModeService:
         return DiagnosticSnapshotDTO(
             session_id=session_id,
             captured_at=captured_at,
+            provider_mode=self.hardware_provider.value,
             overall_ok=snapshot.all_ok,
+            overall_status="ready" if snapshot.all_ok else "degraded",
             entries=self._snapshot_entries(snapshot),
         )
 
@@ -180,9 +184,12 @@ class ServiceModeService:
                 command_name=command_name,
                 ok=False,
                 device_type=error.device_type.value,
-                status="failure",
+                status=error.normalized_status.value,
                 message=str(error),
-                payload={"operation": error.operation},
+                payload={
+                    "operation": error.operation,
+                    "detail": dict(error.detail),
+                },
             )
         self._record_event(
             event_type=command_name,
@@ -217,14 +224,17 @@ class ServiceModeService:
             context=dict(session.context_json or {}),
         )
 
-    @staticmethod
-    def _snapshot_entries(snapshot: HardwareHealthSnapshot) -> tuple[DiagnosticHardwareEntryDTO, ...]:
+    def _snapshot_entries(self, snapshot: HardwareHealthSnapshot) -> tuple[DiagnosticHardwareEntryDTO, ...]:
         return tuple(
             DiagnosticHardwareEntryDTO(
+                provider_mode=self.hardware_provider.value,
                 device_type=entry.device_type.value,
+                ok=entry.ok,
                 is_available=entry.is_available,
+                is_critical=self._is_critical_startup_dependency(entry.device_type.value),
                 status=entry.status,
-                message=entry.message,
+                summary=entry.message,
+                detail=entry.detail,
             )
             for entry in (snapshot.drum, snapshot.lock, snapshot.rfid)
         )
@@ -240,6 +250,11 @@ class ServiceModeService:
             payload=payload,
         )
 
+    def _is_critical_startup_dependency(self, device_type: str) -> bool:
+        if self.hardware_provider is not HardwareProvider.REAL:
+            return False
+        return device_type in {"drum_controller", "lock_controller"}
+
     def _record_event(
         self,
         *,
@@ -250,10 +265,11 @@ class ServiceModeService:
         comment: str | None,
         payload: dict[str, object] | None = None,
     ) -> None:
+        error_results = {"failure", "timeout", "busy", "unavailable"}
         self.event_log_repository.add(
             EventLog(
                 event_type=event_type,
-                level="info" if result != "failure" else "error",
+                level="error" if result in error_results else "info",
                 source="service_mode_service",
                 operation_id=None,
                 session_id=session_id,

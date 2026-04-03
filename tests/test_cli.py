@@ -6,6 +6,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from contextlib import redirect_stderr, redirect_stdout
 
+from app.application.dto.service_mode import DiagnosticHardwareEntryDTO, DiagnosticSnapshotDTO
 from app.application.dto.startup import (
     DatabaseReadinessDTO,
     HardwareReadinessDTO,
@@ -45,7 +46,14 @@ def test_startup_check_returns_non_zero_when_startup_is_not_ready(monkeypatch) -
                     alembic_version_table_present=False,
                     message="db failed",
                 ),
-                hardware=HardwareReadinessDTO(ok=False, degraded=False, entries=(), message=None),
+                hardware=HardwareReadinessDTO(
+                    provider_mode="real",
+                    ok=False,
+                    degraded=False,
+                    entries=(),
+                    critical_failures=("drum_controller",),
+                    message=None,
+                ),
                 recovery=RecoveryReadinessDTO(
                     ok=False,
                     recovery_candidates_found=False,
@@ -106,6 +114,42 @@ def test_recovery_scan_runs_and_prints_deterministic_summary(tmp_path: Path) -> 
     assert '"unfinished_operation_ids": []' in stdout
 
 
+def test_hardware_diagnostics_prints_provider_and_entries(monkeypatch) -> None:
+    def _fake_container(_settings):
+        return _FakeContainer(
+            startup_result=_healthy_startup_result(),
+            diagnostic_snapshot=DiagnosticSnapshotDTO(
+                session_id=None,
+                captured_at=None,  # type: ignore[arg-type]
+                provider_mode="real",
+                overall_ok=False,
+                overall_status="degraded",
+                entries=(
+                    DiagnosticHardwareEntryDTO(
+                        provider_mode="real",
+                        device_type="drum_controller",
+                        ok=False,
+                        is_available=False,
+                        is_critical=True,
+                        status=HardwareOperationStatus.UNAVAILABLE,
+                        summary="Drum controller transport request failed.",
+                        detail={"operation": "ping"},
+                    ),
+                ),
+            ),
+        )
+
+    monkeypatch.setattr("app.cli.create_bootstrapped_application_container", _fake_container)
+
+    exit_code, stdout, stderr = _run_cli(["hardware-diagnostics"])
+
+    assert exit_code == 0
+    assert '"provider_mode": "real"' in stdout
+    assert '"overall_status": "degraded"' in stdout
+    assert '"device_type": "drum_controller"' in stdout
+    assert stderr == ""
+
+
 @dataclass(slots=True)
 class _FakeStartupService:
     result: StartupReadinessDTO
@@ -115,12 +159,24 @@ class _FakeStartupService:
 
 
 @dataclass(slots=True)
+class _FakeServiceModeService:
+    snapshot: DiagnosticSnapshotDTO
+
+    def get_hardware_snapshot(self, *, session_id: int | None = None) -> DiagnosticSnapshotDTO:
+        return self.snapshot
+
+
+@dataclass(slots=True)
 class _FakeContainer:
     startup_result: StartupReadinessDTO
+    diagnostic_snapshot: DiagnosticSnapshotDTO | None = None
     services: SimpleNamespace | None = None
 
     def __post_init__(self) -> None:
-        self.services = SimpleNamespace(startup=_FakeStartupService(self.startup_result))
+        self.services = SimpleNamespace(
+            startup=_FakeStartupService(self.startup_result),
+            service_mode=_FakeServiceModeService(self.diagnostic_snapshot or _healthy_snapshot()),
+        )
 
     def close(self) -> None:
         return None
@@ -132,3 +188,43 @@ def _run_cli(argv: list[str]) -> tuple[int, str, str]:
     with redirect_stdout(stdout_buffer), redirect_stderr(stderr_buffer):
         exit_code = main(argv)
     return exit_code, stdout_buffer.getvalue(), stderr_buffer.getvalue()
+
+
+def _healthy_startup_result() -> StartupReadinessDTO:
+    return StartupReadinessDTO(
+        database=DatabaseReadinessDTO(
+            ok=True,
+            simple_query_ok=True,
+            alembic_version_table_present=True,
+            message=None,
+        ),
+        hardware=HardwareReadinessDTO(
+            provider_mode="mock",
+            ok=True,
+            degraded=False,
+            entries=(),
+            critical_failures=(),
+            message=None,
+        ),
+        recovery=RecoveryReadinessDTO(
+            ok=True,
+            recovery_candidates_found=False,
+            recovery_candidate_count=0,
+            recovery_case_count=0,
+            candidate_operation_ids=(),
+            message=None,
+        ),
+        readiness_status=StartupReadinessStatus.READY,
+        message="Startup checks passed.",
+    )
+
+
+def _healthy_snapshot() -> DiagnosticSnapshotDTO:
+    return DiagnosticSnapshotDTO(
+        session_id=None,
+        captured_at=None,  # type: ignore[arg-type]
+        provider_mode="mock",
+        overall_ok=True,
+        overall_status="ready",
+        entries=(),
+    )

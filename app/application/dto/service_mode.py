@@ -41,10 +41,14 @@ class ServiceModeSessionDTO:
 
 @dataclass(frozen=True, slots=True)
 class DiagnosticHardwareEntryDTO:
+    provider_mode: str
     device_type: str
+    ok: bool
     is_available: bool
+    is_critical: bool
     status: HardwareOperationStatus
-    message: str | None
+    summary: str | None
+    detail: dict[str, object] | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -61,7 +65,9 @@ class DiagnosticCommandResultDTO:
 class DiagnosticSnapshotDTO:
     session_id: int | None
     captured_at: datetime
+    provider_mode: str
     overall_ok: bool
+    overall_status: str
     entries: tuple[DiagnosticHardwareEntryDTO, ...]
 
 

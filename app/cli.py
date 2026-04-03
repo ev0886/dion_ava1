@@ -22,6 +22,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     subparsers.add_parser("startup-check")
     subparsers.add_parser("hardware-health")
+    subparsers.add_parser("hardware-diagnostics")
     subparsers.add_parser("recovery-scan")
 
     export_plan = subparsers.add_parser("export-plan")
@@ -66,6 +67,11 @@ def _dispatch(args: argparse.Namespace, container: ApplicationContainer) -> int:
         snapshot = container.hardware.facade.hardware_healthcheck()
         print(_render(snapshot))
         return 0 if snapshot.all_ok else 0
+
+    if args.command == "hardware-diagnostics":
+        snapshot = container.services.service_mode.get_hardware_snapshot(session_id=None)
+        print(_render(snapshot))
+        return 0 if snapshot.overall_ok else 0
 
     if args.command == "recovery-scan":
         result = container.services.recovery.scan_recovery_targets()

@@ -26,10 +26,15 @@ def test_health_and_readiness(tmp_path: Path) -> None:
     with TestClient(app) as client:
         health = client.get("/health")
         readiness = client.get("/readiness")
+        diagnostics = client.get("/hardware/diagnostics")
 
     assert health.status_code == 200
     assert readiness.status_code == 200
     assert readiness.json()["readiness_status"] == "ready"
+    assert readiness.json()["hardware"]["provider_mode"] == "mock"
+    assert diagnostics.status_code == 200
+    assert diagnostics.json()["provider_mode"] == "mock"
+    assert diagnostics.json()["overall_status"] == "ready"
 
 
 def test_auth_and_inventory_happy_path(tmp_path: Path) -> None:
