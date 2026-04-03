@@ -1,4 +1,13 @@
 from app.application.dto.auth import AuthRequest, AuthenticatedUserDTO
+from app.application.dto.imports import (
+    ImportAppliedChangeCountersDTO,
+    ImportExecutionRequestDTO,
+    ImportExecutionResultDTO,
+    ImportFormatsDTO,
+    ImportRowMessageDTO,
+    ImportRowResultDTO,
+    ImportSummaryDTO,
+)
 from app.application.dto.inventory import InventoryBalanceDTO, InventoryLookupResult, SlotBindingDTO
 from app.application.dto.operations import (
     CreateOperationCommand,
@@ -56,6 +65,13 @@ __all__ = [
     "ExportPreparationResultDTO",
     "HardwareReadinessDTO",
     "HardwareReadinessEntryDTO",
+    "ImportAppliedChangeCountersDTO",
+    "ImportExecutionRequestDTO",
+    "ImportExecutionResultDTO",
+    "ImportFormatsDTO",
+    "ImportRowMessageDTO",
+    "ImportRowResultDTO",
+    "ImportSummaryDTO",
     "InventoryBalanceDTO",
     "InventoryLookupResult",
     "OperationContextDTO",

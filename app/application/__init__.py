@@ -10,6 +10,7 @@ from app.application.composition import (
 )
 from app.application.dispense_service import DispenseOperationService
 from app.application.export_service import ExportService
+from app.application.import_service import ImportExecutionService
 from app.application.inventory_service import InventoryService
 from app.application.recovery_service import RecoveryService
 from app.application.refill_service import RefillOperationService
@@ -32,6 +33,7 @@ __all__ = [
     "create_bootstrapped_application_container",
     "DispenseOperationService",
     "ExportService",
+    "ImportExecutionService",
     "InventoryService",
     "OperationSessionService",
     "RecoveryService",

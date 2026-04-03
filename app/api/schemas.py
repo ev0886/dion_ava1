@@ -60,6 +60,13 @@ class ExportCreateRequest(ApiModel):
     comment: str | None = None
 
 
+class ImportExecuteRequest(ApiModel):
+    target_type: Literal["users", "items"]
+    mode: Literal["dry_run", "apply"] = "dry_run"
+    source_path: str
+    requested_by_user_id: int | None = None
+
+
 class ErrorResponse(ApiModel):
     error: str
     detail: str

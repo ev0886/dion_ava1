@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from app.application.composition import ApplicationContainer, create_bootstrapped_application_container
+from app.application.dto.imports import ImportExecutionRequestDTO
 from app.config import AppSettings
 from app.domain.enums import StartupReadinessStatus
 
@@ -38,6 +39,14 @@ def build_parser() -> argparse.ArgumentParser:
     service_mode_close.add_argument("--session-id", type=int, required=True)
     service_mode_close.add_argument("--user-id", type=int, required=True)
     service_mode_close.add_argument("--comment", type=str, default=None)
+
+    list_import_formats = subparsers.add_parser("list-import-formats")
+
+    execute_import = subparsers.add_parser("execute-import")
+    execute_import.add_argument("--target-type", type=str, choices=("users", "items"), required=True)
+    execute_import.add_argument("--mode", type=str, choices=("dry_run", "apply"), default="dry_run")
+    execute_import.add_argument("--source-path", type=str, required=True)
+    execute_import.add_argument("--requested-by-user-id", type=int, default=None)
 
     return parser
 
@@ -106,6 +115,22 @@ def _dispatch(args: argparse.Namespace, container: ApplicationContainer) -> int:
             session_id=args.session_id,
             user_id=args.user_id,
             comment=args.comment,
+        )
+        print(_render(result))
+        return 0
+
+    if args.command == "list-import-formats":
+        print(_render(container.services.imports.get_supported_formats()))
+        return 0
+
+    if args.command == "execute-import":
+        result = container.services.imports.execute(
+            ImportExecutionRequestDTO(
+                target_type=args.target_type,
+                mode=args.mode,
+                source_path=args.source_path,
+                requested_by_user_id=args.requested_by_user_id,
+            )
         )
         print(_render(result))
         return 0

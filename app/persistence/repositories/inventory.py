@@ -3,11 +3,18 @@ from __future__ import annotations
 from sqlalchemy import case, select
 
 from app.domain.enums import BindingType
-from app.persistence.models import InventoryBalance, InventoryTransaction, Slot, SlotItemBinding
+from app.persistence.models import InventoryBalance, InventoryTransaction, Item, Slot, SlotItemBinding
 from app.persistence.repositories.base import Repository
 
 
 class InventoryRepository(Repository):
+    def get_item_by_sku(self, sku: str) -> Item | None:
+        statement = select(Item).where(Item.sku == sku)
+        return self.session.execute(statement).scalar_one_or_none()
+
+    def add_item(self, item: Item) -> None:
+        self.session.add(item)
+
     def get_balance(self, slot_id: int, item_id: int) -> InventoryBalance | None:
         statement = select(InventoryBalance).where(
             InventoryBalance.slot_id == slot_id,

@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from app.application.auth_service import AuthService
 from app.application.dispense_service import DispenseOperationService
 from app.application.export_service import ExportService
+from app.application.import_service import ImportExecutionService
 from app.application.inventory_service import InventoryService
 from app.application.recovery_service import RecoveryService
 from app.application.refill_service import RefillOperationService
@@ -50,6 +51,7 @@ class ServiceBundle:
     recovery: RecoveryService
     service_mode: ServiceModeService
     exports: ExportService
+    imports: ImportExecutionService
     startup: StartupOrchestrationService
 
 
@@ -117,6 +119,11 @@ def build_services(
         exports=ExportService(
             export_repository=repositories.exports,
             event_log_repository=repositories.event_logs,
+            audit_log_repository=repositories.audit_logs,
+        ),
+        imports=ImportExecutionService(
+            user_repository=repositories.users,
+            inventory_repository=repositories.inventory,
             audit_log_repository=repositories.audit_logs,
         ),
         startup=StartupOrchestrationService(

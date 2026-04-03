@@ -11,6 +11,7 @@ from app.api.schemas import (
     AuthResolveRequest,
     DispenseOperationRequest,
     ExportCreateRequest,
+    ImportExecuteRequest,
     RefillOperationRequest,
     ReturnOperationRequest,
     ServiceModeFinishRequest,
@@ -19,6 +20,7 @@ from app.api.schemas import (
 )
 from app.application.composition import ApplicationContainer
 from app.application.dto.auth import AuthRequest
+from app.application.dto.imports import ImportExecutionRequestDTO
 from app.application.dto.operations import DispenseRequest, RefillRequest, ReturnRequest
 from app.bootstrap import bootstrap
 from app.config import AppSettings, get_settings
@@ -190,5 +192,24 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
                 )
             )
         )
+
+    @app.get("/imports/formats")
+    def import_formats(container: ApplicationContainer = Depends(get_application_container)) -> JSONResponse:
+        return JSONResponse(to_api_payload(container.services.imports.get_supported_formats()))
+
+    @app.post("/imports/execute")
+    def import_execute(
+        payload: ImportExecuteRequest,
+        container: ApplicationContainer = Depends(get_application_container),
+    ) -> JSONResponse:
+        result = container.services.imports.execute(
+            ImportExecutionRequestDTO(
+                target_type=payload.target_type,
+                mode=payload.mode,
+                source_path=payload.source_path,
+                requested_by_user_id=payload.requested_by_user_id,
+            )
+        )
+        return JSONResponse(to_api_payload(result))
 
     return app
