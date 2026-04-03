@@ -9,8 +9,10 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from app.application.dispense_service import DispenseOperationService
 from app.application.dto.operations import DispenseRequest, RefillRequest, ReturnRequest
+from app.application.exceptions import RuleDeniedError
 from app.application.refill_service import RefillOperationService
 from app.application.return_service import ReturnOperationService
+from app.application.rule_evaluation_service import RuleEvaluationService
 from app.config import AppSettings
 from app.domain.enums import (
     BindingType,
@@ -32,6 +34,7 @@ from app.persistence.models import (
     Operation,
     OperationSession,
     OperationStateHistory,
+    Permission,
     Role,
     Slot,
     SlotItemBinding,
@@ -39,6 +42,7 @@ from app.persistence.models import (
 )
 from app.persistence.repositories.inventory import InventoryRepository
 from app.persistence.repositories.operations import OperationRepository, OperationSessionRepository
+from app.persistence.repositories.users import UserRepository
 
 
 @pytest.fixture
@@ -63,8 +67,8 @@ def session_factory(tmp_path: Path) -> Iterator[sessionmaker[Session]]:
 
 def test_successful_dispense_flow_with_mock_hardware(session_factory: sessionmaker[Session]) -> None:
     with session_factory() as session:
-        ids = _seed_catalog(session, starting_quantity=5)
-        service = DispenseOperationService(OperationRepository(session), InventoryRepository(session))
+        ids = _seed_catalog(session, starting_quantity=5, grant_permissions=True)
+        service = _dispense_service(session)
 
         result = service.execute(
             DispenseRequest(user_id=ids.user_id, item_id=ids.item_id, slot_id=ids.slot_id, quantity=2),
@@ -82,8 +86,8 @@ def test_successful_dispense_flow_with_mock_hardware(session_factory: sessionmak
 
 def test_successful_return_flow_with_mock_hardware(session_factory: sessionmaker[Session]) -> None:
     with session_factory() as session:
-        ids = _seed_catalog(session, starting_quantity=1)
-        service = ReturnOperationService(OperationRepository(session), InventoryRepository(session))
+        ids = _seed_catalog(session, starting_quantity=1, grant_permissions=True)
+        service = _return_service(session)
 
         result = service.execute(
             ReturnRequest(user_id=ids.user_id, item_id=ids.item_id, slot_id=None, quantity=2),
@@ -98,12 +102,8 @@ def test_successful_return_flow_with_mock_hardware(session_factory: sessionmaker
 
 def test_successful_refill_flow_with_mock_hardware(session_factory: sessionmaker[Session]) -> None:
     with session_factory() as session:
-        ids = _seed_catalog(session, starting_quantity=4)
-        service = RefillOperationService(
-            OperationRepository(session),
-            InventoryRepository(session),
-            OperationSessionRepository(session),
-        )
+        ids = _seed_catalog(session, starting_quantity=4, grant_permissions=True)
+        service = _refill_service(session)
 
         result = service.execute(
             RefillRequest(
@@ -128,8 +128,8 @@ def test_dispense_hardware_failure_does_not_mutate_inventory_incorrectly(
     session_factory: sessionmaker[Session],
 ) -> None:
     with session_factory() as session:
-        ids = _seed_catalog(session, starting_quantity=5)
-        service = DispenseOperationService(OperationRepository(session), InventoryRepository(session))
+        ids = _seed_catalog(session, starting_quantity=5, grant_permissions=True)
+        service = _dispense_service(session)
         failing_facade = _hardware_facade(drum_mode=MockHardwareMode.TIMEOUT)
 
         result = service.execute(
@@ -146,8 +146,8 @@ def test_dispense_hardware_failure_does_not_mutate_inventory_incorrectly(
 
 def test_operation_history_entries_are_written(session_factory: sessionmaker[Session]) -> None:
     with session_factory() as session:
-        ids = _seed_catalog(session, starting_quantity=5)
-        service = DispenseOperationService(OperationRepository(session), InventoryRepository(session))
+        ids = _seed_catalog(session, starting_quantity=5, grant_permissions=True)
+        service = _dispense_service(session)
 
         result = service.execute(
             DispenseRequest(user_id=ids.user_id, item_id=ids.item_id, slot_id=ids.slot_id, quantity=1),
@@ -172,16 +172,11 @@ def test_inventory_transaction_rows_are_written_for_successful_inventory_flows(
     session_factory: sessionmaker[Session],
 ) -> None:
     with session_factory() as session:
-        ids = _seed_catalog(session, starting_quantity=10)
-        inventory_repository = InventoryRepository(session)
+        ids = _seed_catalog(session, starting_quantity=10, grant_permissions=True)
 
-        dispense_service = DispenseOperationService(OperationRepository(session), inventory_repository)
-        return_service = ReturnOperationService(OperationRepository(session), inventory_repository)
-        refill_service = RefillOperationService(
-            OperationRepository(session),
-            inventory_repository,
-            OperationSessionRepository(session),
-        )
+        dispense_service = _dispense_service(session)
+        return_service = _return_service(session)
+        refill_service = _refill_service(session)
 
         dispense_service.execute(
             DispenseRequest(user_id=ids.user_id, item_id=ids.item_id, slot_id=ids.slot_id, quantity=2),
@@ -215,6 +210,84 @@ def test_inventory_transaction_rows_are_written_for_successful_inventory_flows(
         ]
 
 
+def test_dispense_denied_by_rules_does_not_call_hardware_or_mutate_inventory(
+    session_factory: sessionmaker[Session],
+) -> None:
+    with session_factory() as session:
+        ids = _seed_catalog(session, starting_quantity=5, grant_permissions=False)
+        service = _dispense_service(session)
+        hardware = _NoCallHardwareFacade()
+
+        with pytest.raises(RuleDeniedError) as error_info:
+            service.execute(
+                DispenseRequest(user_id=ids.user_id, item_id=ids.item_id, slot_id=ids.slot_id, quantity=2),
+                hardware,
+            )
+
+        assert error_info.value.reason_codes == ("dispense_permission_missing",)
+        assert session.execute(select(InventoryBalance)).scalar_one().quantity == 5
+        assert session.execute(select(Operation)).scalars().all() == []
+        assert session.execute(select(InventoryTransaction)).scalars().all() == []
+        assert hardware.move_calls == 0
+        assert hardware.unlock_calls == 0
+
+
+def test_return_denied_by_rules_does_not_call_hardware_or_mutate_inventory(
+    session_factory: sessionmaker[Session],
+) -> None:
+    with session_factory() as session:
+        ids = _seed_catalog(session, starting_quantity=5, grant_permissions=False)
+        service = _return_service(session)
+        hardware = _NoCallHardwareFacade()
+
+        with pytest.raises(RuleDeniedError) as error_info:
+            service.execute(
+                ReturnRequest(user_id=ids.user_id, item_id=ids.item_id, slot_id=None, quantity=1),
+                hardware,
+            )
+
+        assert error_info.value.reason_codes == ("return_permission_missing",)
+        assert session.execute(select(InventoryBalance)).scalar_one().quantity == 5
+        assert session.execute(select(Operation)).scalars().all() == []
+        assert session.execute(select(InventoryTransaction)).scalars().all() == []
+        assert hardware.move_calls == 0
+        assert hardware.unlock_calls == 0
+
+
+def test_refill_denied_by_rules_does_not_call_hardware_or_mutate_inventory(
+    session_factory: sessionmaker[Session],
+) -> None:
+    with session_factory() as session:
+        ids = _seed_catalog(
+            session,
+            starting_quantity=5,
+            operator_status=UserStatus.BLOCKED,
+            grant_permissions=True,
+        )
+        service = _refill_service(session)
+        hardware = _NoCallHardwareFacade()
+
+        with pytest.raises(RuleDeniedError) as error_info:
+            service.execute(
+                RefillRequest(
+                    operator_user_id=ids.operator_user_id,
+                    item_id=ids.item_id,
+                    slot_id=ids.slot_id,
+                    quantity=3,
+                    mode="add",
+                ),
+                hardware,
+            )
+
+        assert error_info.value.reason_codes == ("operator_blocked",)
+        assert session.execute(select(InventoryBalance)).scalar_one().quantity == 5
+        assert session.execute(select(Operation)).scalars().all() == []
+        assert session.execute(select(OperationSession)).scalars().all() == []
+        assert session.execute(select(InventoryTransaction)).scalars().all() == []
+        assert hardware.move_calls == 0
+        assert hardware.unlock_calls == 0
+
+
 class _SeedIds:
     def __init__(self, user_id: int, operator_user_id: int, item_id: int, slot_id: int) -> None:
         self.user_id = user_id
@@ -223,10 +296,17 @@ class _SeedIds:
         self.slot_id = slot_id
 
 
-def _seed_catalog(session: Session, *, starting_quantity: int) -> _SeedIds:
+def _seed_catalog(
+    session: Session,
+    *,
+    starting_quantity: int,
+    operator_role: RoleCode = RoleCode.OPERATOR,
+    operator_status: UserStatus = UserStatus.ACTIVE,
+    grant_permissions: bool,
+) -> _SeedIds:
     user_role = Role(code=RoleCode.USER, name="User")
-    operator_role = Role(code=RoleCode.OPERATOR, name="Operator")
-    session.add_all((user_role, operator_role))
+    operator_role_model = Role(code=operator_role, name=operator_role.value.title())
+    session.add_all((user_role, operator_role_model))
     session.flush()
 
     user = User(
@@ -237,10 +317,10 @@ def _seed_catalog(session: Session, *, starting_quantity: int) -> _SeedIds:
         is_active=True,
     )
     operator = User(
-        role_id=operator_role.id,
+        role_id=operator_role_model.id,
         user_code="operator-1",
         full_name="Operator One",
-        status=UserStatus.ACTIVE,
+        status=operator_status,
         is_active=True,
     )
     session.add_all((user, operator))
@@ -285,8 +365,46 @@ def _seed_catalog(session: Session, *, starting_quantity: int) -> _SeedIds:
             quantity=starting_quantity,
         )
     )
+    if grant_permissions:
+        session.add(
+            Permission(
+                user_id=user.id,
+                item_id=item.id,
+                item_group_id=None,
+                can_dispense=True,
+                can_return=True,
+                valid_from=None,
+                valid_to=None,
+                comment="seeded permission",
+            )
+        )
     session.commit()
     return _SeedIds(user_id=user.id, operator_user_id=operator.id, item_id=item.id, slot_id=slot.id)
+
+
+def _rule_service(session: Session) -> RuleEvaluationService:
+    return RuleEvaluationService(
+        user_repository=UserRepository(session),
+        inventory_repository=InventoryRepository(session),
+        session_repository=OperationSessionRepository(session),
+    )
+
+
+def _dispense_service(session: Session) -> DispenseOperationService:
+    return DispenseOperationService(OperationRepository(session), InventoryRepository(session), _rule_service(session))
+
+
+def _return_service(session: Session) -> ReturnOperationService:
+    return ReturnOperationService(OperationRepository(session), InventoryRepository(session), _rule_service(session))
+
+
+def _refill_service(session: Session) -> RefillOperationService:
+    return RefillOperationService(
+        OperationRepository(session),
+        InventoryRepository(session),
+        OperationSessionRepository(session),
+        _rule_service(session),
+    )
 
 
 def _hardware_facade(drum_mode: MockHardwareMode = MockHardwareMode.SUCCESS) -> HardwareFacade:
@@ -295,3 +413,17 @@ def _hardware_facade(drum_mode: MockHardwareMode = MockHardwareMode.SUCCESS) -> 
         lock_controller=MockLockAdapter(lock_states={(1, 1): LockState.LOCKED}),
         rfid_reader=MockRfidAdapter(),
     )
+
+
+class _NoCallHardwareFacade:
+    def __init__(self) -> None:
+        self.move_calls = 0
+        self.unlock_calls = 0
+
+    def move_drum_to_position(self, _position: int):
+        self.move_calls += 1
+        raise AssertionError("move_drum_to_position should not be called on denied execution")
+
+    def unlock_lock(self, _board_address: int, _lock_number: int):
+        self.unlock_calls += 1
+        raise AssertionError("unlock_lock should not be called on denied execution")

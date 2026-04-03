@@ -9,17 +9,20 @@ from app.application.dto.operations import (
     ReturnRequest,
     TransitionCheckResult,
 )
-from app.application.exceptions import NotFoundError, ValidationError
+from app.application.dto.rules import RuleEvaluationDTO
+from app.application.exceptions import NotFoundError, RuleDeniedError, ValidationError
 from app.application.inventory_mutation import InventoryMutationService
 from app.application.operation_recorder import OperationRecorder
+from app.application.rule_evaluation_service import RuleEvaluationService
 from app.application.state_machine import assert_transition_allowed, can_transition
 from app.application.time import utc_now
 from app.domain.enums import OperationState, OperationType
 from app.hardware import HardwareFacade, UnlockResult
 from app.hardware.dto import DrumPositionResult
 from app.hardware.exceptions import HardwareError
-from app.persistence.models import Operation, Slot
+from app.persistence.models import AuditLog, EventLog, Operation, Slot
 from app.persistence.repositories.inventory import InventoryRepository
+from app.persistence.repositories.logs import AuditLogRepository, EventLogRepository
 from app.persistence.repositories.operations import OperationRepository
 
 
@@ -27,6 +30,9 @@ from app.persistence.repositories.operations import OperationRepository
 class ReturnOperationService:
     operation_repository: OperationRepository
     inventory_repository: InventoryRepository
+    rule_evaluation_service: RuleEvaluationService
+    event_log_repository: EventLogRepository | None = None
+    audit_log_repository: AuditLogRepository | None = None
     _recorder: OperationRecorder = field(init=False, repr=False)
     _inventory_mutation: InventoryMutationService = field(init=False, repr=False)
 
@@ -53,7 +59,12 @@ class ReturnOperationService:
         if not validation.valid:
             raise ValidationError("; ".join(validation.messages))
 
-        slot = self._resolve_slot(request)
+        evaluation = self.rule_evaluation_service.evaluate_return(request)
+        if not evaluation.allowed:
+            self._record_denial(evaluation, actor_user_id=request.user_id, quantity=request.quantity)
+            raise RuleDeniedError.from_evaluation(evaluation)
+
+        slot = self._require_slot(evaluation.resolved_slot_id)
         command = CreateOperationCommand(
             operation_type=OperationType.RETURN,
             session_id=request.session_id,
@@ -225,19 +236,51 @@ class ReturnOperationService:
         )
         self.operation_repository.session.commit()
 
-    def _resolve_slot(self, request: ReturnRequest) -> Slot:
-        if request.slot_id is not None:
-            slot = self.inventory_repository.get_slot(request.slot_id)
-            if slot is None:
-                raise NotFoundError(f"Slot not found: {request.slot_id}")
-            return slot
-        binding = self.inventory_repository.find_preferred_binding_for_item(request.item_id)
-        if binding is None:
-            raise NotFoundError(f"No active return slot binding found for item: {request.item_id}")
-        slot = self.inventory_repository.get_slot(binding.slot_id)
+    def _require_slot(self, slot_id: int | None) -> Slot:
+        if slot_id is None:
+            raise NotFoundError("Return slot could not be resolved")
+        slot = self.inventory_repository.get_slot(slot_id)
         if slot is None:
-            raise NotFoundError(f"Slot not found: {binding.slot_id}")
+            raise NotFoundError(f"Slot not found: {slot_id}")
         return slot
+
+    def _record_denial(self, evaluation: RuleEvaluationDTO, *, actor_user_id: int, quantity: int) -> None:
+        wrote_log = False
+        if self.event_log_repository is not None:
+            self.event_log_repository.add(
+                EventLog(
+                    event_type="return_execution_denied",
+                    level="warning",
+                    source="return_operation_service",
+                    operation_id=None,
+                    session_id=evaluation.session_id,
+                    user_id=actor_user_id,
+                    slot_id=evaluation.resolved_slot_id or evaluation.slot_id,
+                    item_id=evaluation.item_id,
+                    qty=quantity,
+                    result="denied",
+                    comment=evaluation.summary_message,
+                    message=evaluation.summary_message,
+                    payload_json={"reason_codes": list(evaluation.reason_codes)},
+                )
+            )
+            wrote_log = True
+        if self.audit_log_repository is not None:
+            self.audit_log_repository.add(
+                AuditLog(
+                    entity_type="return_execution",
+                    entity_id="pending",
+                    action="execution_denied",
+                    actor_user_id=actor_user_id,
+                    reason_code=evaluation.reason_codes[0] if evaluation.reason_codes else None,
+                    comment=evaluation.summary_message,
+                    before_json=None,
+                    after_json={"reason_codes": list(evaluation.reason_codes)},
+                )
+            )
+            wrote_log = True
+        if wrote_log:
+            self.operation_repository.session.commit()
 
     @staticmethod
     def _slot_hardware_context(slot: Slot) -> dict[str, object]:

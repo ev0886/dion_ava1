@@ -9,17 +9,20 @@ from app.application.dto.operations import (
     RefillRequest,
     TransitionCheckResult,
 )
-from app.application.exceptions import NotFoundError, ValidationError
+from app.application.dto.rules import RuleEvaluationDTO
+from app.application.exceptions import NotFoundError, RuleDeniedError, ValidationError
 from app.application.inventory_mutation import InventoryMutationService
 from app.application.operation_recorder import OperationRecorder
+from app.application.rule_evaluation_service import RuleEvaluationService
 from app.application.state_machine import assert_transition_allowed, can_transition
 from app.application.time import utc_now
 from app.domain.enums import OperationState, OperationType, SessionStatus, SessionType
 from app.hardware import HardwareFacade
 from app.hardware.dto import DrumPositionResult
 from app.hardware.exceptions import HardwareError
-from app.persistence.models import Operation, OperationSession, Slot
+from app.persistence.models import AuditLog, EventLog, Operation, OperationSession, Slot
 from app.persistence.repositories.inventory import InventoryRepository
+from app.persistence.repositories.logs import AuditLogRepository, EventLogRepository
 from app.persistence.repositories.operations import OperationRepository, OperationSessionRepository
 
 
@@ -28,6 +31,9 @@ class RefillOperationService:
     operation_repository: OperationRepository
     inventory_repository: InventoryRepository
     session_repository: OperationSessionRepository
+    rule_evaluation_service: RuleEvaluationService
+    event_log_repository: EventLogRepository | None = None
+    audit_log_repository: AuditLogRepository | None = None
     _recorder: OperationRecorder = field(init=False, repr=False)
     _inventory_mutation: InventoryMutationService = field(init=False, repr=False)
 
@@ -53,6 +59,11 @@ class RefillOperationService:
         validation = self.validate_request(request)
         if not validation.valid:
             raise ValidationError("; ".join(validation.messages))
+
+        evaluation = self.rule_evaluation_service.evaluate_refill(request)
+        if not evaluation.allowed:
+            self._record_denial(evaluation, actor_user_id=request.operator_user_id, quantity=request.quantity)
+            raise RuleDeniedError.from_evaluation(evaluation)
 
         slot = self._require_slot(request.slot_id)
         session = self._ensure_session(request)
@@ -129,7 +140,7 @@ class RefillOperationService:
             self.operation_repository.session.commit()
         except HardwareError as error:
             session.status = SessionStatus.FAILED
-            session.finished_at = datetime.utcnow()
+            session.finished_at = utc_now()
             self._handle_hardware_error(operation, error)
         except Exception:
             self.operation_repository.session.rollback()
@@ -240,6 +251,44 @@ class RefillOperationService:
         if slot is None:
             raise NotFoundError(f"Slot not found: {slot_id}")
         return slot
+
+    def _record_denial(self, evaluation: RuleEvaluationDTO, *, actor_user_id: int, quantity: int) -> None:
+        wrote_log = False
+        if self.event_log_repository is not None:
+            self.event_log_repository.add(
+                EventLog(
+                    event_type="refill_execution_denied",
+                    level="warning",
+                    source="refill_operation_service",
+                    operation_id=None,
+                    session_id=evaluation.session_id,
+                    user_id=actor_user_id,
+                    slot_id=evaluation.slot_id,
+                    item_id=evaluation.item_id,
+                    qty=quantity,
+                    result="denied",
+                    comment=evaluation.summary_message,
+                    message=evaluation.summary_message,
+                    payload_json={"reason_codes": list(evaluation.reason_codes)},
+                )
+            )
+            wrote_log = True
+        if self.audit_log_repository is not None:
+            self.audit_log_repository.add(
+                AuditLog(
+                    entity_type="refill_execution",
+                    entity_id="pending",
+                    action="execution_denied",
+                    actor_user_id=actor_user_id,
+                    reason_code=evaluation.reason_codes[0] if evaluation.reason_codes else None,
+                    comment=evaluation.summary_message,
+                    before_json=None,
+                    after_json={"reason_codes": list(evaluation.reason_codes)},
+                )
+            )
+            wrote_log = True
+        if wrote_log:
+            self.operation_repository.session.commit()
 
     @staticmethod
     def _slot_hardware_context(slot: Slot) -> dict[str, object]:

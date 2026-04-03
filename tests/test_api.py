@@ -56,7 +56,7 @@ def test_health_and_readiness(tmp_path: Path) -> None:
 
 def test_auth_and_inventory_happy_path(tmp_path: Path) -> None:
     app = create_app(_settings(tmp_path, "api_auth_inventory.sqlite3"))
-    _seed_base_domain(app)
+    _seed_base_domain(app, grant_permissions=False)
 
     with TestClient(app) as client:
         auth_response = client.post("/auth/resolve", json={"user_id": 1})
@@ -70,7 +70,7 @@ def test_auth_and_inventory_happy_path(tmp_path: Path) -> None:
 
 def test_dispense_operation_happy_path(tmp_path: Path) -> None:
     app = create_app(_settings(tmp_path, "api_dispense.sqlite3"))
-    _seed_base_domain(app)
+    _seed_base_domain(app, grant_permissions=True)
 
     with TestClient(app) as client:
         response = client.post(
@@ -81,6 +81,22 @@ def test_dispense_operation_happy_path(tmp_path: Path) -> None:
     assert response.status_code == 200
     assert response.json()["operation_state"] == "completed"
     assert response.json()["qty_confirmed"] == 1
+
+
+def test_dispense_operation_denial_maps_to_authorization_error(tmp_path: Path) -> None:
+    app = create_app(_settings(tmp_path, "api_dispense_denied.sqlite3"))
+    _seed_base_domain(app, grant_permissions=False)
+
+    with TestClient(app) as client:
+        response = client.post(
+            "/operations/dispense",
+            json={"user_id": 1, "item_id": 1, "slot_id": 1, "quantity": 1},
+        )
+
+    assert response.status_code == 403
+    assert response.json()["error"] == "authorization_error"
+    assert response.json()["reason_codes"] == ["dispense_permission_missing"]
+    assert response.json()["detail"] == "dispense denied: dispense_permission_missing"
 
 
 def test_rule_check_endpoints_return_structured_payloads(tmp_path: Path) -> None:
@@ -119,7 +135,7 @@ def test_rule_check_endpoints_return_structured_payloads(tmp_path: Path) -> None
 
 def test_recovery_endpoints_happy_path(tmp_path: Path) -> None:
     app = create_app(_settings(tmp_path, "api_recovery.sqlite3"))
-    _seed_base_domain(app)
+    _seed_base_domain(app, grant_permissions=False)
     _seed_recovery_operation(app)
 
     with TestClient(app) as client:
@@ -156,7 +172,7 @@ def _settings(tmp_path: Path, sqlite_filename: str) -> AppSettings:
     )
 
 
-def _seed_base_domain(app) -> None:
+def _seed_base_domain(app, *, grant_permissions: bool) -> None:
     with app.state.session_factory() as session:
         role = Role(code=RoleCode.USER, name="User")
         session.add(role)
@@ -201,6 +217,19 @@ def _seed_base_domain(app) -> None:
             )
         )
         session.add(InventoryBalance(slot_id=slot.id, item_id=item.id, quantity=5))
+        if grant_permissions:
+            session.add(
+                Permission(
+                    user_id=user.id,
+                    item_id=item.id,
+                    item_group_id=None,
+                    can_dispense=True,
+                    can_return=True,
+                    valid_from=None,
+                    valid_to=None,
+                    comment="seeded permission",
+                )
+            )
         session.commit()
 
 

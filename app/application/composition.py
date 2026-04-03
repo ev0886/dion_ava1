@@ -92,6 +92,11 @@ def build_services(
     auth_service = AuthService(repositories.users)
     inventory_service = InventoryService(repositories.inventory)
     operation_session_service = OperationSessionService(repositories.operation_sessions)
+    rule_evaluation_service = RuleEvaluationService(
+        user_repository=repositories.users,
+        inventory_repository=repositories.inventory,
+        session_repository=repositories.operation_sessions,
+    )
     recovery_service = RecoveryService(
         repositories.recovery,
         repositories.operations,
@@ -101,19 +106,30 @@ def build_services(
         auth=auth_service,
         inventory=inventory_service,
         operation_sessions=operation_session_service,
-        dispense=DispenseOperationService(repositories.operations, repositories.inventory),
-        return_ops=ReturnOperationService(repositories.operations, repositories.inventory),
+        dispense=DispenseOperationService(
+            repositories.operations,
+            repositories.inventory,
+            rule_evaluation_service,
+            repositories.event_logs,
+            repositories.audit_logs,
+        ),
+        return_ops=ReturnOperationService(
+            repositories.operations,
+            repositories.inventory,
+            rule_evaluation_service,
+            repositories.event_logs,
+            repositories.audit_logs,
+        ),
         refill=RefillOperationService(
             repositories.operations,
             repositories.inventory,
             repositories.operation_sessions,
+            rule_evaluation_service,
+            repositories.event_logs,
+            repositories.audit_logs,
         ),
         recovery=recovery_service,
-        rules=RuleEvaluationService(
-            user_repository=repositories.users,
-            inventory_repository=repositories.inventory,
-            session_repository=repositories.operation_sessions,
-        ),
+        rules=rule_evaluation_service,
         service_mode=ServiceModeService(
             auth_service=auth_service,
             session_repository=repositories.operation_sessions,
