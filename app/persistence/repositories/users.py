@@ -2,7 +2,8 @@ from __future__ import annotations
 
 from sqlalchemy import select
 
-from app.persistence.models import User
+from app.domain.enums import RoleCode
+from app.persistence.models import Role, User
 from app.persistence.repositories.base import Repository
 
 
@@ -13,3 +14,9 @@ class UserRepository(Repository):
     def get_by_user_code(self, user_code: str) -> User | None:
         statement = select(User).where(User.user_code == user_code)
         return self.session.execute(statement).scalar_one_or_none()
+
+    def get_role_code(self, user: User) -> RoleCode | None:
+        role = self.session.get(Role, user.role_id)
+        if role is None:
+            return None
+        return role.code

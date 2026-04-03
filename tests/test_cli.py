@@ -12,8 +12,9 @@ from app.application.dto.startup import (
     RecoveryReadinessDTO,
     StartupReadinessDTO,
 )
+from app.application.dto.rules import RuleEvaluationDTO, RuleResultDTO
 from app.cli import main
-from app.domain.enums import StartupReadinessStatus
+from app.domain.enums import OperationType, StartupReadinessStatus
 from app.hardware.dto import HardwareOperationStatus
 
 
@@ -106,6 +107,65 @@ def test_recovery_scan_runs_and_prints_deterministic_summary(tmp_path: Path) -> 
     assert '"unfinished_operation_ids": []' in stdout
 
 
+def test_check_dispense_rules_command_renders_rule_payload(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "app.cli.create_bootstrapped_application_container",
+        lambda _settings: _FakeRulesContainer("dispense"),
+    )
+
+    exit_code, stdout, stderr = _run_cli(
+        ["check-dispense-rules", "--user-id", "1", "--item-id", "2", "--slot-id", "3", "--quantity", "1"]
+    )
+
+    assert exit_code == 0
+    assert '"operation_type": "dispense"' in stdout
+    assert '"allowed": true' in stdout
+    assert stderr == ""
+
+
+def test_check_return_rules_command_renders_reason_codes(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "app.cli.create_bootstrapped_application_container",
+        lambda _settings: _FakeRulesContainer("return"),
+    )
+
+    exit_code, stdout, stderr = _run_cli(["check-return-rules", "--user-id", "1", "--item-id", "2", "--quantity", "1"])
+
+    assert exit_code == 0
+    assert '"operation_type": "return"' in stdout
+    assert '"reason_codes": [' in stdout
+    assert '"return_not_allowed"' in stdout
+    assert stderr == ""
+
+
+def test_check_refill_rules_command_renders_rule_payload(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "app.cli.create_bootstrapped_application_container",
+        lambda _settings: _FakeRulesContainer("refill_item"),
+    )
+
+    exit_code, stdout, stderr = _run_cli(
+        [
+            "check-refill-rules",
+            "--operator-user-id",
+            "7",
+            "--item-id",
+            "2",
+            "--slot-id",
+            "3",
+            "--quantity",
+            "5",
+            "--mode",
+            "add",
+        ]
+    )
+
+    assert exit_code == 0
+    assert '"operation_type": "refill_item"' in stdout
+    assert '"summary_message": "refill_item allowed"' in stdout
+    assert stderr == ""
+
+
 @dataclass(slots=True)
 class _FakeStartupService:
     result: StartupReadinessDTO
@@ -121,6 +181,58 @@ class _FakeContainer:
 
     def __post_init__(self) -> None:
         self.services = SimpleNamespace(startup=_FakeStartupService(self.startup_result))
+
+    def close(self) -> None:
+        return None
+
+
+@dataclass(slots=True)
+class _FakeRulesService:
+    operation_type: OperationType
+
+    def evaluate_dispense(self, _request) -> RuleEvaluationDTO:
+        return self._result()
+
+    def evaluate_return(self, _request) -> RuleEvaluationDTO:
+        return self._result(allowed=False, failed_code="return_not_allowed")
+
+    def evaluate_refill(self, _request) -> RuleEvaluationDTO:
+        return self._result()
+
+    def _result(self, *, allowed: bool = True, failed_code: str | None = None) -> RuleEvaluationDTO:
+        return RuleEvaluationDTO(
+            allowed=allowed,
+            operation_type=self.operation_type,
+            user_id=1,
+            operator_user_id=7 if self.operation_type is OperationType.REFILL_ITEM else None,
+            item_id=2,
+            slot_id=3,
+            session_id=None,
+            resolved_slot_id=3,
+            reason_codes=() if failed_code is None else (failed_code,),
+            summary_message=(
+                f"{self.operation_type.value} allowed"
+                if failed_code is None
+                else f"{self.operation_type.value} denied: {failed_code}"
+            ),
+            rules=(
+                RuleResultDTO(
+                    code="sample_rule" if failed_code is None else failed_code,
+                    passed=failed_code is None,
+                    message="sample",
+                    context={},
+                ),
+            ),
+        )
+
+
+@dataclass(slots=True)
+class _FakeRulesContainer:
+    operation_type_value: str
+    services: SimpleNamespace | None = None
+
+    def __post_init__(self) -> None:
+        self.services = SimpleNamespace(rules=_FakeRulesService(OperationType(self.operation_type_value)))
 
     def close(self) -> None:
         return None

@@ -39,6 +39,28 @@ def build_parser() -> argparse.ArgumentParser:
     service_mode_close.add_argument("--user-id", type=int, required=True)
     service_mode_close.add_argument("--comment", type=str, default=None)
 
+    check_dispense_rules = subparsers.add_parser("check-dispense-rules")
+    check_dispense_rules.add_argument("--user-id", type=int, required=True)
+    check_dispense_rules.add_argument("--item-id", type=int, required=True)
+    check_dispense_rules.add_argument("--slot-id", type=int, required=True)
+    check_dispense_rules.add_argument("--quantity", type=int, default=1)
+    check_dispense_rules.add_argument("--session-id", type=int, default=None)
+
+    check_return_rules = subparsers.add_parser("check-return-rules")
+    check_return_rules.add_argument("--user-id", type=int, required=True)
+    check_return_rules.add_argument("--item-id", type=int, required=True)
+    check_return_rules.add_argument("--slot-id", type=int, default=None)
+    check_return_rules.add_argument("--quantity", type=int, default=1)
+    check_return_rules.add_argument("--session-id", type=int, default=None)
+
+    check_refill_rules = subparsers.add_parser("check-refill-rules")
+    check_refill_rules.add_argument("--operator-user-id", type=int, required=True)
+    check_refill_rules.add_argument("--item-id", type=int, required=True)
+    check_refill_rules.add_argument("--slot-id", type=int, required=True)
+    check_refill_rules.add_argument("--quantity", type=int, required=True)
+    check_refill_rules.add_argument("--mode", type=str, default="set")
+    check_refill_rules.add_argument("--session-id", type=int, default=None)
+
     return parser
 
 
@@ -106,6 +128,52 @@ def _dispatch(args: argparse.Namespace, container: ApplicationContainer) -> int:
             session_id=args.session_id,
             user_id=args.user_id,
             comment=args.comment,
+        )
+        print(_render(result))
+        return 0
+
+    if args.command == "check-dispense-rules":
+        from app.application.dto.operations import DispenseRequest
+
+        result = container.services.rules.evaluate_dispense(
+            DispenseRequest(
+                user_id=args.user_id,
+                item_id=args.item_id,
+                slot_id=args.slot_id,
+                quantity=args.quantity,
+                session_id=args.session_id,
+            )
+        )
+        print(_render(result))
+        return 0
+
+    if args.command == "check-return-rules":
+        from app.application.dto.operations import ReturnRequest
+
+        result = container.services.rules.evaluate_return(
+            ReturnRequest(
+                user_id=args.user_id,
+                item_id=args.item_id,
+                slot_id=args.slot_id,
+                quantity=args.quantity,
+                session_id=args.session_id,
+            )
+        )
+        print(_render(result))
+        return 0
+
+    if args.command == "check-refill-rules":
+        from app.application.dto.operations import RefillRequest
+
+        result = container.services.rules.evaluate_refill(
+            RefillRequest(
+                operator_user_id=args.operator_user_id,
+                item_id=args.item_id,
+                slot_id=args.slot_id,
+                quantity=args.quantity,
+                mode=args.mode,
+                session_id=args.session_id,
+            )
         )
         print(_render(result))
         return 0

@@ -10,6 +10,7 @@ from app.application.dispense_service import DispenseOperationService
 from app.application.export_service import ExportService
 from app.application.inventory_service import InventoryService
 from app.application.recovery_service import RecoveryService
+from app.application.rule_evaluation_service import RuleEvaluationService
 from app.application.refill_service import RefillOperationService
 from app.application.return_service import ReturnOperationService
 from app.application.service_mode_service import ServiceModeService
@@ -48,6 +49,7 @@ class ServiceBundle:
     return_ops: ReturnOperationService
     refill: RefillOperationService
     recovery: RecoveryService
+    rules: RuleEvaluationService
     service_mode: ServiceModeService
     exports: ExportService
     startup: StartupOrchestrationService
@@ -107,6 +109,11 @@ def build_services(
             repositories.operation_sessions,
         ),
         recovery=recovery_service,
+        rules=RuleEvaluationService(
+            user_repository=repositories.users,
+            inventory_repository=repositories.inventory,
+            session_repository=repositories.operation_sessions,
+        ),
         service_mode=ServiceModeService(
             auth_service=auth_service,
             session_repository=repositories.operation_sessions,

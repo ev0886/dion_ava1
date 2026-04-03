@@ -24,6 +24,7 @@ from app.application.dto.recovery import (
     RecoveryContextDTO,
     RecoveryScanResult,
 )
+from app.application.dto.rules import RuleEvaluationDTO, RuleResultDTO
 from app.application.dto.service_mode import (
     DiagnosticCommandResultDTO,
     DiagnosticDumpManifestDTO,
@@ -75,6 +76,8 @@ __all__ = [
     "RefillRequest",
     "ReturnRequest",
     "RecoveryReadinessDTO",
+    "RuleEvaluationDTO",
+    "RuleResultDTO",
     "ServiceModeSessionDTO",
     "SlotBindingDTO",
     "StartupReadinessDTO",

@@ -90,6 +90,22 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
         )
         return JSONResponse(to_api_payload(dto))
 
+    @app.post("/rules/dispense-check")
+    def dispense_rules_check(
+        payload: DispenseOperationRequest,
+        container: ApplicationContainer = Depends(get_application_container),
+    ) -> JSONResponse:
+        dto = container.services.rules.evaluate_dispense(
+            DispenseRequest(
+                user_id=payload.user_id,
+                item_id=payload.item_id,
+                slot_id=payload.slot_id,
+                quantity=payload.quantity,
+                session_id=payload.session_id,
+            )
+        )
+        return JSONResponse(to_api_payload(dto))
+
     @app.post("/operations/return")
     def return_operation(
         payload: ReturnOperationRequest,
@@ -104,6 +120,22 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
                 session_id=payload.session_id,
             ),
             container.hardware.facade,
+        )
+        return JSONResponse(to_api_payload(dto))
+
+    @app.post("/rules/return-check")
+    def return_rules_check(
+        payload: ReturnOperationRequest,
+        container: ApplicationContainer = Depends(get_application_container),
+    ) -> JSONResponse:
+        dto = container.services.rules.evaluate_return(
+            ReturnRequest(
+                user_id=payload.user_id,
+                item_id=payload.item_id,
+                slot_id=payload.slot_id,
+                quantity=payload.quantity,
+                session_id=payload.session_id,
+            )
         )
         return JSONResponse(to_api_payload(dto))
 
@@ -122,6 +154,23 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
                 session_id=payload.session_id,
             ),
             container.hardware.facade,
+        )
+        return JSONResponse(to_api_payload(dto))
+
+    @app.post("/rules/refill-check")
+    def refill_rules_check(
+        payload: RefillOperationRequest,
+        container: ApplicationContainer = Depends(get_application_container),
+    ) -> JSONResponse:
+        dto = container.services.rules.evaluate_refill(
+            RefillRequest(
+                operator_user_id=payload.operator_user_id,
+                item_id=payload.item_id,
+                slot_id=payload.slot_id,
+                quantity=payload.quantity,
+                mode=payload.mode,
+                session_id=payload.session_id,
+            )
         )
         return JSONResponse(to_api_payload(dto))
 

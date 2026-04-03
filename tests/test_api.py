@@ -6,8 +6,30 @@ from fastapi.testclient import TestClient
 
 from app.api import create_app
 from app.config import AppSettings
-from app.domain.enums import BindingType, ItemStatus, OperationState, RoleCode, SlotStatus, SlotType, UserStatus
-from app.persistence.models import InventoryBalance, Item, Operation, OperationStateHistory, RecoveryCase, Role, Slot, SlotItemBinding, User
+from app.domain.enums import (
+    BindingType,
+    ItemStatus,
+    OperationState,
+    RoleCode,
+    SessionStatus,
+    SessionType,
+    SlotStatus,
+    SlotType,
+    UserStatus,
+)
+from app.persistence.models import (
+    InventoryBalance,
+    Item,
+    Operation,
+    OperationSession,
+    OperationStateHistory,
+    Permission,
+    RecoveryCase,
+    Role,
+    Slot,
+    SlotItemBinding,
+    User,
+)
 
 
 def test_app_creation_smoke(tmp_path: Path) -> None:
@@ -59,6 +81,40 @@ def test_dispense_operation_happy_path(tmp_path: Path) -> None:
     assert response.status_code == 200
     assert response.json()["operation_state"] == "completed"
     assert response.json()["qty_confirmed"] == 1
+
+
+def test_rule_check_endpoints_return_structured_payloads(tmp_path: Path) -> None:
+    app = create_app(_settings(tmp_path, "api_rules.sqlite3"))
+    ids = _seed_rule_domain_with_permissions(app)
+
+    with TestClient(app) as client:
+        dispense_response = client.post(
+            "/rules/dispense-check",
+            json={"user_id": ids["user_id"], "item_id": ids["item_id"], "slot_id": ids["slot_id"], "quantity": 1},
+        )
+        return_response = client.post(
+            "/rules/return-check",
+            json={"user_id": ids["user_id"], "item_id": ids["item_id"], "slot_id": ids["slot_id"], "quantity": 1},
+        )
+        refill_response = client.post(
+            "/rules/refill-check",
+            json={
+                "operator_user_id": ids["operator_user_id"],
+                "item_id": ids["item_id"],
+                "slot_id": ids["slot_id"],
+                "quantity": 2,
+                "session_id": ids["service_session_id"],
+            },
+        )
+
+    assert dispense_response.status_code == 200
+    assert dispense_response.json()["allowed"] is True
+    assert dispense_response.json()["reason_codes"] == []
+    assert return_response.status_code == 200
+    assert return_response.json()["allowed"] is True
+    assert refill_response.status_code == 200
+    assert refill_response.json()["allowed"] is True
+    assert refill_response.json()["rules"][-1]["code"] == "refill_session_valid"
 
 
 def test_recovery_endpoints_happy_path(tmp_path: Path) -> None:
@@ -178,3 +234,88 @@ def _seed_recovery_operation(app) -> None:
             )
         )
         session.commit()
+
+
+def _seed_rule_domain_with_permissions(app) -> dict[str, int]:
+    with app.state.session_factory() as session:
+        user_role = Role(code=RoleCode.USER, name="User")
+        operator_role = Role(code=RoleCode.OPERATOR, name="Operator")
+        session.add_all((user_role, operator_role))
+        session.flush()
+
+        user = User(
+            role_id=user_role.id,
+            user_code="user-1",
+            full_name="User One",
+            status=UserStatus.ACTIVE,
+            is_active=True,
+        )
+        operator = User(
+            role_id=operator_role.id,
+            user_code="operator-1",
+            full_name="Operator One",
+            status=UserStatus.ACTIVE,
+            is_active=True,
+        )
+        item = Item(
+            item_group_id=None,
+            sku="item-1",
+            name="Item One",
+            description=None,
+            unit="pcs",
+            return_allowed=True,
+            min_level=0,
+            status=ItemStatus.ACTIVE,
+        )
+        slot = Slot(
+            code="slot-1",
+            slot_type=SlotType.UNIVERSAL,
+            drum_position=3,
+            board_address=1,
+            lock_number=1,
+            capacity=10,
+            status=SlotStatus.ACTIVE,
+        )
+        session.add_all((user, operator, item, slot))
+        session.flush()
+        session.add(
+            SlotItemBinding(
+                slot_id=slot.id,
+                item_id=item.id,
+                binding_type=BindingType.RETURN,
+                is_active=True,
+                valid_from=None,
+                valid_to=None,
+            )
+        )
+        session.add(InventoryBalance(slot_id=slot.id, item_id=item.id, quantity=5))
+        session.add(
+            Permission(
+                user_id=user.id,
+                item_id=item.id,
+                item_group_id=None,
+                can_dispense=True,
+                can_return=True,
+                valid_from=None,
+                valid_to=None,
+                comment="seeded permission",
+            )
+        )
+        service_session = OperationSession(
+            session_type=SessionType.SERVICE,
+            status=SessionStatus.ACTIVE,
+            started_by_user_id=operator.id,
+            started_at=None,
+            finished_at=None,
+            comment="seeded service session",
+            context_json={},
+        )
+        session.add(service_session)
+        session.commit()
+        return {
+            "user_id": user.id,
+            "operator_user_id": operator.id,
+            "item_id": item.id,
+            "slot_id": slot.id,
+            "service_session_id": service_session.id,
+        }
