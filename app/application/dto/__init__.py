@@ -24,6 +24,7 @@ from app.application.dto.recovery import (
     RecoveryContextDTO,
     RecoveryScanResult,
 )
+from app.application.dto.seed import SeedWorkflowResultDTO
 from app.application.dto.service_mode import (
     DiagnosticCommandResultDTO,
     DiagnosticDumpManifestDTO,
@@ -76,6 +77,7 @@ __all__ = [
     "ReturnRequest",
     "RecoveryReadinessDTO",
     "ServiceModeSessionDTO",
+    "SeedWorkflowResultDTO",
     "SlotBindingDTO",
     "StartupReadinessDTO",
     "TransitionCheckResult",

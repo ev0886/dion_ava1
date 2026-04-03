@@ -11,6 +11,7 @@ from app.application.export_service import ExportService
 from app.application.inventory_service import InventoryService
 from app.application.recovery_service import RecoveryService
 from app.application.refill_service import RefillOperationService
+from app.application.seed_service import SeedService
 from app.application.return_service import ReturnOperationService
 from app.application.service_mode_service import ServiceModeService
 from app.application.startup_service import StartupOrchestrationService
@@ -51,6 +52,7 @@ class ServiceBundle:
     service_mode: ServiceModeService
     exports: ExportService
     startup: StartupOrchestrationService
+    seed: SeedService
 
 
 @dataclass(slots=True)
@@ -123,6 +125,11 @@ def build_services(
             db_session=session,
             hardware_facade=hardware.facade,
             recovery_service=recovery_service,
+        ),
+        seed=SeedService(
+            session=session,
+            event_log_repository=repositories.event_logs,
+            audit_log_repository=repositories.audit_logs,
         ),
     )
 

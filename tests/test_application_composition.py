@@ -43,6 +43,7 @@ def test_all_expected_services_are_present(tmp_path: Path) -> None:
         assert container.services.service_mode is not None
         assert container.services.exports is not None
         assert container.services.startup is not None
+        assert container.services.seed is not None
     finally:
         container.close()
 

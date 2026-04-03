@@ -13,6 +13,7 @@ from app.application.export_service import ExportService
 from app.application.inventory_service import InventoryService
 from app.application.recovery_service import RecoveryService
 from app.application.refill_service import RefillOperationService
+from app.application.seed_service import SeedService
 from app.application.service_mode_service import ServiceModeService
 from app.application.startup_service import StartupOrchestrationService, StartupService
 from app.application.return_service import ReturnOperationService
@@ -37,6 +38,7 @@ __all__ = [
     "RecoveryService",
     "RefillOperationService",
     "ReturnOperationService",
+    "SeedService",
     "ServiceModeService",
     "StartupOrchestrationService",
     "StartupService",

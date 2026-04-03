@@ -39,6 +39,10 @@ def build_parser() -> argparse.ArgumentParser:
     service_mode_close.add_argument("--user-id", type=int, required=True)
     service_mode_close.add_argument("--comment", type=str, default=None)
 
+    subparsers.add_parser("seed-base-data")
+    subparsers.add_parser("seed-demo-data")
+    subparsers.add_parser("reset-demo-data")
+
     return parser
 
 
@@ -108,6 +112,18 @@ def _dispatch(args: argparse.Namespace, container: ApplicationContainer) -> int:
             comment=args.comment,
         )
         print(_render(result))
+        return 0
+
+    if args.command == "seed-base-data":
+        print(_render(container.services.seed.initialize_base_reference_data()))
+        return 0
+
+    if args.command == "seed-demo-data":
+        print(_render(container.services.seed.create_demo_data_set()))
+        return 0
+
+    if args.command == "reset-demo-data":
+        print(_render(container.services.seed.reset_demo_data()))
         return 0
 
     raise ValueError(f"Unsupported command: {args.command}")

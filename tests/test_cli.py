@@ -106,6 +106,25 @@ def test_recovery_scan_runs_and_prints_deterministic_summary(tmp_path: Path) -> 
     assert '"unfinished_operation_ids": []' in stdout
 
 
+def test_seed_demo_data_command_prints_json_result(tmp_path: Path) -> None:
+    exit_code, stdout, stderr = _run_cli(
+        [
+            "--data-dir",
+            str(tmp_path),
+            "--sqlite-filename",
+            "cli_seed.sqlite3",
+            "--alembic-config-path",
+            "alembic.ini",
+            "seed-demo-data",
+        ]
+    )
+
+    assert exit_code == 0
+    assert '"workflow": "seed_demo_data"' in stdout
+    assert '"created_count": 19' in stdout
+    assert "ERROR:" not in stderr
+
+
 @dataclass(slots=True)
 class _FakeStartupService:
     result: StartupReadinessDTO
