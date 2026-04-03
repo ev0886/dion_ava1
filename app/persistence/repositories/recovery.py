@@ -33,6 +33,9 @@ class RecoveryRepository(Repository):
     def add_case_entity(self, recovery_case_entity: RecoveryCaseEntity) -> None:
         self.session.add(recovery_case_entity)
 
+    def add_action(self, recovery_action: RecoveryAction) -> None:
+        self.session.add(recovery_action)
+
     def get_case_entity(
         self,
         recovery_case_id: int,

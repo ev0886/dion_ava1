@@ -4,19 +4,22 @@ from dataclasses import dataclass, field
 
 from app.application.dto.operations import TransitionCheckResult
 from app.application.dto.recovery import (
+    ManualRecoveryActionRequestDTO,
     RecoveryCandidateDTO,
     RecoveryCaseDTO,
     RecoveryContextDTO,
+    RecoveryResolutionResultDTO,
     RecoveryScanResult,
 )
 from app.application.exceptions import RecoveryError
-from app.application.manual_resolution_service import ManualResolutionPreparationService
+from app.application.manual_resolution_service import ManualRecoveryActionService, ManualResolutionPreparationService
 from app.application.operation_recorder import OperationRecorder
 from app.application.reconciliation_service import RecoveryReconciliationService
 from app.application.state_machine import assert_transition_allowed, can_transition
 from app.domain.enums import OperationState, OperationType, RecoveryClassification, RecoveryStatus
 from app.persistence.models import Operation, RecoveryCase, RecoveryCaseEntity
 from app.persistence.repositories.inventory import InventoryRepository
+from app.persistence.repositories.logs import AuditLogRepository, EventLogRepository
 from app.persistence.repositories.operations import OperationRepository
 from app.persistence.repositories.recovery import RecoveryRepository
 
@@ -26,14 +29,24 @@ class RecoveryService:
     recovery_repository: RecoveryRepository
     operation_repository: OperationRepository
     inventory_repository: InventoryRepository
+    event_log_repository: EventLogRepository
+    audit_log_repository: AuditLogRepository
     _recorder: OperationRecorder = field(init=False, repr=False)
     _reconciliation_service: RecoveryReconciliationService = field(init=False, repr=False)
     _manual_resolution_service: ManualResolutionPreparationService = field(init=False, repr=False)
+    _manual_recovery_action_service: ManualRecoveryActionService = field(init=False, repr=False)
 
     def __post_init__(self) -> None:
         self._recorder = OperationRecorder(self.operation_repository)
         self._reconciliation_service = RecoveryReconciliationService(self.inventory_repository)
         self._manual_resolution_service = ManualResolutionPreparationService(self.recovery_repository)
+        self._manual_recovery_action_service = ManualRecoveryActionService(
+            recovery_repository=self.recovery_repository,
+            operation_repository=self.operation_repository,
+            inventory_repository=self.inventory_repository,
+            event_log_repository=self.event_log_repository,
+            audit_log_repository=self.audit_log_repository,
+        )
 
     def get_case(self, recovery_case_id: int) -> RecoveryCaseDTO:
         recovery_case = self.recovery_repository.get_by_id(recovery_case_id)
@@ -109,6 +122,12 @@ class RecoveryService:
 
     def prepare_manual_resolution(self, recovery_case_id: int):
         return self._manual_resolution_service.prepare_case(recovery_case_id)
+
+    def apply_manual_action(self, request: ManualRecoveryActionRequestDTO) -> RecoveryResolutionResultDTO:
+        return self._manual_recovery_action_service.apply_action(request)
+
+    def resolve_case(self, request: ManualRecoveryActionRequestDTO) -> RecoveryResolutionResultDTO:
+        return self._manual_recovery_action_service.resolve_case(request)
 
     @staticmethod
     def _terminal_states() -> tuple[OperationState, ...]:

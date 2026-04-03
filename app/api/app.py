@@ -11,6 +11,7 @@ from app.api.schemas import (
     AuthResolveRequest,
     DispenseOperationRequest,
     ExportCreateRequest,
+    RecoveryActionRequest,
     RefillOperationRequest,
     ReturnOperationRequest,
     ServiceModeFinishRequest,
@@ -20,6 +21,7 @@ from app.api.schemas import (
 from app.application.composition import ApplicationContainer
 from app.application.dto.auth import AuthRequest
 from app.application.dto.operations import DispenseRequest, RefillRequest, ReturnRequest
+from app.application.dto.recovery import InventoryCorrectionRequestDTO, ManualRecoveryActionRequestDTO
 from app.bootstrap import bootstrap
 from app.config import AppSettings, get_settings
 from app.persistence.session import create_session_factory, create_sqlalchemy_engine
@@ -143,6 +145,28 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
     ) -> JSONResponse:
         return JSONResponse(to_api_payload(container.services.recovery.prepare_manual_resolution(recovery_case_id)))
 
+    @app.post("/recovery/cases/{recovery_case_id}/actions")
+    def recovery_apply_action(
+        recovery_case_id: int,
+        payload: RecoveryActionRequest,
+        container: ApplicationContainer = Depends(get_application_container),
+    ) -> JSONResponse:
+        return JSONResponse(to_api_payload(container.services.recovery.apply_manual_action(_to_recovery_request(
+            recovery_case_id,
+            payload,
+        ))))
+
+    @app.post("/recovery/cases/{recovery_case_id}/resolve")
+    def recovery_resolve_case(
+        recovery_case_id: int,
+        payload: RecoveryActionRequest,
+        container: ApplicationContainer = Depends(get_application_container),
+    ) -> JSONResponse:
+        return JSONResponse(to_api_payload(container.services.recovery.resolve_case(_to_recovery_request(
+            recovery_case_id,
+            payload,
+        ))))
+
     @app.post("/service-mode/start")
     def service_mode_start(
         payload: ServiceModeStartRequest,
@@ -192,3 +216,22 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
         )
 
     return app
+
+
+def _to_recovery_request(recovery_case_id: int, payload: RecoveryActionRequest) -> ManualRecoveryActionRequestDTO:
+    return ManualRecoveryActionRequestDTO(
+        recovery_case_id=recovery_case_id,
+        action=payload.action,
+        actor_user_id=payload.actor_user_id,
+        comment=payload.comment,
+        resolution_code=payload.resolution_code,
+        inventory_correction=(
+            InventoryCorrectionRequestDTO(
+                slot_id=payload.inventory_correction.slot_id,
+                item_id=payload.inventory_correction.item_id,
+                quantity_delta=payload.inventory_correction.quantity_delta,
+            )
+            if payload.inventory_correction is not None
+            else None
+        ),
+    )

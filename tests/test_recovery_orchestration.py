@@ -8,6 +8,8 @@ from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.application.manual_resolution_service import ManualResolutionPreparationService
+from app.application.dto.recovery import InventoryCorrectionRequestDTO, ManualRecoveryActionRequestDTO
+from app.application.exceptions import RecoveryError
 from app.application.reconciliation_service import RecoveryReconciliationService
 from app.application.recovery_service import RecoveryService
 from app.application.time import utc_now
@@ -30,6 +32,8 @@ from app.persistence.models import (
     Item,
     Operation,
     OperationStateHistory,
+    AuditLog,
+    EventLog,
     RecoveryCase,
     RecoveryCaseEntity,
     Role,
@@ -37,6 +41,7 @@ from app.persistence.models import (
     User,
 )
 from app.persistence.repositories.inventory import InventoryRepository
+from app.persistence.repositories.logs import AuditLogRepository, EventLogRepository
 from app.persistence.repositories.operations import OperationRepository
 from app.persistence.repositories.recovery import RecoveryRepository
 
@@ -203,6 +208,235 @@ def test_manual_resolution_preparation_returns_structured_impacted_entity_contex
         assert preparation.context["operation_id"] == operation.id
 
 
+def test_confirm_operation_failed_happy_path(session_factory: sessionmaker[Session]) -> None:
+    with session_factory() as session:
+        ids = _seed_domain(session)
+        operation = _add_operation(session, ids=ids, state=OperationState.COMPLETION_VERIFICATION)
+        service = _recovery_service(session)
+        recovery_case_id = service.scan_recovery_targets().candidates[0].recovery_case_id
+
+        result = service.apply_manual_action(
+            ManualRecoveryActionRequestDTO(
+                recovery_case_id=recovery_case_id,
+                action="confirm_operation_failed",
+                actor_user_id=ids.user_id,
+                comment="Operator confirmed failure",
+            )
+        )
+
+        refreshed = session.get(Operation, operation.id)
+        assert result.recovery_case_id == recovery_case_id
+        assert result.case_status is RecoveryStatus.IN_PROGRESS
+        assert result.case_resolved is False
+        assert result.affected_operation is not None
+        assert refreshed is not None
+        assert refreshed.operation_state is OperationState.FAILED
+        assert refreshed.result == "manually_confirmed_failure"
+
+
+def test_confirm_operation_succeeded_happy_path_when_evidence_supports_it(
+    session_factory: sessionmaker[Session],
+) -> None:
+    with session_factory() as session:
+        ids = _seed_domain(session)
+        operation = _add_operation(session, ids=ids, state=OperationState.INVENTORY_WRITTEN)
+        session.add(
+            InventoryTransaction(
+                slot_id=ids.slot_id,
+                item_id=ids.item_id,
+                operation_id=operation.id,
+                session_id=None,
+                transaction_type=InventoryTransactionType.DISPENSE_DEBIT,
+                quantity_delta=-1,
+                quantity_before=5,
+                quantity_after=4,
+                comment="Recorded inventory write",
+                created_at=utc_now(),
+            )
+        )
+        session.commit()
+        service = _recovery_service(session)
+        recovery_case_id = service.scan_recovery_targets().candidates[0].recovery_case_id
+
+        result = service.apply_manual_action(
+            ManualRecoveryActionRequestDTO(
+                recovery_case_id=recovery_case_id,
+                action="confirm_operation_succeeded",
+                actor_user_id=ids.user_id,
+                comment="Evidence supports success",
+            )
+        )
+
+        refreshed = session.get(Operation, operation.id)
+        assert result.case_status is RecoveryStatus.IN_PROGRESS
+        assert result.affected_operation is not None
+        assert refreshed is not None
+        assert refreshed.operation_state is OperationState.COMPLETED
+        assert refreshed.result == "manually_confirmed_success"
+        assert refreshed.error_code is None
+
+
+def test_manual_inventory_correction_through_recovery_action(session_factory: sessionmaker[Session]) -> None:
+    with session_factory() as session:
+        ids = _seed_domain(session)
+        _add_operation(session, ids=ids, state=OperationState.INVENTORY_WRITE_PENDING)
+        service = _recovery_service(session)
+        recovery_case_id = service.scan_recovery_targets().candidates[0].recovery_case_id
+
+        result = service.apply_manual_action(
+            ManualRecoveryActionRequestDTO(
+                recovery_case_id=recovery_case_id,
+                action="apply_inventory_correction",
+                actor_user_id=ids.user_id,
+                comment="Physical count showed one missing item",
+                inventory_correction=InventoryCorrectionRequestDTO(
+                    slot_id=ids.slot_id,
+                    item_id=ids.item_id,
+                    quantity_delta=-1,
+                ),
+            )
+        )
+
+        balance = session.execute(
+            select(InventoryBalance).where(InventoryBalance.slot_id == ids.slot_id, InventoryBalance.item_id == ids.item_id)
+        ).scalar_one()
+        transactions = session.execute(select(InventoryTransaction).order_by(InventoryTransaction.id.asc())).scalars().all()
+        assert result.case_status is RecoveryStatus.IN_PROGRESS
+        assert result.affected_inventory is not None
+        assert result.affected_inventory.quantity_after == 4
+        assert balance is not None
+        assert balance.quantity == 4
+        assert transactions[-1].transaction_type is InventoryTransactionType.RECOVERY_ADJUSTMENT
+
+
+def test_mark_no_action_needed_path(session_factory: sessionmaker[Session]) -> None:
+    with session_factory() as session:
+        ids = _seed_domain(session)
+        _add_operation(session, ids=ids, state=OperationState.COMPLETION_VERIFICATION)
+        service = _recovery_service(session)
+        recovery_case_id = service.scan_recovery_targets().candidates[0].recovery_case_id
+
+        result = service.apply_manual_action(
+            ManualRecoveryActionRequestDTO(
+                recovery_case_id=recovery_case_id,
+                action="mark_no_action_needed",
+                actor_user_id=ids.user_id,
+                comment="Physical inspection found nothing actionable",
+            )
+        )
+
+        recovery_case = session.get(RecoveryCase, recovery_case_id)
+        assert result.case_resolved is True
+        assert result.case_status is RecoveryStatus.RESOLVED
+        assert result.resolution_code == "no_action_needed"
+        assert recovery_case is not None
+        assert recovery_case.status is RecoveryStatus.RESOLVED
+
+
+def test_close_resolve_recovery_case_happy_path(session_factory: sessionmaker[Session]) -> None:
+    with session_factory() as session:
+        ids = _seed_domain(session)
+        _add_operation(session, ids=ids, state=OperationState.COMPLETION_VERIFICATION)
+        service = _recovery_service(session)
+        recovery_case_id = service.scan_recovery_targets().candidates[0].recovery_case_id
+        service.apply_manual_action(
+            ManualRecoveryActionRequestDTO(
+                recovery_case_id=recovery_case_id,
+                action="confirm_operation_failed",
+                actor_user_id=ids.user_id,
+                comment="Operator confirmed failure",
+            )
+        )
+
+        result = service.resolve_case(
+            ManualRecoveryActionRequestDTO(
+                recovery_case_id=recovery_case_id,
+                action="close_recovery_case",
+                actor_user_id=ids.user_id,
+                comment="Case reconciled and documented",
+                resolution_code="manual_failure_confirmed",
+            )
+        )
+
+        assert result.case_resolved is True
+        assert result.case_status is RecoveryStatus.RESOLVED
+        assert result.resolution_code == "manual_failure_confirmed"
+        assert result.affected_operation is not None
+        assert result.affected_operation.changed is False
+
+
+def test_rejection_when_case_is_already_resolved(session_factory: sessionmaker[Session]) -> None:
+    with session_factory() as session:
+        ids = _seed_domain(session)
+        _add_operation(session, ids=ids, state=OperationState.COMPLETION_VERIFICATION)
+        service = _recovery_service(session)
+        recovery_case_id = service.scan_recovery_targets().candidates[0].recovery_case_id
+        service.resolve_case(
+            ManualRecoveryActionRequestDTO(
+                recovery_case_id=recovery_case_id,
+                action="close_recovery_case",
+                actor_user_id=ids.user_id,
+                comment="Resolved",
+                resolution_code="closed_once",
+            )
+        )
+
+        with pytest.raises(RecoveryError, match="already resolved"):
+            service.apply_manual_action(
+                ManualRecoveryActionRequestDTO(
+                    recovery_case_id=recovery_case_id,
+                    action="confirm_operation_failed",
+                    actor_user_id=ids.user_id,
+                    comment="Should not be accepted",
+                )
+            )
+
+
+def test_rejection_when_action_is_incompatible_with_current_state_or_evidence(
+    session_factory: sessionmaker[Session],
+) -> None:
+    with session_factory() as session:
+        ids = _seed_domain(session)
+        _add_operation(session, ids=ids, state=OperationState.INVENTORY_WRITE_PENDING)
+        service = _recovery_service(session)
+        recovery_case_id = service.scan_recovery_targets().candidates[0].recovery_case_id
+
+        with pytest.raises(RecoveryError, match="incompatible"):
+            service.apply_manual_action(
+                ManualRecoveryActionRequestDTO(
+                    recovery_case_id=recovery_case_id,
+                    action="confirm_operation_succeeded",
+                    actor_user_id=ids.user_id,
+                    comment="Too little evidence",
+                )
+            )
+
+
+def test_audit_log_creation_for_manual_recovery_action(session_factory: sessionmaker[Session]) -> None:
+    with session_factory() as session:
+        ids = _seed_domain(session)
+        _add_operation(session, ids=ids, state=OperationState.COMPLETION_VERIFICATION)
+        service = _recovery_service(session)
+        recovery_case_id = service.scan_recovery_targets().candidates[0].recovery_case_id
+
+        service.apply_manual_action(
+            ManualRecoveryActionRequestDTO(
+                recovery_case_id=recovery_case_id,
+                action="confirm_operation_failed",
+                actor_user_id=ids.user_id,
+                comment="Operator confirmed failure",
+            )
+        )
+
+        audit_logs = session.execute(select(AuditLog).order_by(AuditLog.id.asc())).scalars().all()
+        assert len(audit_logs) == 1
+        assert audit_logs[0].entity_type == "recovery_case"
+        assert audit_logs[0].action == "manual_recovery_confirm_operation_failed"
+        assert audit_logs[0].actor_user_id == ids.user_id
+        assert audit_logs[0].after_json["affected_operation"]["state"] == "failed"
+        assert session.execute(select(EventLog)).scalars().all() == []
+
+
 class _SeedIds:
     def __init__(self, user_id: int, item_id: int, slot_id: int) -> None:
         self.user_id = user_id
@@ -285,4 +519,6 @@ def _recovery_service(session: Session) -> RecoveryService:
         RecoveryRepository(session),
         OperationRepository(session),
         InventoryRepository(session),
+        EventLogRepository(session),
+        AuditLogRepository(session),
     )

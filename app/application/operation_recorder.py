@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+
 from app.application.state_machine import assert_transition_allowed
 from app.application.time import utc_now
-from app.domain.enums import OperationState
+from app.domain.enums import OperationState, OperationType
 from app.hardware.exceptions import HardwareBusyError, HardwareError, HardwareFailureError, HardwareTimeoutError
 from app.persistence.models import Operation, OperationStateHistory
 from app.persistence.repositories.operations import OperationRepository
@@ -87,6 +88,46 @@ class OperationRecorder:
             error_message=str(error),
             finished=True,
         )
+
+    def recover_to_terminal(
+        self,
+        operation: Operation,
+        target_state: OperationState,
+        *,
+        comment: str,
+        history_context: dict[str, object] | None = None,
+        result: str | None = None,
+        error_code: str | None = None,
+        error_message: str | None = None,
+        qty_confirmed: int | None = None,
+        clear_error: bool = False,
+    ) -> Operation:
+        if target_state not in self._allowed_manual_recovery_terminal_states(operation.operation_type):
+            raise ValueError(
+                f"Unsupported manual recovery target for {operation.operation_type.value}: {target_state.value}"
+            )
+        operation.operation_state = target_state
+        if result is not None:
+            operation.result = result
+        if clear_error:
+            operation.error_code = None
+            operation.error_message = None
+        if error_code is not None:
+            operation.error_code = error_code
+        if error_message is not None:
+            operation.error_message = error_message
+        if qty_confirmed is not None:
+            operation.qty_confirmed = qty_confirmed
+        operation.finished_at = operation.finished_at or utc_now()
+        self._append_history(operation.id, target_state, comment=comment, context=history_context)
+        self.operation_repository.session.flush()
+        return operation
+
+    @staticmethod
+    def _allowed_manual_recovery_terminal_states(operation_type: OperationType) -> tuple[OperationState, ...]:
+        if operation_type is OperationType.REFILL_ITEM:
+            return (OperationState.SESSION_COMPLETED, OperationState.CANCELLED, OperationState.FAILED)
+        return (OperationState.COMPLETED, OperationState.CANCELLED, OperationState.FAILED)
 
     @staticmethod
     def error_code_for_exception(error: HardwareError) -> str:

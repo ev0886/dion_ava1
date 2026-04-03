@@ -82,6 +82,41 @@ def test_recovery_endpoints_happy_path(tmp_path: Path) -> None:
     assert manual_response.json()["recovery_case_id"] == recovery_case_id
 
 
+def test_recovery_manual_action_and_resolution_endpoints(tmp_path: Path) -> None:
+    app = create_app(_settings(tmp_path, "api_recovery_actions.sqlite3"))
+    _seed_base_domain(app)
+    _seed_recovery_operation(app, operation_state=OperationState.COMPLETION_VERIFICATION)
+
+    with TestClient(app) as client:
+        scan_response = client.post("/recovery/scan")
+        recovery_case_id = scan_response.json()["open_cases"][0]["recovery_case_id"]
+
+        action_response = client.post(
+            f"/recovery/cases/{recovery_case_id}/actions",
+            json={
+                "action": "confirm_operation_failed",
+                "actor_user_id": 1,
+                "comment": "Operator confirmed failure",
+            },
+        )
+        resolve_response = client.post(
+            f"/recovery/cases/{recovery_case_id}/resolve",
+            json={
+                "action": "close_recovery_case",
+                "actor_user_id": 1,
+                "comment": "Case reconciled",
+                "resolution_code": "manual_failure_confirmed",
+            },
+        )
+
+    assert action_response.status_code == 200
+    assert action_response.json()["case_status"] == "in_progress"
+    assert action_response.json()["affected_operation"]["state"] == "failed"
+    assert resolve_response.status_code == 200
+    assert resolve_response.json()["case_status"] == "resolved"
+    assert resolve_response.json()["resolution_code"] == "manual_failure_confirmed"
+
+
 def test_error_mapping_returns_400_for_validation_error(tmp_path: Path) -> None:
     app = create_app(_settings(tmp_path, "api_errors.sqlite3"))
 
@@ -148,12 +183,12 @@ def _seed_base_domain(app) -> None:
         session.commit()
 
 
-def _seed_recovery_operation(app) -> None:
+def _seed_recovery_operation(app, operation_state: OperationState = OperationState.USER_ACTION_PENDING) -> None:
     with app.state.session_factory() as session:
         operation = Operation(
             session_id=None,
             operation_type="dispense",
-            operation_state=OperationState.USER_ACTION_PENDING,
+            operation_state=operation_state,
             user_id=1,
             item_id=1,
             slot_id=1,
@@ -172,7 +207,7 @@ def _seed_recovery_operation(app) -> None:
         session.add(
             OperationStateHistory(
                 operation_id=operation.id,
-                state=OperationState.USER_ACTION_PENDING,
+                state=operation_state,
                 comment="seeded recovery candidate",
                 context_json={},
             )

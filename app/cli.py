@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from app.application.composition import ApplicationContainer, create_bootstrapped_application_container
+from app.application.dto.recovery import InventoryCorrectionRequestDTO, ManualRecoveryActionRequestDTO
 from app.config import AppSettings
 from app.domain.enums import StartupReadinessStatus
 
@@ -23,6 +24,23 @@ def build_parser() -> argparse.ArgumentParser:
     subparsers.add_parser("startup-check")
     subparsers.add_parser("hardware-health")
     subparsers.add_parser("recovery-scan")
+
+    apply_recovery_action = subparsers.add_parser("apply-recovery-action")
+    apply_recovery_action.add_argument("--recovery-case-id", type=int, required=True)
+    apply_recovery_action.add_argument("--action", type=str, required=True)
+    apply_recovery_action.add_argument("--actor-user-id", type=int, default=None)
+    apply_recovery_action.add_argument("--comment", type=str, default=None)
+    apply_recovery_action.add_argument("--resolution-code", type=str, default=None)
+    apply_recovery_action.add_argument("--slot-id", type=int, default=None)
+    apply_recovery_action.add_argument("--item-id", type=int, default=None)
+    apply_recovery_action.add_argument("--quantity-delta", type=int, default=None)
+
+    resolve_recovery_case = subparsers.add_parser("resolve-recovery-case")
+    resolve_recovery_case.add_argument("--recovery-case-id", type=int, required=True)
+    resolve_recovery_case.add_argument("--action", type=str, required=True)
+    resolve_recovery_case.add_argument("--actor-user-id", type=int, default=None)
+    resolve_recovery_case.add_argument("--comment", type=str, default=None)
+    resolve_recovery_case.add_argument("--resolution-code", type=str, required=True)
 
     export_plan = subparsers.add_parser("export-plan")
     export_plan.add_argument("--requested-by-user-id", type=int, required=True)
@@ -80,6 +98,34 @@ def _dispatch(args: argparse.Namespace, container: ApplicationContainer) -> int:
         print(_render(summary))
         return 0
 
+    if args.command == "apply-recovery-action":
+        result = container.services.recovery.apply_manual_action(
+            ManualRecoveryActionRequestDTO(
+                recovery_case_id=args.recovery_case_id,
+                action=args.action,
+                actor_user_id=args.actor_user_id,
+                comment=args.comment,
+                resolution_code=args.resolution_code,
+                inventory_correction=_inventory_correction_from_args(args),
+            )
+        )
+        print(_render(result))
+        return 0
+
+    if args.command == "resolve-recovery-case":
+        result = container.services.recovery.resolve_case(
+            ManualRecoveryActionRequestDTO(
+                recovery_case_id=args.recovery_case_id,
+                action=args.action,
+                actor_user_id=args.actor_user_id,
+                comment=args.comment,
+                resolution_code=args.resolution_code,
+                inventory_correction=None,
+            )
+        )
+        print(_render(result))
+        return 0
+
     if args.command == "export-plan":
         snapshot = container.services.service_mode.get_hardware_snapshot(session_id=None)
         manifest = container.services.exports.build_diagnostic_dump_manifest(session_id=None, snapshot=snapshot)
@@ -125,6 +171,18 @@ def _settings_from_args(args: argparse.Namespace) -> AppSettings | None:
 
 def _render(value: Any) -> str:
     return json.dumps(_to_jsonable(value), indent=2, sort_keys=True)
+
+
+def _inventory_correction_from_args(args: argparse.Namespace) -> InventoryCorrectionRequestDTO | None:
+    if args.slot_id is None and args.item_id is None and args.quantity_delta is None:
+        return None
+    if args.slot_id is None or args.item_id is None or args.quantity_delta is None:
+        raise ValueError("slot-id, item-id, and quantity-delta are all required for inventory correction")
+    return InventoryCorrectionRequestDTO(
+        slot_id=args.slot_id,
+        item_id=args.item_id,
+        quantity_delta=args.quantity_delta,
+    )
 
 
 def _to_jsonable(value: Any) -> Any:

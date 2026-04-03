@@ -60,6 +60,26 @@ class ExportCreateRequest(ApiModel):
     comment: str | None = None
 
 
+class InventoryCorrectionRequest(ApiModel):
+    slot_id: int
+    item_id: int
+    quantity_delta: int
+
+
+class RecoveryActionRequest(ApiModel):
+    action: Literal[
+        "confirm_operation_succeeded",
+        "confirm_operation_failed",
+        "apply_inventory_correction",
+        "mark_no_action_needed",
+        "close_recovery_case",
+    ]
+    actor_user_id: int | None = None
+    comment: str | None = None
+    resolution_code: str | None = None
+    inventory_correction: InventoryCorrectionRequest | None = None
+
+
 class ErrorResponse(ApiModel):
     error: str
     detail: str

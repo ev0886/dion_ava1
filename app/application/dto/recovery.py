@@ -20,6 +20,14 @@ ManualResolutionActionCategory = Literal[
     "decide_case_closure",
 ]
 
+ManualRecoveryActionType = Literal[
+    "confirm_operation_succeeded",
+    "confirm_operation_failed",
+    "apply_inventory_correction",
+    "mark_no_action_needed",
+    "close_recovery_case",
+]
+
 
 @dataclass(frozen=True, slots=True)
 class RecoveryCaseDTO:
@@ -95,3 +103,54 @@ class ManualResolutionPreparationDTO:
     recovery_actions: tuple[RecoveryActionDTO, ...]
     recommended_next_action_categories: tuple[ManualResolutionActionCategory, ...]
     context: dict[str, object]
+
+
+@dataclass(frozen=True, slots=True)
+class InventoryCorrectionRequestDTO:
+    slot_id: int
+    item_id: int
+    quantity_delta: int
+
+
+@dataclass(frozen=True, slots=True)
+class ManualRecoveryActionRequestDTO:
+    recovery_case_id: int
+    action: ManualRecoveryActionType
+    actor_user_id: int | None
+    comment: str | None
+    resolution_code: str | None = None
+    inventory_correction: InventoryCorrectionRequestDTO | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class AffectedOperationOutcomeDTO:
+    operation_id: int
+    state: str
+    result: str | None
+    changed: bool
+    message: str
+
+
+@dataclass(frozen=True, slots=True)
+class AffectedInventoryOutcomeDTO:
+    slot_id: int
+    item_id: int
+    quantity_before: int
+    quantity_after: int
+    quantity_delta: int
+    transaction_type: str
+    transaction_id: int | None
+    changed: bool
+    message: str
+
+
+@dataclass(frozen=True, slots=True)
+class RecoveryResolutionResultDTO:
+    recovery_case_id: int
+    action_applied: ManualRecoveryActionType
+    case_status: RecoveryStatus
+    case_resolved: bool
+    resolution_code: str | None
+    affected_operation: AffectedOperationOutcomeDTO | None
+    affected_inventory: AffectedInventoryOutcomeDTO | None
+    summary_message: str

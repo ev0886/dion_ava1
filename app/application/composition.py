@@ -94,6 +94,8 @@ def build_services(
         repositories.recovery,
         repositories.operations,
         repositories.inventory,
+        repositories.event_logs,
+        repositories.audit_logs,
     )
     return ServiceBundle(
         auth=auth_service,
