@@ -5,6 +5,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict
 
 from app.domain.enums import RoleCode
+from app.serialization import to_jsonable
 
 
 class ApiModel(BaseModel):
@@ -66,21 +67,4 @@ class ErrorResponse(ApiModel):
 
 
 def to_api_payload(value: Any) -> Any:
-    from dataclasses import asdict, is_dataclass
-    from datetime import date, datetime
-    from enum import Enum
-    from pathlib import Path
-
-    if is_dataclass(value):
-        return to_api_payload(asdict(value))
-    if isinstance(value, Enum):
-        return value.value
-    if isinstance(value, (datetime, date)):
-        return value.isoformat()
-    if isinstance(value, Path):
-        return str(value)
-    if isinstance(value, dict):
-        return {str(key): to_api_payload(item) for key, item in value.items()}
-    if isinstance(value, (list, tuple)):
-        return [to_api_payload(item) for item in value]
-    return value
+    return to_jsonable(value)

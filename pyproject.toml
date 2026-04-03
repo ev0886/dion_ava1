@@ -6,6 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "dion-aba1"
 version = "0.1.0"
 description = "Control software for DION ABA1 vending machine"
+readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
     "alembic>=1.14,<2.0",

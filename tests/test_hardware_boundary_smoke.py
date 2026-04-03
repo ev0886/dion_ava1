@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from contextlib import redirect_stderr, redirect_stdout
-from io import StringIO
 from pathlib import Path
 
 import pytest
@@ -9,9 +7,9 @@ from fastapi.testclient import TestClient
 
 from app.api import create_app
 from app.application.composition import create_bootstrapped_application_container
-from app.cli import main
 from app.config import AppSettings, HardwareProvider
 from app.domain.enums import StartupReadinessStatus
+from tests.helpers import run_cli
 
 
 def test_startup_readiness_smoke_with_mock_provider(tmp_path: Path) -> None:
@@ -76,7 +74,7 @@ def test_cli_hardware_health_smoke_with_composed_real_provider(
         lambda _settings: create_bootstrapped_application_container(settings),
     )
 
-    exit_code, stdout, stderr = _run_cli(["hardware-health"])
+    exit_code, stdout, stderr = run_cli(["hardware-health"])
 
     assert exit_code == 0
     assert '"drum"' in stdout
@@ -84,16 +82,6 @@ def test_cli_hardware_health_smoke_with_composed_real_provider(
     assert '"rfid"' in stdout
     assert '"is_available": true' in stdout
     assert "ERROR:" not in stderr
-
-
-def _run_cli(argv: list[str]) -> tuple[int, str, str]:
-    stdout_buffer = StringIO()
-    stderr_buffer = StringIO()
-    with redirect_stdout(stdout_buffer), redirect_stderr(stderr_buffer):
-        exit_code = main(argv)
-    return exit_code, stdout_buffer.getvalue(), stderr_buffer.getvalue()
-
-
 class _FakeTransport:
     def __init__(self, responses: list[bytes]) -> None:
         self._responses = list(responses)

@@ -3,41 +3,64 @@ from __future__ import annotations
 import argparse
 import json
 import sys
-from dataclasses import asdict, is_dataclass
-from enum import Enum
 from pathlib import Path
-from typing import Any
 
 from app.application.composition import ApplicationContainer, create_bootstrapped_application_container
 from app.config import AppSettings
 from app.domain.enums import StartupReadinessStatus
+from app.serialization import to_jsonable
 
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="python -m app.cli", description="DION ABA1 operator CLI")
-    parser.add_argument("--data-dir", type=Path, default=None)
-    parser.add_argument("--sqlite-filename", type=str, default=None)
-    parser.add_argument("--alembic-config-path", type=Path, default=None)
-    subparsers = parser.add_subparsers(dest="command", required=True)
+    parser.add_argument("--data-dir", type=Path, default=None, help="Override the runtime data directory.")
+    parser.add_argument("--sqlite-filename", type=str, default=None, help="Override the SQLite database filename.")
+    parser.add_argument(
+        "--alembic-config-path",
+        type=Path,
+        default=None,
+        help="Override the Alembic config path used during bootstrap.",
+    )
+    subparsers = parser.add_subparsers(dest="command", required=True, metavar="COMMAND")
 
-    subparsers.add_parser("startup-check")
-    subparsers.add_parser("hardware-health")
-    subparsers.add_parser("recovery-scan")
+    subparsers.add_parser("startup-check", help="Run startup readiness checks.", description="Run startup readiness checks.")
+    subparsers.add_parser(
+        "hardware-health",
+        help="Read the current hardware health snapshot.",
+        description="Read the current hardware health snapshot.",
+    )
+    subparsers.add_parser(
+        "recovery-scan",
+        help="Scan for unfinished operations and recovery cases.",
+        description="Scan for unfinished operations and recovery cases.",
+    )
 
-    export_plan = subparsers.add_parser("export-plan")
-    export_plan.add_argument("--requested-by-user-id", type=int, required=True)
-    export_plan.add_argument("--destination-type", type=str, default="filesystem")
-    export_plan.add_argument("--destination-path", type=str, default="var/exports")
-    export_plan.add_argument("--comment", type=str, default=None)
+    export_plan = subparsers.add_parser(
+        "export-plan",
+        help="Prepare a diagnostics export plan.",
+        description="Prepare a diagnostics export plan.",
+    )
+    export_plan.add_argument("--requested-by-user-id", type=int, required=True, help="User requesting the export.")
+    export_plan.add_argument("--destination-type", type=str, default="filesystem", help="Export destination type.")
+    export_plan.add_argument("--destination-path", type=str, default="var/exports", help="Export destination path.")
+    export_plan.add_argument("--comment", type=str, default=None, help="Optional operator comment.")
 
-    service_mode_open = subparsers.add_parser("service-mode-open")
-    service_mode_open.add_argument("--user-id", type=int, required=True)
-    service_mode_open.add_argument("--comment", type=str, default=None)
+    service_mode_open = subparsers.add_parser(
+        "service-mode-open",
+        help="Open a service-mode session.",
+        description="Open a service-mode session.",
+    )
+    service_mode_open.add_argument("--user-id", type=int, required=True, help="Operator or admin user id.")
+    service_mode_open.add_argument("--comment", type=str, default=None, help="Optional operator comment.")
 
-    service_mode_close = subparsers.add_parser("service-mode-close")
-    service_mode_close.add_argument("--session-id", type=int, required=True)
-    service_mode_close.add_argument("--user-id", type=int, required=True)
-    service_mode_close.add_argument("--comment", type=str, default=None)
+    service_mode_close = subparsers.add_parser(
+        "service-mode-close",
+        help="Close a service-mode session.",
+        description="Close a service-mode session.",
+    )
+    service_mode_close.add_argument("--session-id", type=int, required=True, help="Service-mode session id.")
+    service_mode_close.add_argument("--user-id", type=int, required=True, help="Operator or admin user id.")
+    service_mode_close.add_argument("--comment", type=str, default=None, help="Optional operator comment.")
 
     return parser
 
@@ -123,22 +146,8 @@ def _settings_from_args(args: argparse.Namespace) -> AppSettings | None:
     )
 
 
-def _render(value: Any) -> str:
-    return json.dumps(_to_jsonable(value), indent=2, sort_keys=True)
-
-
-def _to_jsonable(value: Any) -> Any:
-    if is_dataclass(value):
-        return _to_jsonable(asdict(value))
-    if isinstance(value, Enum):
-        return value.value
-    if isinstance(value, Path):
-        return str(value)
-    if isinstance(value, dict):
-        return {str(key): _to_jsonable(item) for key, item in value.items()}
-    if isinstance(value, (list, tuple)):
-        return [_to_jsonable(item) for item in value]
-    return value
+def _render(value: object) -> str:
+    return json.dumps(to_jsonable(value), indent=2, sort_keys=True)
 
 
 if __name__ == "__main__":

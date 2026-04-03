@@ -1,10 +1,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from io import StringIO
 from pathlib import Path
 from types import SimpleNamespace
-from contextlib import redirect_stderr, redirect_stdout
 
 from app.application.dto.startup import (
     DatabaseReadinessDTO,
@@ -12,13 +10,14 @@ from app.application.dto.startup import (
     RecoveryReadinessDTO,
     StartupReadinessDTO,
 )
-from app.cli import main
+from app.cli import build_parser
 from app.domain.enums import StartupReadinessStatus
 from app.hardware.dto import HardwareOperationStatus
+from tests.helpers import run_cli
 
 
 def test_startup_check_returns_success_for_healthy_temp_environment(tmp_path: Path) -> None:
-    exit_code, stdout, stderr = _run_cli(
+    exit_code, stdout, stderr = run_cli(
         [
             "--data-dir",
             str(tmp_path),
@@ -61,7 +60,7 @@ def test_startup_check_returns_non_zero_when_startup_is_not_ready(monkeypatch) -
 
     monkeypatch.setattr("app.cli.create_bootstrapped_application_container", _fake_container)
 
-    exit_code, stdout, stderr = _run_cli(["startup-check"])
+    exit_code, stdout, stderr = run_cli(["startup-check"])
 
     assert exit_code == 1
     assert '"readiness_status": "not_ready"' in stdout
@@ -69,7 +68,7 @@ def test_startup_check_returns_non_zero_when_startup_is_not_ready(monkeypatch) -
 
 
 def test_hardware_health_prints_three_mock_device_statuses(tmp_path: Path) -> None:
-    exit_code, stdout, _stderr = _run_cli(
+    exit_code, stdout, _stderr = run_cli(
         [
             "--data-dir",
             str(tmp_path),
@@ -88,7 +87,7 @@ def test_hardware_health_prints_three_mock_device_statuses(tmp_path: Path) -> No
 
 
 def test_recovery_scan_runs_and_prints_deterministic_summary(tmp_path: Path) -> None:
-    exit_code, stdout, _stderr = _run_cli(
+    exit_code, stdout, _stderr = run_cli(
         [
             "--data-dir",
             str(tmp_path),
@@ -104,6 +103,17 @@ def test_recovery_scan_runs_and_prints_deterministic_summary(tmp_path: Path) -> 
     assert '"candidate_operation_ids": []' in stdout
     assert '"open_case_count": 0' in stdout
     assert '"unfinished_operation_ids": []' in stdout
+
+
+def test_cli_help_lists_supported_release_commands() -> None:
+    help_output = build_parser().format_help()
+
+    assert "startup-check" in help_output
+    assert "hardware-health" in help_output
+    assert "recovery-scan" in help_output
+    assert "service-mode-open" in help_output
+    assert "service-mode-close" in help_output
+    assert "export-plan" in help_output
 
 
 @dataclass(slots=True)
@@ -124,11 +134,3 @@ class _FakeContainer:
 
     def close(self) -> None:
         return None
-
-
-def _run_cli(argv: list[str]) -> tuple[int, str, str]:
-    stdout_buffer = StringIO()
-    stderr_buffer = StringIO()
-    with redirect_stdout(stdout_buffer), redirect_stderr(stderr_buffer):
-        exit_code = main(argv)
-    return exit_code, stdout_buffer.getvalue(), stderr_buffer.getvalue()
