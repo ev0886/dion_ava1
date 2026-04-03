@@ -16,7 +16,13 @@ dependencies = [
     "pyserial>=3.5,<4.0",
     "pytest>=8.0,<9.0",
     "sqlalchemy>=2.0.36,<3.0",
+    "uvicorn>=0.32,<1.0",
 ]
+
+[project.scripts]
+dion-bootstrap = "app.main:main"
+dion-cli = "app.cli:main"
+dion-api = "app.api.__main__:main"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

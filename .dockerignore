@@ -1,0 +1,10 @@
+.git
+.pytest_cache
+.pytest_tmp
+tests/_tmp
+var
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+*.sqlite3

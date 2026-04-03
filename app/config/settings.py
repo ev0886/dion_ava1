@@ -27,6 +27,8 @@ class AppSettings(BaseSettings):
     alembic_config_path: Path = Field(default=Path("alembic.ini"))
     hardware_provider: HardwareProvider = HardwareProvider.MOCK
     hardware_real_endpoints: dict[str, object] = Field(default_factory=dict)
+    api_host: str = "127.0.0.1"
+    api_port: int = 8000
 
     @property
     def sqlite_path(self) -> Path:
