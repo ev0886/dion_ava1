@@ -8,6 +8,7 @@ from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.application.manual_resolution_service import ManualResolutionPreparationService
+from app.application.authorization_service import AuthorizationService
 from app.application.reconciliation_service import RecoveryReconciliationService
 from app.application.recovery_service import RecoveryService
 from app.application.time import utc_now
@@ -37,8 +38,10 @@ from app.persistence.models import (
     User,
 )
 from app.persistence.repositories.inventory import InventoryRepository
+from app.persistence.repositories.logs import AuditLogRepository
 from app.persistence.repositories.operations import OperationRepository
 from app.persistence.repositories.recovery import RecoveryRepository
+from app.persistence.repositories.users import UserRepository
 
 
 @pytest.fixture
@@ -285,4 +288,5 @@ def _recovery_service(session: Session) -> RecoveryService:
         RecoveryRepository(session),
         OperationRepository(session),
         InventoryRepository(session),
+        AuthorizationService(UserRepository(session), AuditLogRepository(session)),
     )

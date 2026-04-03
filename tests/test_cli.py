@@ -88,6 +88,7 @@ def test_hardware_health_prints_three_mock_device_statuses(tmp_path: Path) -> No
 
 
 def test_recovery_scan_runs_and_prints_deterministic_summary(tmp_path: Path) -> None:
+    _seed_cli_operator(tmp_path, "cli_recovery.sqlite3")
     exit_code, stdout, _stderr = _run_cli(
         [
             "--data-dir",
@@ -97,6 +98,8 @@ def test_recovery_scan_runs_and_prints_deterministic_summary(tmp_path: Path) -> 
             "--alembic-config-path",
             "alembic.ini",
             "recovery-scan",
+            "--actor-user-id",
+            "1",
         ]
     )
 
@@ -132,3 +135,40 @@ def _run_cli(argv: list[str]) -> tuple[int, str, str]:
     with redirect_stdout(stdout_buffer), redirect_stderr(stderr_buffer):
         exit_code = main(argv)
     return exit_code, stdout_buffer.getvalue(), stderr_buffer.getvalue()
+
+
+def _seed_cli_operator(tmp_path: Path, sqlite_filename: str) -> None:
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+
+    from app.bootstrap import run_database_migrations
+    from app.config import AppSettings
+    from app.domain.enums import RoleCode, UserStatus
+    from app.persistence.base import Base
+    from app.persistence.models import Role, User
+
+    settings = AppSettings(
+        data_dir=tmp_path,
+        sqlite_filename=sqlite_filename,
+        alembic_config_path=Path("alembic.ini"),
+    )
+    run_database_migrations(settings)
+    engine = create_engine(settings.database_url, future=True, connect_args={"check_same_thread": False})
+    session = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)()
+    try:
+        role = Role(code=RoleCode.OPERATOR, name="Operator")
+        session.add(role)
+        session.flush()
+        session.add(
+            User(
+                role_id=role.id,
+                user_code="operator-1",
+                full_name="Operator One",
+                status=UserStatus.ACTIVE,
+                is_active=True,
+            )
+        )
+        session.commit()
+    finally:
+        session.close()
+        engine.dispose()

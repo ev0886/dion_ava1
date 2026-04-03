@@ -2,13 +2,15 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from app.application.authorization_service import AuthorizationService
+from app.application.dto.auth import AuthorizationRequest
 from app.application.dto.service_mode import (
     DiagnosticDumpManifestDTO,
     DiagnosticSnapshotDTO,
     ExportArtifactPlanDTO,
     ExportPreparationResultDTO,
 )
-from app.domain.enums import ExportStatus
+from app.domain.enums import AuthorizationAction, ExportStatus
 from app.persistence.models import Export
 from app.persistence.repositories.logs import AuditLogRepository, EventLogRepository
 from app.persistence.repositories.service import ExportRepository
@@ -19,6 +21,7 @@ class ExportService:
     export_repository: ExportRepository
     event_log_repository: EventLogRepository
     audit_log_repository: AuditLogRepository
+    authorization_service: AuthorizationService
 
     def prepare_export(
         self,
@@ -29,6 +32,12 @@ class ExportService:
         diagnostic_manifest: DiagnosticDumpManifestDTO | None = None,
         comment: str | None = None,
     ) -> ExportPreparationResultDTO:
+        self.authorization_service.require(
+            AuthorizationRequest(
+                action=AuthorizationAction.EXPORT_EXECUTION,
+                actor_user_id=requested_by_user_id,
+            )
+        )
         recent_event_count = len(self.event_log_repository.list_recent(limit=100))
         recent_audit_count = len(self.audit_log_repository.list_recent(limit=100))
         artifact_plan = self._artifact_plan(

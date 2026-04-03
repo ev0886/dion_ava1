@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+from app.application.authorization_service import AuthorizationService
+from app.application.dto.auth import AuthorizationRequest
 from app.application.dto.operations import TransitionCheckResult
 from app.application.dto.recovery import (
     RecoveryCandidateDTO,
@@ -14,7 +16,7 @@ from app.application.manual_resolution_service import ManualResolutionPreparatio
 from app.application.operation_recorder import OperationRecorder
 from app.application.reconciliation_service import RecoveryReconciliationService
 from app.application.state_machine import assert_transition_allowed, can_transition
-from app.domain.enums import OperationState, OperationType, RecoveryClassification, RecoveryStatus
+from app.domain.enums import AuthorizationAction, OperationState, OperationType, RecoveryClassification, RecoveryStatus
 from app.persistence.models import Operation, RecoveryCase, RecoveryCaseEntity
 from app.persistence.repositories.inventory import InventoryRepository
 from app.persistence.repositories.operations import OperationRepository
@@ -26,6 +28,7 @@ class RecoveryService:
     recovery_repository: RecoveryRepository
     operation_repository: OperationRepository
     inventory_repository: InventoryRepository
+    authorization_service: AuthorizationService | None = None
     _recorder: OperationRecorder = field(init=False, repr=False)
     _reconciliation_service: RecoveryReconciliationService = field(init=False, repr=False)
     _manual_resolution_service: ManualResolutionPreparationService = field(init=False, repr=False)
@@ -85,6 +88,17 @@ class RecoveryService:
             candidate_operation_ids=tuple(candidate.operation_id for candidate in candidates),
             candidates=tuple(candidates),
         )
+
+    def scan_recovery_targets_as_actor(self, actor_user_id: int | None) -> RecoveryScanResult:
+        if self.authorization_service is None:
+            raise RecoveryError("Authorization service is not configured for actor-driven recovery scan")
+        self.authorization_service.require(
+            AuthorizationRequest(
+                action=AuthorizationAction.RECOVERY_SCAN,
+                actor_user_id=actor_user_id,
+            )
+        )
+        return self.scan_recovery_targets()
 
     def assert_transition_allowed(self, current_state: OperationState, target_state: OperationState) -> None:
         assert_transition_allowed(OperationType.RECOVERY, current_state, target_state)

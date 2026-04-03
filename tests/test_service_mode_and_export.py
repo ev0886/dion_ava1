@@ -8,6 +8,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.application.auth_service import AuthService
+from app.application.authorization_service import AuthorizationService
 from app.application.export_service import ExportService
 from app.application.service_mode_service import ServiceModeService
 from app.config import AppSettings
@@ -173,7 +174,7 @@ def _service_mode_service(
     drum_mode: MockHardwareMode = MockHardwareMode.SUCCESS,
 ) -> ServiceModeService:
     return ServiceModeService(
-        auth_service=AuthService(UserRepository(session)),
+        authorization_service=AuthorizationService(UserRepository(session), AuditLogRepository(session)),
         session_repository=OperationSessionRepository(session),
         event_log_repository=EventLogRepository(session),
         audit_log_repository=AuditLogRepository(session),
@@ -190,6 +191,7 @@ def _export_service(session: Session) -> ExportService:
         export_repository=ExportRepository(session),
         event_log_repository=EventLogRepository(session),
         audit_log_repository=AuditLogRepository(session),
+        authorization_service=AuthorizationService(UserRepository(session), AuditLogRepository(session)),
     )
 
 

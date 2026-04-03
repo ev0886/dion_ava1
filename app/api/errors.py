@@ -22,7 +22,15 @@ def register_exception_handlers(app: FastAPI) -> None:
 
     @app.exception_handler(AuthorizationError)
     async def _authorization_handler(_: Request, error: AuthorizationError) -> JSONResponse:
-        return JSONResponse(status_code=403, content={"error": "authorization_error", "detail": str(error)})
+        return JSONResponse(
+            status_code=403,
+            content={
+                "error": "authorization_error",
+                "detail": str(error),
+                "reason_code": error.reason_code.value if error.reason_code is not None else None,
+                "action": error.action.value if error.action is not None else None,
+            },
+        )
 
     @app.exception_handler(RecoveryError)
     async def _recovery_conflict_handler(_: Request, error: RecoveryError) -> JSONResponse:

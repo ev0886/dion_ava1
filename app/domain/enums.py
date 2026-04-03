@@ -9,6 +9,32 @@ class RoleCode(StrEnum):
     USER = "user"
 
 
+class AuthorizationAction(StrEnum):
+    USER_MANAGEMENT_MUTATION = "user_management_mutation"
+    ITEM_MANAGEMENT_MUTATION = "item_management_mutation"
+    INVENTORY_CORRECTION_MUTATION = "inventory_correction_mutation"
+    IMPORT_EXECUTION_APPLY = "import_execution_apply"
+    EXPORT_EXECUTION = "export_execution"
+    SYSTEM_CONFIG_UPDATE = "system_config_update"
+    RECOVERY_RESOLUTION_ACTION = "recovery_resolution_action"
+    DISPENSE_EXECUTION = "dispense_execution"
+    RETURN_EXECUTION = "return_execution"
+    REFILL_EXECUTION = "refill_execution"
+    SERVICE_MODE_START = "service_mode_start"
+    SERVICE_MODE_FINISH = "service_mode_finish"
+    DASHBOARD_READ = "dashboard_read"
+    RECOVERY_SCAN = "recovery_scan"
+    RECOVERY_READ = "recovery_read"
+
+
+class AuthorizationReasonCode(StrEnum):
+    MISSING_ACTOR = "missing_actor"
+    ACTOR_NOT_FOUND = "actor_not_found"
+    ACTOR_INACTIVE = "actor_inactive"
+    ACTOR_BLOCKED = "actor_blocked"
+    ROLE_NOT_ALLOWED = "role_not_allowed"
+
+
 class UserStatus(StrEnum):
     ACTIVE = "active"
     INACTIVE = "inactive"

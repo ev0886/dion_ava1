@@ -7,6 +7,7 @@ import pytest
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session, sessionmaker
 
+from app.application.authorization_service import AuthorizationService
 from app.application.dispense_service import DispenseOperationService
 from app.application.dto.operations import DispenseRequest, RefillRequest, ReturnRequest
 from app.application.refill_service import RefillOperationService
@@ -38,7 +39,9 @@ from app.persistence.models import (
     User,
 )
 from app.persistence.repositories.inventory import InventoryRepository
+from app.persistence.repositories.logs import AuditLogRepository
 from app.persistence.repositories.operations import OperationRepository, OperationSessionRepository
+from app.persistence.repositories.users import UserRepository
 
 
 @pytest.fixture
@@ -64,10 +67,10 @@ def session_factory(tmp_path: Path) -> Iterator[sessionmaker[Session]]:
 def test_successful_dispense_flow_with_mock_hardware(session_factory: sessionmaker[Session]) -> None:
     with session_factory() as session:
         ids = _seed_catalog(session, starting_quantity=5)
-        service = DispenseOperationService(OperationRepository(session), InventoryRepository(session))
+        service = DispenseOperationService(OperationRepository(session), InventoryRepository(session), _authorization_service(session))
 
         result = service.execute(
-            DispenseRequest(user_id=ids.user_id, item_id=ids.item_id, slot_id=ids.slot_id, quantity=2),
+            DispenseRequest(user_id=ids.operator_user_id, item_id=ids.item_id, slot_id=ids.slot_id, quantity=2),
             _hardware_facade(),
         )
 
@@ -83,10 +86,10 @@ def test_successful_dispense_flow_with_mock_hardware(session_factory: sessionmak
 def test_successful_return_flow_with_mock_hardware(session_factory: sessionmaker[Session]) -> None:
     with session_factory() as session:
         ids = _seed_catalog(session, starting_quantity=1)
-        service = ReturnOperationService(OperationRepository(session), InventoryRepository(session))
+        service = ReturnOperationService(OperationRepository(session), InventoryRepository(session), _authorization_service(session))
 
         result = service.execute(
-            ReturnRequest(user_id=ids.user_id, item_id=ids.item_id, slot_id=None, quantity=2),
+            ReturnRequest(user_id=ids.operator_user_id, item_id=ids.item_id, slot_id=None, quantity=2),
             _hardware_facade(),
         )
 
@@ -103,6 +106,7 @@ def test_successful_refill_flow_with_mock_hardware(session_factory: sessionmaker
             OperationRepository(session),
             InventoryRepository(session),
             OperationSessionRepository(session),
+            _authorization_service(session),
         )
 
         result = service.execute(
@@ -129,11 +133,11 @@ def test_dispense_hardware_failure_does_not_mutate_inventory_incorrectly(
 ) -> None:
     with session_factory() as session:
         ids = _seed_catalog(session, starting_quantity=5)
-        service = DispenseOperationService(OperationRepository(session), InventoryRepository(session))
+        service = DispenseOperationService(OperationRepository(session), InventoryRepository(session), _authorization_service(session))
         failing_facade = _hardware_facade(drum_mode=MockHardwareMode.TIMEOUT)
 
         result = service.execute(
-            DispenseRequest(user_id=ids.user_id, item_id=ids.item_id, slot_id=ids.slot_id, quantity=2),
+            DispenseRequest(user_id=ids.operator_user_id, item_id=ids.item_id, slot_id=ids.slot_id, quantity=2),
             failing_facade,
         )
 
@@ -147,10 +151,10 @@ def test_dispense_hardware_failure_does_not_mutate_inventory_incorrectly(
 def test_operation_history_entries_are_written(session_factory: sessionmaker[Session]) -> None:
     with session_factory() as session:
         ids = _seed_catalog(session, starting_quantity=5)
-        service = DispenseOperationService(OperationRepository(session), InventoryRepository(session))
+        service = DispenseOperationService(OperationRepository(session), InventoryRepository(session), _authorization_service(session))
 
         result = service.execute(
-            DispenseRequest(user_id=ids.user_id, item_id=ids.item_id, slot_id=ids.slot_id, quantity=1),
+            DispenseRequest(user_id=ids.operator_user_id, item_id=ids.item_id, slot_id=ids.slot_id, quantity=1),
             _hardware_facade(),
         )
 
@@ -175,20 +179,30 @@ def test_inventory_transaction_rows_are_written_for_successful_inventory_flows(
         ids = _seed_catalog(session, starting_quantity=10)
         inventory_repository = InventoryRepository(session)
 
-        dispense_service = DispenseOperationService(OperationRepository(session), inventory_repository)
-        return_service = ReturnOperationService(OperationRepository(session), inventory_repository)
+        authorization_service = _authorization_service(session)
+        dispense_service = DispenseOperationService(
+            OperationRepository(session),
+            inventory_repository,
+            authorization_service,
+        )
+        return_service = ReturnOperationService(
+            OperationRepository(session),
+            inventory_repository,
+            authorization_service,
+        )
         refill_service = RefillOperationService(
             OperationRepository(session),
             inventory_repository,
             OperationSessionRepository(session),
+            authorization_service,
         )
 
         dispense_service.execute(
-            DispenseRequest(user_id=ids.user_id, item_id=ids.item_id, slot_id=ids.slot_id, quantity=2),
+            DispenseRequest(user_id=ids.operator_user_id, item_id=ids.item_id, slot_id=ids.slot_id, quantity=2),
             _hardware_facade(),
         )
         return_service.execute(
-            ReturnRequest(user_id=ids.user_id, item_id=ids.item_id, slot_id=ids.slot_id, quantity=1),
+            ReturnRequest(user_id=ids.operator_user_id, item_id=ids.item_id, slot_id=ids.slot_id, quantity=1),
             _hardware_facade(),
         )
         refill_service.execute(
@@ -295,3 +309,7 @@ def _hardware_facade(drum_mode: MockHardwareMode = MockHardwareMode.SUCCESS) -> 
         lock_controller=MockLockAdapter(lock_states={(1, 1): LockState.LOCKED}),
         rfid_reader=MockRfidAdapter(),
     )
+
+
+def _authorization_service(session: Session) -> AuthorizationService:
+    return AuthorizationService(UserRepository(session), AuditLogRepository(session))

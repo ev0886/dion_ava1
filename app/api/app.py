@@ -18,10 +18,11 @@ from app.api.schemas import (
     to_api_payload,
 )
 from app.application.composition import ApplicationContainer
-from app.application.dto.auth import AuthRequest
+from app.application.dto.auth import AuthRequest, AuthorizationRequest
 from app.application.dto.operations import DispenseRequest, RefillRequest, ReturnRequest
 from app.bootstrap import bootstrap
 from app.config import AppSettings, get_settings
+from app.domain.enums import AuthorizationAction
 from app.persistence.session import create_session_factory, create_sqlalchemy_engine
 
 
@@ -126,8 +127,11 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
         return JSONResponse(to_api_payload(dto))
 
     @app.post("/recovery/scan")
-    def recovery_scan(container: ApplicationContainer = Depends(get_application_container)) -> JSONResponse:
-        return JSONResponse(to_api_payload(container.services.recovery.scan_recovery_targets()))
+    def recovery_scan(
+        actor_user_id: int | None = None,
+        container: ApplicationContainer = Depends(get_application_container),
+    ) -> JSONResponse:
+        return JSONResponse(to_api_payload(container.services.recovery.scan_recovery_targets_as_actor(actor_user_id)))
 
     @app.get("/recovery/cases/{recovery_case_id}")
     def recovery_case(
@@ -177,6 +181,12 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
         payload: ExportCreateRequest,
         container: ApplicationContainer = Depends(get_application_container),
     ) -> JSONResponse:
+        container.services.authorization.require(
+            AuthorizationRequest(
+                action=AuthorizationAction.EXPORT_EXECUTION,
+                actor_user_id=payload.requested_by_user_id,
+            )
+        )
         snapshot = container.services.service_mode.get_hardware_snapshot(session_id=None)
         manifest = container.services.exports.build_diagnostic_dump_manifest(session_id=None, snapshot=snapshot)
         return JSONResponse(

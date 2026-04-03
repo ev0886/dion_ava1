@@ -9,8 +9,9 @@ from pathlib import Path
 from typing import Any
 
 from app.application.composition import ApplicationContainer, create_bootstrapped_application_container
+from app.application.dto.auth import AuthorizationRequest
 from app.config import AppSettings
-from app.domain.enums import StartupReadinessStatus
+from app.domain.enums import AuthorizationAction, StartupReadinessStatus
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -22,7 +23,8 @@ def build_parser() -> argparse.ArgumentParser:
 
     subparsers.add_parser("startup-check")
     subparsers.add_parser("hardware-health")
-    subparsers.add_parser("recovery-scan")
+    recovery_scan = subparsers.add_parser("recovery-scan")
+    recovery_scan.add_argument("--actor-user-id", type=int, required=True)
 
     export_plan = subparsers.add_parser("export-plan")
     export_plan.add_argument("--requested-by-user-id", type=int, required=True)
@@ -68,7 +70,7 @@ def _dispatch(args: argparse.Namespace, container: ApplicationContainer) -> int:
         return 0 if snapshot.all_ok else 0
 
     if args.command == "recovery-scan":
-        result = container.services.recovery.scan_recovery_targets()
+        result = container.services.recovery.scan_recovery_targets_as_actor(args.actor_user_id)
         summary = {
             "unfinished_operation_ids": result.unfinished_operation_ids,
             "candidate_operation_ids": result.candidate_operation_ids,
@@ -81,6 +83,12 @@ def _dispatch(args: argparse.Namespace, container: ApplicationContainer) -> int:
         return 0
 
     if args.command == "export-plan":
+        container.services.authorization.require(
+            AuthorizationRequest(
+                action=AuthorizationAction.EXPORT_EXECUTION,
+                actor_user_id=args.requested_by_user_id,
+            )
+        )
         snapshot = container.services.service_mode.get_hardware_snapshot(session_id=None)
         manifest = container.services.exports.build_diagnostic_dump_manifest(session_id=None, snapshot=snapshot)
         result = container.services.exports.prepare_export(

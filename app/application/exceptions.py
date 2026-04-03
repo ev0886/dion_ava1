@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from app.domain.enums import AuthorizationAction, AuthorizationReasonCode
+
 
 class ApplicationError(Exception):
     """Base exception for application-layer failures."""
@@ -11,6 +13,20 @@ class ValidationError(ApplicationError):
 
 class AuthorizationError(ApplicationError):
     """Raised when a user is not allowed to perform an action."""
+
+    def __init__(
+        self,
+        detail: str,
+        *,
+        reason_code: AuthorizationReasonCode | None = None,
+        action: AuthorizationAction | None = None,
+        actor_user_id: int | None = None,
+    ) -> None:
+        super().__init__(detail)
+        self.detail = detail
+        self.reason_code = reason_code
+        self.action = action
+        self.actor_user_id = actor_user_id
 
 
 class NotFoundError(ApplicationError):

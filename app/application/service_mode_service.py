@@ -2,7 +2,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from app.application.auth_service import AuthService
+from app.application.authorization_service import AuthorizationService
+from app.application.dto.auth import AuthorizationRequest
 from app.application.dto.service_mode import (
     DiagnosticCommandResultDTO,
     DiagnosticHardwareEntryDTO,
@@ -10,7 +11,7 @@ from app.application.dto.service_mode import (
     ServiceModeSessionDTO,
 )
 from app.application.time import utc_now
-from app.domain.enums import RoleCode, SessionStatus, SessionType
+from app.domain.enums import AuthorizationAction, RoleCode, SessionStatus, SessionType
 from app.hardware import HardwareFacade
 from app.hardware.dto import (
     DrumPositionResult,
@@ -29,14 +30,19 @@ from app.persistence.repositories.operations import OperationSessionRepository
 
 @dataclass(slots=True)
 class ServiceModeService:
-    auth_service: AuthService
+    authorization_service: AuthorizationService
     session_repository: OperationSessionRepository
     event_log_repository: EventLogRepository
     audit_log_repository: AuditLogRepository
     hardware_facade: HardwareFacade
 
     def enter_service_mode(self, *, user_id: int, comment: str | None = None) -> ServiceModeSessionDTO:
-        user = self._require_service_user(user_id)
+        user = self.authorization_service.require(
+            AuthorizationRequest(
+                action=AuthorizationAction.SERVICE_MODE_START,
+                actor_user_id=user_id,
+            )
+        )
         session = OperationSession(
             session_type=SessionType.SERVICE,
             status=SessionStatus.ACTIVE,
@@ -66,7 +72,12 @@ class ServiceModeService:
         return self._to_session_dto(session, operator_role=user.role_code)
 
     def exit_service_mode(self, *, session_id: int, user_id: int, comment: str | None = None) -> ServiceModeSessionDTO:
-        user = self._require_service_user(user_id)
+        user = self.authorization_service.require(
+            AuthorizationRequest(
+                action=AuthorizationAction.SERVICE_MODE_FINISH,
+                actor_user_id=user_id,
+            )
+        )
         session = self.session_repository.get_by_id(session_id)
         if session is None:
             raise ValueError(f"Operation session not found: {session_id}")
@@ -194,14 +205,6 @@ class ServiceModeService:
         )
         self.session_repository.session.commit()
         return dto
-
-    def _require_service_user(self, user_id: int):
-        user = self.auth_service.get_user_by_id(user_id)
-        if user.role_code not in {RoleCode.ADMIN, RoleCode.OPERATOR}:
-            from app.application.exceptions import AuthorizationError
-
-            raise AuthorizationError(f"User role is not allowed for service mode: {user.role_code}")
-        return user
 
     @staticmethod
     def _to_session_dto(session: OperationSession, *, operator_role: RoleCode | None) -> ServiceModeSessionDTO:

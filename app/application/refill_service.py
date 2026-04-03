@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from app.application.authorization_service import AuthorizationService
+from app.application.dto.auth import AuthorizationRequest
 from app.application.dto.operations import (
     CreateOperationCommand,
     OperationContextDTO,
@@ -10,6 +12,7 @@ from app.application.dto.operations import (
     TransitionCheckResult,
 )
 from app.application.exceptions import NotFoundError, ValidationError
+from app.domain.enums import AuthorizationAction
 from app.application.inventory_mutation import InventoryMutationService
 from app.application.operation_recorder import OperationRecorder
 from app.application.state_machine import assert_transition_allowed, can_transition
@@ -28,6 +31,7 @@ class RefillOperationService:
     operation_repository: OperationRepository
     inventory_repository: InventoryRepository
     session_repository: OperationSessionRepository
+    authorization_service: AuthorizationService
     _recorder: OperationRecorder = field(init=False, repr=False)
     _inventory_mutation: InventoryMutationService = field(init=False, repr=False)
 
@@ -50,6 +54,12 @@ class RefillOperationService:
         return self._to_dto(operation)
 
     def execute(self, request: RefillRequest, hardware_facade: HardwareFacade) -> OperationDTO:
+        self.authorization_service.require(
+            AuthorizationRequest(
+                action=AuthorizationAction.REFILL_EXECUTION,
+                actor_user_id=request.operator_user_id,
+            )
+        )
         validation = self.validate_request(request)
         if not validation.valid:
             raise ValidationError("; ".join(validation.messages))

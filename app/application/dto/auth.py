@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from app.domain.enums import RoleCode, UserStatus
+from app.domain.enums import AuthorizationAction, AuthorizationReasonCode, RoleCode, UserStatus
 
 
 @dataclass(frozen=True, slots=True)
@@ -20,3 +20,19 @@ class AuthenticatedUserDTO:
     status: UserStatus
     is_active: bool
     role_code: RoleCode | None
+
+
+@dataclass(frozen=True, slots=True)
+class AuthorizationRequest:
+    action: AuthorizationAction
+    actor_user_id: int | None
+
+
+@dataclass(frozen=True, slots=True)
+class AuthorizationDecisionDTO:
+    action: AuthorizationAction
+    actor_user_id: int | None
+    allowed: bool
+    reason_code: AuthorizationReasonCode | None
+    detail: str
+    actor: AuthenticatedUserDTO | None

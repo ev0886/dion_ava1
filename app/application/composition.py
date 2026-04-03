@@ -6,6 +6,7 @@ from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.application.auth_service import AuthService
+from app.application.authorization_service import AuthorizationService
 from app.application.dispense_service import DispenseOperationService
 from app.application.export_service import ExportService
 from app.application.inventory_service import InventoryService
@@ -42,6 +43,7 @@ class RepositoryBundle:
 @dataclass(frozen=True, slots=True)
 class ServiceBundle:
     auth: AuthService
+    authorization: AuthorizationService
     inventory: InventoryService
     operation_sessions: OperationSessionService
     dispense: DispenseOperationService
@@ -88,27 +90,39 @@ def build_services(
     hardware: HardwareBundle,
 ) -> ServiceBundle:
     auth_service = AuthService(repositories.users)
+    authorization_service = AuthorizationService(repositories.users, repositories.audit_logs)
     inventory_service = InventoryService(repositories.inventory)
     operation_session_service = OperationSessionService(repositories.operation_sessions)
     recovery_service = RecoveryService(
         repositories.recovery,
         repositories.operations,
         repositories.inventory,
+        authorization_service,
     )
     return ServiceBundle(
         auth=auth_service,
+        authorization=authorization_service,
         inventory=inventory_service,
         operation_sessions=operation_session_service,
-        dispense=DispenseOperationService(repositories.operations, repositories.inventory),
-        return_ops=ReturnOperationService(repositories.operations, repositories.inventory),
+        dispense=DispenseOperationService(
+            repositories.operations,
+            repositories.inventory,
+            authorization_service,
+        ),
+        return_ops=ReturnOperationService(
+            repositories.operations,
+            repositories.inventory,
+            authorization_service,
+        ),
         refill=RefillOperationService(
             repositories.operations,
             repositories.inventory,
             repositories.operation_sessions,
+            authorization_service,
         ),
         recovery=recovery_service,
         service_mode=ServiceModeService(
-            auth_service=auth_service,
+            authorization_service=authorization_service,
             session_repository=repositories.operation_sessions,
             event_log_repository=repositories.event_logs,
             audit_log_repository=repositories.audit_logs,
@@ -118,6 +132,7 @@ def build_services(
             export_repository=repositories.exports,
             event_log_repository=repositories.event_logs,
             audit_log_repository=repositories.audit_logs,
+            authorization_service=authorization_service,
         ),
         startup=StartupOrchestrationService(
             db_session=session,

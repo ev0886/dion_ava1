@@ -53,7 +53,7 @@ def test_dispense_operation_happy_path(tmp_path: Path) -> None:
     with TestClient(app) as client:
         response = client.post(
             "/operations/dispense",
-            json={"user_id": 1, "item_id": 1, "slot_id": 1, "quantity": 1},
+            json={"user_id": 2, "item_id": 1, "slot_id": 1, "quantity": 1},
         )
 
     assert response.status_code == 200
@@ -67,7 +67,7 @@ def test_recovery_endpoints_happy_path(tmp_path: Path) -> None:
     _seed_recovery_operation(app)
 
     with TestClient(app) as client:
-        scan_response = client.post("/recovery/scan")
+        scan_response = client.post("/recovery/scan", params={"actor_user_id": 2})
 
         assert scan_response.status_code == 200
         payload = scan_response.json()
@@ -102,14 +102,22 @@ def _settings(tmp_path: Path, sqlite_filename: str) -> AppSettings:
 
 def _seed_base_domain(app) -> None:
     with app.state.session_factory() as session:
-        role = Role(code=RoleCode.USER, name="User")
-        session.add(role)
+        user_role = Role(code=RoleCode.USER, name="User")
+        operator_role = Role(code=RoleCode.OPERATOR, name="Operator")
+        session.add_all((user_role, operator_role))
         session.flush()
 
         user = User(
-            role_id=role.id,
+            role_id=user_role.id,
             user_code="user-1",
             full_name="User One",
+            status=UserStatus.ACTIVE,
+            is_active=True,
+        )
+        operator = User(
+            role_id=operator_role.id,
+            user_code="operator-1",
+            full_name="Operator One",
             status=UserStatus.ACTIVE,
             is_active=True,
         )
@@ -132,7 +140,7 @@ def _seed_base_domain(app) -> None:
             capacity=10,
             status=SlotStatus.ACTIVE,
         )
-        session.add_all((user, item, slot))
+        session.add_all((user, operator, item, slot))
         session.flush()
         session.add(
             SlotItemBinding(
