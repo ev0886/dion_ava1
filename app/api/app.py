@@ -51,6 +51,16 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
     def readiness(container: ApplicationContainer = Depends(get_application_container)) -> JSONResponse:
         return JSONResponse(to_api_payload(container.services.startup.run_startup_checks()))
 
+    @app.get("/diagnostics/summary")
+    def diagnostics_summary(container: ApplicationContainer = Depends(get_application_container)) -> JSONResponse:
+        return JSONResponse(to_api_payload(container.services.diagnostics.get_summary()))
+
+    @app.get("/diagnostics/troubleshooting-snapshot")
+    def diagnostics_troubleshooting_snapshot(
+        container: ApplicationContainer = Depends(get_application_container),
+    ) -> JSONResponse:
+        return JSONResponse(to_api_payload(container.services.diagnostics.get_troubleshooting_snapshot()))
+
     @app.post("/auth/resolve")
     def auth_resolve(
         payload: AuthResolveRequest,

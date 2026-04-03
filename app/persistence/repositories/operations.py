@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from sqlalchemy import or_, select
+from sqlalchemy import case, or_, select
 
 from app.domain.enums import OperationState
 from app.persistence.models import Operation, OperationSession, OperationStateHistory
@@ -64,6 +64,21 @@ class OperationRepository(Repository):
             select(OperationStateHistory)
             .where(OperationStateHistory.operation_id == operation_id)
             .order_by(OperationStateHistory.id.asc())
+        )
+        return list(self.session.execute(statement).scalars())
+
+    def list_recent_failures(self, *, limit: int = 20) -> list[Operation]:
+        statement = (
+            select(Operation)
+            .where(
+                Operation.operation_state.in_((OperationState.FAILED, OperationState.RECOVERY_REQUIRED)),
+            )
+            .order_by(
+                case((Operation.finished_at.is_(None), 1), else_=0).asc(),
+                Operation.finished_at.desc(),
+                Operation.id.desc(),
+            )
+            .limit(limit)
         )
         return list(self.session.execute(statement).scalars())
 

@@ -4,6 +4,7 @@ import argparse
 import json
 import sys
 from dataclasses import asdict, is_dataclass
+from datetime import date, datetime
 from enum import Enum
 from pathlib import Path
 from typing import Any
@@ -23,6 +24,8 @@ def build_parser() -> argparse.ArgumentParser:
     subparsers.add_parser("startup-check")
     subparsers.add_parser("hardware-health")
     subparsers.add_parser("recovery-scan")
+    subparsers.add_parser("diagnostics-summary")
+    subparsers.add_parser("troubleshooting-snapshot")
 
     export_plan = subparsers.add_parser("export-plan")
     export_plan.add_argument("--requested-by-user-id", type=int, required=True)
@@ -80,6 +83,14 @@ def _dispatch(args: argparse.Namespace, container: ApplicationContainer) -> int:
         print(_render(summary))
         return 0
 
+    if args.command == "diagnostics-summary":
+        print(_render(container.services.diagnostics.get_summary()))
+        return 0
+
+    if args.command == "troubleshooting-snapshot":
+        print(_render(container.services.diagnostics.get_troubleshooting_snapshot()))
+        return 0
+
     if args.command == "export-plan":
         snapshot = container.services.service_mode.get_hardware_snapshot(session_id=None)
         manifest = container.services.exports.build_diagnostic_dump_manifest(session_id=None, snapshot=snapshot)
@@ -132,6 +143,8 @@ def _to_jsonable(value: Any) -> Any:
         return _to_jsonable(asdict(value))
     if isinstance(value, Enum):
         return value.value
+    if isinstance(value, (datetime, date)):
+        return value.isoformat()
     if isinstance(value, Path):
         return str(value)
     if isinstance(value, dict):

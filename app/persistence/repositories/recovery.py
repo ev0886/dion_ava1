@@ -17,6 +17,10 @@ class RecoveryRepository(Repository):
         statement = select(RecoveryCase).where(RecoveryCase.resolved_at.is_(None))
         return list(self.session.execute(statement).scalars())
 
+    def list_recent_cases(self, *, limit: int = 20) -> list[RecoveryCase]:
+        statement = select(RecoveryCase).order_by(RecoveryCase.id.desc()).limit(limit)
+        return list(self.session.execute(statement).scalars())
+
     def find_open_case_by_operation_id(self, operation_id: int) -> RecoveryCase | None:
         statement = (
             select(RecoveryCase)

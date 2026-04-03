@@ -1,4 +1,14 @@
 from app.application.dto.auth import AuthRequest, AuthenticatedUserDTO
+from app.application.dto.diagnostics import (
+    DiagnosticsAuditSignalDTO,
+    DiagnosticsEventSignalDTO,
+    DiagnosticsExportIssueDTO,
+    DiagnosticsHardwareIssueDTO,
+    DiagnosticsOperationIssueDTO,
+    DiagnosticsRecoveryIssueDTO,
+    DiagnosticsSummaryDTO,
+    TroubleshootingSnapshotDTO,
+)
 from app.application.dto.inventory import InventoryBalanceDTO, InventoryLookupResult, SlotBindingDTO
 from app.application.dto.operations import (
     CreateOperationCommand,
@@ -48,10 +58,17 @@ __all__ = [
     "CreateOperationSessionCommand",
     "DispenseRequest",
     "DatabaseReadinessDTO",
+    "DiagnosticsAuditSignalDTO",
     "DiagnosticCommandResultDTO",
     "DiagnosticDumpManifestDTO",
+    "DiagnosticsEventSignalDTO",
+    "DiagnosticsExportIssueDTO",
     "DiagnosticHardwareEntryDTO",
     "DiagnosticSnapshotDTO",
+    "DiagnosticsHardwareIssueDTO",
+    "DiagnosticsOperationIssueDTO",
+    "DiagnosticsRecoveryIssueDTO",
+    "DiagnosticsSummaryDTO",
     "ExportArtifactPlanDTO",
     "ExportPreparationResultDTO",
     "HardwareReadinessDTO",
@@ -78,5 +95,6 @@ __all__ = [
     "ServiceModeSessionDTO",
     "SlotBindingDTO",
     "StartupReadinessDTO",
+    "TroubleshootingSnapshotDTO",
     "TransitionCheckResult",
 ]

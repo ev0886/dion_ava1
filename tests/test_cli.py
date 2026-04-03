@@ -106,6 +106,40 @@ def test_recovery_scan_runs_and_prints_deterministic_summary(tmp_path: Path) -> 
     assert '"unfinished_operation_ids": []' in stdout
 
 
+def test_diagnostics_commands_print_json_friendly_output(tmp_path: Path) -> None:
+    summary_exit_code, summary_stdout, summary_stderr = _run_cli(
+        [
+            "--data-dir",
+            str(tmp_path),
+            "--sqlite-filename",
+            "cli_diagnostics.sqlite3",
+            "--alembic-config-path",
+            "alembic.ini",
+            "diagnostics-summary",
+        ]
+    )
+    snapshot_exit_code, snapshot_stdout, snapshot_stderr = _run_cli(
+        [
+            "--data-dir",
+            str(tmp_path),
+            "--sqlite-filename",
+            "cli_diagnostics.sqlite3",
+            "--alembic-config-path",
+            "alembic.ini",
+            "troubleshooting-snapshot",
+        ]
+    )
+
+    assert summary_exit_code == 0
+    assert '"readiness_status": "ready"' in summary_stdout
+    assert "ERROR:" not in summary_stderr
+
+    assert snapshot_exit_code == 0
+    assert '"captured_at": "' in snapshot_stdout
+    assert '"hardware_snapshot"' in snapshot_stdout
+    assert "ERROR:" not in snapshot_stderr
+
+
 @dataclass(slots=True)
 class _FakeStartupService:
     result: StartupReadinessDTO

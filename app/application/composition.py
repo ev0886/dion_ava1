@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from app.application.auth_service import AuthService
 from app.application.dispense_service import DispenseOperationService
+from app.application.diagnostics_service import DiagnosticsService
 from app.application.export_service import ExportService
 from app.application.inventory_service import InventoryService
 from app.application.recovery_service import RecoveryService
@@ -51,6 +52,7 @@ class ServiceBundle:
     service_mode: ServiceModeService
     exports: ExportService
     startup: StartupOrchestrationService
+    diagnostics: DiagnosticsService
 
 
 @dataclass(slots=True)
@@ -95,6 +97,18 @@ def build_services(
         repositories.operations,
         repositories.inventory,
     )
+    service_mode_service = ServiceModeService(
+        auth_service=auth_service,
+        session_repository=repositories.operation_sessions,
+        event_log_repository=repositories.event_logs,
+        audit_log_repository=repositories.audit_logs,
+        hardware_facade=hardware.facade,
+    )
+    startup_service = StartupOrchestrationService(
+        db_session=session,
+        hardware_facade=hardware.facade,
+        recovery_service=recovery_service,
+    )
     return ServiceBundle(
         auth=auth_service,
         inventory=inventory_service,
@@ -107,22 +121,21 @@ def build_services(
             repositories.operation_sessions,
         ),
         recovery=recovery_service,
-        service_mode=ServiceModeService(
-            auth_service=auth_service,
-            session_repository=repositories.operation_sessions,
-            event_log_repository=repositories.event_logs,
-            audit_log_repository=repositories.audit_logs,
-            hardware_facade=hardware.facade,
-        ),
+        service_mode=service_mode_service,
         exports=ExportService(
             export_repository=repositories.exports,
             event_log_repository=repositories.event_logs,
             audit_log_repository=repositories.audit_logs,
         ),
-        startup=StartupOrchestrationService(
-            db_session=session,
-            hardware_facade=hardware.facade,
-            recovery_service=recovery_service,
+        startup=startup_service,
+        diagnostics=DiagnosticsService(
+            startup_service=startup_service,
+            service_mode_service=service_mode_service,
+            operation_repository=repositories.operations,
+            recovery_repository=repositories.recovery,
+            event_log_repository=repositories.event_logs,
+            audit_log_repository=repositories.audit_logs,
+            export_repository=repositories.exports,
         ),
     )
 
