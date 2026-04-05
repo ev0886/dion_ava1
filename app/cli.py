@@ -20,9 +20,9 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--alembic-config-path", type=Path, default=None)
     subparsers = parser.add_subparsers(dest="command", required=True)
 
-    subparsers.add_parser("startup-check")
-    subparsers.add_parser("hardware-health")
-    subparsers.add_parser("recovery-scan")
+    subparsers.add_parser("startup-check", help="Run startup readiness checks")
+    subparsers.add_parser("hardware-health", help="Ping hardware endpoints and print availability")
+    subparsers.add_parser("recovery-scan", help="Scan unfinished operations and open recovery cases")
 
     export_plan = subparsers.add_parser("export-plan")
     export_plan.add_argument("--requested-by-user-id", type=int, required=True)
@@ -65,7 +65,7 @@ def _dispatch(args: argparse.Namespace, container: ApplicationContainer) -> int:
     if args.command == "hardware-health":
         snapshot = container.hardware.facade.hardware_healthcheck()
         print(_render(snapshot))
-        return 0 if snapshot.all_ok else 0
+        return 0 if snapshot.all_ok else 1
 
     if args.command == "recovery-scan":
         result = container.services.recovery.scan_recovery_targets()

@@ -18,5 +18,6 @@ def bootstrap(settings: AppSettings | None = None) -> AppSettings:
 def run_database_migrations(settings: AppSettings) -> None:
     alembic_config = Config(str(settings.alembic_config_path))
     alembic_config.set_main_option("sqlalchemy.url", settings.database_url)
-    alembic_config.set_main_option("script_location", str(Path("alembic")))
+    alembic_path = settings.alembic_config_path.resolve()
+    alembic_config.set_main_option("script_location", str((alembic_path.parent / "alembic").resolve()))
     command.upgrade(alembic_config, "head")
