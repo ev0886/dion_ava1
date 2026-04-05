@@ -13,8 +13,8 @@ from app.application.dto.startup import (
     StartupReadinessDTO,
 )
 from app.cli import main
-from app.domain.enums import StartupReadinessStatus
-from app.hardware.dto import HardwareOperationStatus
+from app.domain.enums import HardwareEndpointType, StartupReadinessStatus
+from app.hardware.dto import HardwareHealthEntry, HardwareHealthSnapshot, HardwareOperationStatus
 
 
 def test_startup_check_returns_success_for_healthy_temp_environment(tmp_path: Path) -> None:
@@ -87,6 +87,20 @@ def test_hardware_health_prints_three_mock_device_statuses(tmp_path: Path) -> No
     assert '"rfid"' in stdout
 
 
+def test_hardware_health_returns_non_zero_when_any_device_is_unavailable(monkeypatch) -> None:
+    def _fake_container(_settings):
+        return _FakeHardwareContainer(all_ok=False)
+
+    monkeypatch.setattr("app.cli.create_bootstrapped_application_container", _fake_container)
+
+    exit_code, stdout, stderr = _run_cli(["hardware-health"])
+
+    assert exit_code == 1
+    assert '"all_ok"' not in stdout
+    assert '"status": "failure"' in stdout
+    assert stderr == ""
+
+
 def test_recovery_scan_runs_and_prints_deterministic_summary(tmp_path: Path) -> None:
     exit_code, stdout, _stderr = _run_cli(
         [
@@ -104,6 +118,16 @@ def test_recovery_scan_runs_and_prints_deterministic_summary(tmp_path: Path) -> 
     assert '"candidate_operation_ids": []' in stdout
     assert '"open_case_count": 0' in stdout
     assert '"unfinished_operation_ids": []' in stdout
+
+
+def test_cli_help_lists_operator_commands() -> None:
+    exit_code, stdout, stderr = _run_cli(["--help"])
+
+    assert exit_code == 0
+    assert "startup-check" in stdout
+    assert "hardware-health" in stdout
+    assert "recovery-scan" in stdout
+    assert stderr == ""
 
 
 @dataclass(slots=True)
@@ -126,9 +150,53 @@ class _FakeContainer:
         return None
 
 
+@dataclass(slots=True)
+class _FakeHardwareFacade:
+    all_ok: bool
+
+    def hardware_healthcheck(self) -> HardwareHealthSnapshot:
+        status = HardwareOperationStatus.SUCCESS if self.all_ok else HardwareOperationStatus.FAILURE
+        message = None if self.all_ok else "offline"
+        return HardwareHealthSnapshot(
+            drum=HardwareHealthEntry(
+                device_type=HardwareEndpointType.DRUM_CONTROLLER,
+                is_available=self.all_ok,
+                status=status,
+                message=message,
+            ),
+            lock=HardwareHealthEntry(
+                device_type=HardwareEndpointType.LOCK_CONTROLLER,
+                is_available=self.all_ok,
+                status=status,
+                message=message,
+            ),
+            rfid=HardwareHealthEntry(
+                device_type=HardwareEndpointType.RFID_READER,
+                is_available=self.all_ok,
+                status=status,
+                message=message,
+            ),
+        )
+
+
+@dataclass(slots=True)
+class _FakeHardwareContainer:
+    all_ok: bool
+    hardware: SimpleNamespace | None = None
+
+    def __post_init__(self) -> None:
+        self.hardware = SimpleNamespace(facade=_FakeHardwareFacade(self.all_ok))
+
+    def close(self) -> None:
+        return None
+
+
 def _run_cli(argv: list[str]) -> tuple[int, str, str]:
     stdout_buffer = StringIO()
     stderr_buffer = StringIO()
     with redirect_stdout(stdout_buffer), redirect_stderr(stderr_buffer):
-        exit_code = main(argv)
+        try:
+            exit_code = main(argv)
+        except SystemExit as error:
+            exit_code = int(error.code)
     return exit_code, stdout_buffer.getvalue(), stderr_buffer.getvalue()
