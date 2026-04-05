@@ -1,23 +1,16 @@
 from __future__ import annotations
 
 import argparse
-import json
 import sys
-from dataclasses import asdict, is_dataclass
-from enum import Enum
-from pathlib import Path
-from typing import Any
 
 from app.application.composition import ApplicationContainer, create_bootstrapped_application_container
-from app.config import AppSettings
 from app.domain.enums import StartupReadinessStatus
+from app.runtime import add_common_settings_arguments, render_json, settings_from_args
 
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="python -m app.cli", description="DION ABA1 operator CLI")
-    parser.add_argument("--data-dir", type=Path, default=None)
-    parser.add_argument("--sqlite-filename", type=str, default=None)
-    parser.add_argument("--alembic-config-path", type=Path, default=None)
+    add_common_settings_arguments(parser)
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     subparsers.add_parser("startup-check", help="Run startup readiness checks")
@@ -45,7 +38,7 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
-    settings = _settings_from_args(args)
+    settings = settings_from_args(args)
     container = create_bootstrapped_application_container(settings)
     try:
         return _dispatch(args, container)
@@ -59,12 +52,12 @@ def main(argv: list[str] | None = None) -> int:
 def _dispatch(args: argparse.Namespace, container: ApplicationContainer) -> int:
     if args.command == "startup-check":
         result = container.services.startup.run_startup_checks()
-        print(_render(result))
+        print(render_json(result))
         return 0 if result.readiness_status is not StartupReadinessStatus.NOT_READY else 1
 
     if args.command == "hardware-health":
         snapshot = container.hardware.facade.hardware_healthcheck()
-        print(_render(snapshot))
+        print(render_json(snapshot))
         return 0 if snapshot.all_ok else 1
 
     if args.command == "recovery-scan":
@@ -77,7 +70,7 @@ def _dispatch(args: argparse.Namespace, container: ApplicationContainer) -> int:
                 case.recovery_case_id for case in result.open_cases if case.recovery_case_id is not None
             ),
         }
-        print(_render(summary))
+        print(render_json(summary))
         return 0
 
     if args.command == "export-plan":
@@ -90,7 +83,7 @@ def _dispatch(args: argparse.Namespace, container: ApplicationContainer) -> int:
             diagnostic_manifest=manifest,
             comment=args.comment,
         )
-        print(_render(result))
+        print(render_json(result))
         return 0
 
     if args.command == "service-mode-open":
@@ -98,7 +91,7 @@ def _dispatch(args: argparse.Namespace, container: ApplicationContainer) -> int:
             user_id=args.user_id,
             comment=args.comment,
         )
-        print(_render(result))
+        print(render_json(result))
         return 0
 
     if args.command == "service-mode-close":
@@ -107,38 +100,10 @@ def _dispatch(args: argparse.Namespace, container: ApplicationContainer) -> int:
             user_id=args.user_id,
             comment=args.comment,
         )
-        print(_render(result))
+        print(render_json(result))
         return 0
 
     raise ValueError(f"Unsupported command: {args.command}")
-
-
-def _settings_from_args(args: argparse.Namespace) -> AppSettings | None:
-    if args.data_dir is None and args.sqlite_filename is None and args.alembic_config_path is None:
-        return None
-    return AppSettings(
-        data_dir=args.data_dir or Path("var"),
-        sqlite_filename=args.sqlite_filename or "dion_aba1.sqlite3",
-        alembic_config_path=args.alembic_config_path or Path("alembic.ini"),
-    )
-
-
-def _render(value: Any) -> str:
-    return json.dumps(_to_jsonable(value), indent=2, sort_keys=True)
-
-
-def _to_jsonable(value: Any) -> Any:
-    if is_dataclass(value):
-        return _to_jsonable(asdict(value))
-    if isinstance(value, Enum):
-        return value.value
-    if isinstance(value, Path):
-        return str(value)
-    if isinstance(value, dict):
-        return {str(key): _to_jsonable(item) for key, item in value.items()}
-    if isinstance(value, (list, tuple)):
-        return [_to_jsonable(item) for item in value]
-    return value
 
 
 if __name__ == "__main__":
