@@ -15,6 +15,8 @@ from app.application.dto.operations import (
 from app.application.dto.recovery import (
     ManualResolutionActionCategory,
     ManualResolutionPreparationDTO,
+    ManualResolutionRequestDTO,
+    ManualResolutionResultDTO,
     ReconciliationOutcome,
     ReconciliationResultDTO,
     RecoveryActionDTO,
@@ -64,6 +66,8 @@ __all__ = [
     "OperationValidationResult",
     "ManualResolutionActionCategory",
     "ManualResolutionPreparationDTO",
+    "ManualResolutionRequestDTO",
+    "ManualResolutionResultDTO",
     "ReconciliationOutcome",
     "ReconciliationResultDTO",
     "RecoveryActionDTO",

@@ -4,10 +4,15 @@ from dataclasses import dataclass
 
 from app.application.dto.recovery import (
     ManualResolutionPreparationDTO,
+    ManualResolutionRequestDTO,
+    ManualResolutionResultDTO,
     RecoveryActionDTO,
     RecoveryCaseEntityDTO,
 )
-from app.application.exceptions import RecoveryError
+from app.application.exceptions import NotFoundError, RecoveryError
+from app.application.time import utc_now
+from app.domain.enums import RecoveryActionStatus, RecoveryStatus
+from app.persistence.models import ManualResolutionAction, RecoveryAction
 from app.persistence.repositories.recovery import RecoveryRepository
 
 
@@ -48,6 +53,63 @@ class ManualResolutionPreparationService:
             recovery_actions=actions,
             recommended_next_action_categories=self._recommend_categories(dict(recovery_case.context_json or {})),
             context=dict(recovery_case.context_json or {}),
+        )
+
+    def apply_case(self, recovery_case_id: int, request: ManualResolutionRequestDTO) -> ManualResolutionResultDTO:
+        recovery_case = self.recovery_repository.get_by_id(recovery_case_id)
+        if recovery_case is None:
+            raise NotFoundError(f"Recovery case not found: {recovery_case_id}")
+        if recovery_case.status is not RecoveryStatus.OPEN or recovery_case.resolved_at is not None:
+            raise RecoveryError(
+                f"Recovery case {recovery_case_id} cannot be manually resolved from status {recovery_case.status.value}"
+            )
+
+        resolved_at = utc_now()
+        resolution_context = {
+            "operator_user_id": request.operator_user_id,
+            "decision": request.decision,
+        }
+        if request.comment is not None:
+            resolution_context["comment"] = request.comment
+
+        self.recovery_repository.add_action(
+            RecoveryAction(
+                recovery_case_id=recovery_case.id,
+                action_type="manual_resolution",
+                status=RecoveryActionStatus.APPLIED,
+                applied_at=resolved_at,
+                comment=request.comment,
+                context_json=resolution_context,
+            )
+        )
+        self.recovery_repository.add_manual_resolution_action(
+            ManualResolutionAction(
+                recovery_case_id=recovery_case.id,
+                actor_user_id=request.operator_user_id,
+                action_type=request.decision,
+                comment=request.comment,
+                context_json=resolution_context,
+            )
+        )
+
+        context = dict(recovery_case.context_json or {})
+        context["manual_resolution"] = resolution_context
+        recovery_case.context_json = context
+        recovery_case.status = RecoveryStatus.RESOLVED
+        recovery_case.resolved_at = resolved_at
+        self.recovery_repository.session.commit()
+
+        return ManualResolutionResultDTO(
+            recovery_case_id=recovery_case.id,
+            classification=recovery_case.classification,
+            status=recovery_case.status,
+            summary=recovery_case.summary,
+            context=dict(recovery_case.context_json or {}),
+            created_at=recovery_case.created_at,
+            resolved_at=recovery_case.resolved_at,
+            operator_user_id=request.operator_user_id,
+            decision=request.decision,
+            comment=request.comment,
         )
 
     @staticmethod

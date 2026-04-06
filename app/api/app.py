@@ -11,6 +11,7 @@ from app.api.schemas import (
     AuthResolveRequest,
     DispenseOperationRequest,
     ExportCreateRequest,
+    RecoveryManualResolutionRequest,
     RefillOperationRequest,
     ReturnOperationRequest,
     ServiceModeFinishRequest,
@@ -20,6 +21,7 @@ from app.api.schemas import (
 from app.application.composition import ApplicationContainer
 from app.application.dto.auth import AuthRequest
 from app.application.dto.operations import DispenseRequest, RefillRequest, ReturnRequest
+from app.application.dto.recovery import ManualResolutionRequestDTO
 from app.bootstrap import bootstrap
 from app.config import AppSettings, get_settings
 from app.persistence.session import create_session_factory, create_sqlalchemy_engine
@@ -170,6 +172,25 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
         container: ApplicationContainer = Depends(get_application_container),
     ) -> JSONResponse:
         return JSONResponse(to_api_payload(container.services.recovery.prepare_manual_resolution(recovery_case_id)))
+
+    @app.post("/recovery/cases/{recovery_case_id}/manual-resolution")
+    def recovery_manual_resolution_apply(
+        recovery_case_id: int,
+        payload: RecoveryManualResolutionRequest,
+        container: ApplicationContainer = Depends(get_application_container),
+    ) -> JSONResponse:
+        return JSONResponse(
+            to_api_payload(
+                container.services.recovery.resolve_manual_case(
+                    recovery_case_id,
+                    ManualResolutionRequestDTO(
+                        operator_user_id=payload.operator_user_id,
+                        decision=payload.decision,
+                        comment=payload.comment,
+                    ),
+                )
+            )
+        )
 
     @app.post("/service-mode/start")
     def service_mode_start(

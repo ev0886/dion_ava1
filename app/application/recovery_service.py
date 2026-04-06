@@ -4,6 +4,7 @@ from dataclasses import dataclass, field
 
 from app.application.dto.operations import TransitionCheckResult
 from app.application.dto.recovery import (
+    ManualResolutionRequestDTO,
     RecoveryCandidateDTO,
     RecoveryCaseDTO,
     RecoveryContextDTO,
@@ -109,6 +110,9 @@ class RecoveryService:
 
     def prepare_manual_resolution(self, recovery_case_id: int):
         return self._manual_resolution_service.prepare_case(recovery_case_id)
+
+    def resolve_manual_case(self, recovery_case_id: int, request: ManualResolutionRequestDTO):
+        return self._manual_resolution_service.apply_case(recovery_case_id, request)
 
     @staticmethod
     def _terminal_states() -> tuple[OperationState, ...]:

@@ -95,3 +95,24 @@ class ManualResolutionPreparationDTO:
     recovery_actions: tuple[RecoveryActionDTO, ...]
     recommended_next_action_categories: tuple[ManualResolutionActionCategory, ...]
     context: dict[str, object]
+
+
+@dataclass(frozen=True, slots=True)
+class ManualResolutionRequestDTO:
+    operator_user_id: int
+    decision: str
+    comment: str | None
+
+
+@dataclass(frozen=True, slots=True)
+class ManualResolutionResultDTO:
+    recovery_case_id: int
+    classification: RecoveryClassification
+    status: RecoveryStatus
+    summary: str
+    context: dict[str, object]
+    created_at: datetime | None
+    resolved_at: datetime | None
+    operator_user_id: int
+    decision: str
+    comment: str | None

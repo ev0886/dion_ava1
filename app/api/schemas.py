@@ -97,6 +97,12 @@ class ExportCreateRequest(ApiModel):
     comment: str | None = None
 
 
+class RecoveryManualResolutionRequest(ApiModel):
+    operator_user_id: int
+    decision: str
+    comment: str | None = None
+
+
 class ErrorResponse(ApiModel):
     error: str
     detail: str

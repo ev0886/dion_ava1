@@ -3,11 +3,37 @@ from __future__ import annotations
 from pathlib import Path
 
 from fastapi.testclient import TestClient
+from sqlalchemy import select
 
 from app.api import create_app
+from app.application.time import utc_now
 from app.config import AppSettings
-from app.domain.enums import BindingType, ItemStatus, OperationState, RoleCode, SlotStatus, SlotType, UserStatus
-from app.persistence.models import InventoryBalance, Item, Operation, OperationSession, OperationStateHistory, RecoveryCase, Role, Slot, SlotItemBinding, User
+from app.domain.enums import (
+    BindingType,
+    ItemStatus,
+    OperationState,
+    RecoveryClassification,
+    RecoveryStatus,
+    RoleCode,
+    SlotStatus,
+    SlotType,
+    UserStatus,
+)
+from app.persistence.models import (
+    InventoryBalance,
+    Item,
+    ManualResolutionAction,
+    Operation,
+    OperationSession,
+    OperationStateHistory,
+    RecoveryAction,
+    RecoveryCase,
+    RecoveryCaseEntity,
+    Role,
+    Slot,
+    SlotItemBinding,
+    User,
+)
 
 
 def test_app_creation_smoke(tmp_path: Path) -> None:
@@ -176,6 +202,80 @@ def test_recovery_endpoints_happy_path(tmp_path: Path) -> None:
     assert manual_response.json()["recovery_case_id"] == recovery_case_id
 
 
+def test_manual_recovery_resolution_success_updates_case_and_persists_actions(tmp_path: Path) -> None:
+    app = create_app(_settings(tmp_path, "api_manual_recovery_success.sqlite3"))
+    _seed_base_domain(app)
+    _seed_recovery_operation(app)
+
+    with TestClient(app) as client:
+        scan_response = client.post("/recovery/scan")
+        recovery_case_id = scan_response.json()["open_cases"][0]["recovery_case_id"]
+
+        response = client.post(
+            f"/recovery/cases/{recovery_case_id}/manual-resolution",
+            json={
+                "operator_user_id": 1,
+                "decision": "close_case",
+                "comment": "Operator verified physical state",
+            },
+        )
+        refreshed_case = client.get(f"/recovery/cases/{recovery_case_id}")
+
+    assert response.status_code == 200
+    assert response.json()["recovery_case_id"] == recovery_case_id
+    assert response.json()["status"] == "resolved"
+    assert response.json()["decision"] == "close_case"
+    assert refreshed_case.status_code == 200
+    assert refreshed_case.json()["status"] == "resolved"
+    assert refreshed_case.json()["resolved_at"] is not None
+
+    with app.state.session_factory() as session:
+        recovery_case = session.get(RecoveryCase, recovery_case_id)
+        recovery_actions = session.execute(select(RecoveryAction)).scalars().all()
+        manual_actions = session.execute(select(ManualResolutionAction)).scalars().all()
+
+    assert recovery_case is not None
+    assert recovery_case.status is RecoveryStatus.RESOLVED
+    assert recovery_case.resolved_at is not None
+    assert len(recovery_actions) == 1
+    assert recovery_actions[0].action_type == "manual_resolution"
+    assert recovery_actions[0].comment == "Operator verified physical state"
+    assert recovery_actions[0].context_json["decision"] == "close_case"
+    assert len(manual_actions) == 1
+    assert manual_actions[0].actor_user_id == 1
+    assert manual_actions[0].action_type == "close_case"
+    assert manual_actions[0].comment == "Operator verified physical state"
+
+
+def test_manual_recovery_resolution_returns_404_for_missing_case(tmp_path: Path) -> None:
+    app = create_app(_settings(tmp_path, "api_manual_recovery_missing.sqlite3"))
+    _seed_base_domain(app)
+
+    with TestClient(app) as client:
+        response = client.post(
+            "/recovery/cases/999/manual-resolution",
+            json={"operator_user_id": 1, "decision": "close_case", "comment": None},
+        )
+
+    assert response.status_code == 404
+    assert response.json()["error"] == "not_found"
+
+
+def test_manual_recovery_resolution_returns_controlled_conflict_for_resolved_case(tmp_path: Path) -> None:
+    app = create_app(_settings(tmp_path, "api_manual_recovery_resolved.sqlite3"))
+    _seed_base_domain(app)
+    recovery_case_id = _seed_resolved_recovery_case(app)
+
+    with TestClient(app) as client:
+        response = client.post(
+            f"/recovery/cases/{recovery_case_id}/manual-resolution",
+            json={"operator_user_id": 1, "decision": "close_case", "comment": "repeat"},
+        )
+
+    assert response.status_code == 409
+    assert response.json()["error"] == "conflict"
+
+
 def test_error_mapping_returns_400_for_validation_error(tmp_path: Path) -> None:
     app = create_app(_settings(tmp_path, "api_errors.sqlite3"))
 
@@ -280,3 +380,27 @@ def _seed_recovery_operation(app) -> None:
             )
         )
         session.commit()
+
+
+def _seed_resolved_recovery_case(app) -> int:
+    with app.state.session_factory() as session:
+        recovery_case = RecoveryCase(
+            classification=RecoveryClassification.MANUAL_REVIEW_REQUIRED,
+            status=RecoveryStatus.RESOLVED,
+            resolved_at=utc_now(),
+            summary="Resolved recovery case",
+            context_json={"operation_id": 1},
+        )
+        session.add(recovery_case)
+        session.flush()
+        session.add(
+            RecoveryCaseEntity(
+                recovery_case_id=recovery_case.id,
+                entity_type="operation",
+                entity_id="1",
+                role="primary_operation",
+                decision_outcome="close_case",
+            )
+        )
+        session.commit()
+        return int(recovery_case.id)

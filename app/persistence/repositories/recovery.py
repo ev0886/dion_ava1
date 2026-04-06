@@ -2,13 +2,19 @@ from __future__ import annotations
 
 from sqlalchemy import select
 
-from app.persistence.models import RecoveryAction, RecoveryCase, RecoveryCaseEntity
+from app.persistence.models import ManualResolutionAction, RecoveryAction, RecoveryCase, RecoveryCaseEntity
 from app.persistence.repositories.base import Repository
 
 
 class RecoveryRepository(Repository):
     def add_case(self, recovery_case: RecoveryCase) -> None:
         self.session.add(recovery_case)
+
+    def add_action(self, recovery_action: RecoveryAction) -> None:
+        self.session.add(recovery_action)
+
+    def add_manual_resolution_action(self, manual_resolution_action: ManualResolutionAction) -> None:
+        self.session.add(manual_resolution_action)
 
     def get_by_id(self, recovery_case_id: int) -> RecoveryCase | None:
         return self.session.get(RecoveryCase, recovery_case_id)
