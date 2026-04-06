@@ -72,6 +72,7 @@ def test_operator_ui_page_loads_with_seeded_defaults(tmp_path: Path) -> None:
     assert 'value="2"' in response.text
     assert 'value="1"' in response.text
     assert "Operator verified physical state" in response.text
+    assert "Happy Path Smoke" in response.text
     assert "/recovery/cases/" in response.text
 
 

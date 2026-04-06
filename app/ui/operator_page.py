@@ -153,8 +153,41 @@ def render_operator_page() -> str:
       margin-bottom: 6px;
     }
 
+    .quick-actions {
+      margin-bottom: 16px;
+    }
+
+    .quick-actions .actions {
+      margin-top: 14px;
+    }
+
     .ok { color: var(--ok); }
     .error { color: var(--danger); }
+
+    .result-summary {
+      margin-top: 12px;
+      padding: 10px 12px;
+      border-radius: 12px;
+      border: 1px solid var(--panel-border);
+      background: #f7f2e8;
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text);
+    }
+
+    .result-summary.ok {
+      border-color: rgba(22, 101, 52, 0.35);
+      background: rgba(22, 101, 52, 0.08);
+    }
+
+    .result-summary.error {
+      border-color: rgba(185, 28, 28, 0.35);
+      background: rgba(185, 28, 28, 0.08);
+    }
+
+    .result-summary.muted {
+      color: var(--muted);
+    }
 
     pre {
       margin: 12px 0 0;
@@ -203,6 +236,19 @@ def render_operator_page() -> str:
       </div>
     </section>
 
+    <section class="card quick-actions">
+      <h2>Demo Quick Actions</h2>
+      <p>Small helpers for repeated seeded stand checks. They only call existing same-origin endpoints.</p>
+      <div class="actions">
+        <button type="button" id="defaults-apply">Apply Demo Defaults</button>
+        <button type="button" class="secondary" id="quick-resolve-demo-user">Resolve Demo User</button>
+        <button type="button" class="secondary" id="quick-inventory-baseline">Inventory Baseline</button>
+        <button type="button" id="quick-happy-path">Happy Path Smoke</button>
+        <button type="button" class="secondary" id="quick-recovery-smoke">Recovery Smoke</button>
+      </div>
+      <div id="quick-actions-summary" class="result-summary muted">Ready for seeded demo actions.</div>
+    </section>
+
     <section class="grid">
       <article class="card">
         <h2>System Status</h2>
@@ -210,6 +256,7 @@ def render_operator_page() -> str:
         <div class="actions">
           <button type="button" id="refresh-status">Refresh Status</button>
         </div>
+        <div id="status-summary" class="result-summary muted">Waiting for status...</div>
         <pre id="status-output">Waiting for status...</pre>
       </article>
 
@@ -230,6 +277,7 @@ def render_operator_page() -> str:
           <button type="button" id="auth-by-id">Resolve by user_id</button>
           <button type="button" class="secondary" id="auth-by-code">Resolve by user_code</button>
         </div>
+        <div id="auth-summary" class="result-summary muted">Ready.</div>
         <pre id="auth-output">Ready.</pre>
       </article>
 
@@ -249,6 +297,7 @@ def render_operator_page() -> str:
         <div class="actions">
           <button type="button" id="inventory-run">Lookup Inventory</button>
         </div>
+        <div id="inventory-summary" class="result-summary muted">Ready.</div>
         <pre id="inventory-output">Ready.</pre>
       </article>
 
@@ -284,6 +333,7 @@ def render_operator_page() -> str:
         <div class="actions">
           <button type="button" id="dispense-run">Execute Dispense</button>
         </div>
+        <div id="dispense-summary" class="result-summary muted">Ready.</div>
         <pre id="dispense-output">Ready.</pre>
       </article>
 
@@ -319,6 +369,7 @@ def render_operator_page() -> str:
         <div class="actions">
           <button type="button" id="return-run">Execute Return</button>
         </div>
+        <div id="return-summary" class="result-summary muted">Ready.</div>
         <pre id="return-output">Ready.</pre>
       </article>
 
@@ -361,6 +412,7 @@ def render_operator_page() -> str:
         <div class="actions">
           <button type="button" id="refill-run">Execute Refill</button>
         </div>
+        <div id="refill-summary" class="result-summary muted">Ready.</div>
         <pre id="refill-output">Ready.</pre>
       </article>
 
@@ -398,15 +450,33 @@ def render_operator_page() -> str:
           <button type="button" class="secondary" id="recovery-prepare">Prepare Resolution</button>
           <button type="button" id="recovery-apply">Apply Resolution</button>
         </div>
+        <div id="recovery-summary" class="result-summary muted">Ready.</div>
         <pre id="recovery-output">Ready.</pre>
-        <div class="hint">The scan result includes case IDs. Copy or keep the seeded default <code>1</code> when using the demo seed.</div>
+        <div class="hint">If recovery scan returns exactly one open case, this page now fills <code>recovery_case_id</code> automatically.</div>
       </article>
     </section>
   </main>
 
   <script>
+    const DEMO_DEFAULTS = {
+      authUserId: 3,
+      authUserCode: "user-1",
+      operatorUserId: 2,
+      slotId: 1,
+      itemId: 1,
+      quantity: 1,
+      refillQuantity: 5,
+      recoveryCaseId: 1,
+      recoveryDecision: "close_case",
+      recoveryComment: "Operator verified physical state"
+    };
+
     function value(id) {
       return document.getElementById(id).value.trim();
+    }
+
+    function setValue(id, nextValue) {
+      document.getElementById(id).value = nextValue;
     }
 
     function intOrNull(id) {
@@ -426,13 +496,101 @@ def render_operator_page() -> str:
       return parsed;
     }
 
+    function renderSummary(targetId, message, tone) {
+      const panel = document.getElementById(targetId);
+      panel.textContent = message;
+      panel.className = "result-summary " + tone;
+    }
+
     function renderOutput(targetId, payload, ok) {
       const panel = document.getElementById(targetId);
       panel.textContent = JSON.stringify(payload, null, 2);
       panel.className = ok ? "ok" : "error";
     }
 
+    function summarizeSuccess(url, payload) {
+      if (url === "/health") {
+        return "Health check OK.";
+      }
+      if (url === "/readiness") {
+        return "Readiness: " + (payload.readiness_status || "ready") + ".";
+      }
+      if (url === "/auth/resolve") {
+        return "Resolved " + (payload.user_code || "user") + " as " + (payload.role_code || "unknown role") + ".";
+      }
+      if (url.indexOf("/inventory/") === 0) {
+        const quantity = payload.balance ? payload.balance.quantity : "no balance";
+        return "Inventory slot " + payload.slot_id + " / item " + payload.item_id + ": " + quantity + ".";
+      }
+      if (url === "/operations/dispense") {
+        return "Dispense " + (payload.operation_state || "completed") + " for qty " + (payload.qty_confirmed ?? payload.qty_requested ?? "?") + ".";
+      }
+      if (url === "/operations/return") {
+        return "Return " + (payload.operation_state || "completed") + " for qty " + (payload.qty_confirmed ?? payload.qty_requested ?? "?") + ".";
+      }
+      if (url === "/operations/refill") {
+        return "Refill " + (payload.operation_state || "completed") + " on slot " + (payload.slot_id ?? "?") + ".";
+      }
+      if (url === "/recovery/scan") {
+        return "Recovery scan found " + (payload.open_case_count ?? 0) + " open case(s).";
+      }
+      if (url.indexOf("/recovery/cases/") === 0 && url.indexOf("/manual-resolution") === -1) {
+        return "Recovery case " + payload.recovery_case_id + " is " + payload.status + ".";
+      }
+      if (url.indexOf("/manual-resolution") !== -1 && payload.decision) {
+        return "Recovery case " + payload.recovery_case_id + " resolved with decision " + payload.decision + ".";
+      }
+      if (url.indexOf("/manual-resolution") !== -1) {
+        return "Prepared manual resolution for case " + payload.recovery_case_id + ".";
+      }
+      return "Request completed.";
+    }
+
+    function summarizeError(response, payload) {
+      const status = response ? response.status : "request failed";
+      const errorCode = payload.error || "internal_error";
+      const detail = payload.detail || "No detail provided.";
+      if (errorCode === "validation_error") {
+        return "Validation error (" + status + "): " + detail;
+      }
+      if (errorCode === "not_found") {
+        return "Not found (" + status + "): " + detail;
+      }
+      if (errorCode === "conflict") {
+        return "Conflict (" + status + "): " + detail;
+      }
+      if (errorCode === "authorization_error") {
+        return "Authorization error (" + status + "): " + detail;
+      }
+      if (errorCode === "internal_error") {
+        return "Internal error (" + status + "): " + detail;
+      }
+      return "Request failed (" + status + "): " + detail;
+    }
+
+    function autoFillRecoveryCaseId(payload) {
+      if (!payload || !Array.isArray(payload.open_cases) || payload.open_cases.length !== 1) {
+        return false;
+      }
+      const caseId = payload.open_cases[0].recovery_case_id;
+      if (caseId === undefined || caseId === null) {
+        return false;
+      }
+      setValue("recovery-case-id", String(caseId));
+      return true;
+    }
+
+    function syncInventoryFields(slotId, itemId) {
+      if (slotId !== null && slotId !== undefined) {
+        setValue("inventory-slot-id", String(slotId));
+      }
+      if (itemId !== null && itemId !== undefined) {
+        setValue("inventory-item-id", String(itemId));
+      }
+    }
+
     async function apiRequest(targetId, method, url, body) {
+      const summaryId = targetId.replace("-output", "-summary");
       const options = {
         method: method,
         headers: { "Accept": "application/json" }
@@ -447,11 +605,57 @@ def render_operator_page() -> str:
         const text = await response.text();
         const payload = text ? JSON.parse(text) : {};
         renderOutput(targetId, payload, response.ok);
+        renderSummary(summaryId, response.ok ? summarizeSuccess(url, payload) : summarizeError(response, payload), response.ok ? "ok" : "error");
         return { response: response, payload: payload };
       } catch (error) {
-        renderOutput(targetId, { error: "request_failed", detail: String(error) }, false);
+        const payload = { error: "request_failed", detail: String(error) };
+        renderOutput(targetId, payload, false);
+        renderSummary(summaryId, "Request failed: " + payload.detail, "error");
         return null;
       }
+    }
+
+    function applyDemoDefaults() {
+      setValue("auth-user-id", String(DEMO_DEFAULTS.authUserId));
+      setValue("auth-user-code", DEMO_DEFAULTS.authUserCode);
+      setValue("inventory-slot-id", String(DEMO_DEFAULTS.slotId));
+      setValue("inventory-item-id", String(DEMO_DEFAULTS.itemId));
+      setValue("dispense-user-id", String(DEMO_DEFAULTS.authUserId));
+      setValue("dispense-item-id", String(DEMO_DEFAULTS.itemId));
+      setValue("dispense-slot-id", String(DEMO_DEFAULTS.slotId));
+      setValue("dispense-quantity", String(DEMO_DEFAULTS.quantity));
+      setValue("dispense-session-id", "");
+      setValue("return-user-id", String(DEMO_DEFAULTS.authUserId));
+      setValue("return-item-id", String(DEMO_DEFAULTS.itemId));
+      setValue("return-slot-id", String(DEMO_DEFAULTS.slotId));
+      setValue("return-quantity", String(DEMO_DEFAULTS.quantity));
+      setValue("return-session-id", "");
+      setValue("refill-operator-user-id", String(DEMO_DEFAULTS.operatorUserId));
+      setValue("refill-item-id", String(DEMO_DEFAULTS.itemId));
+      setValue("refill-slot-id", String(DEMO_DEFAULTS.slotId));
+      setValue("refill-quantity", String(DEMO_DEFAULTS.refillQuantity));
+      setValue("refill-mode", "set");
+      setValue("refill-session-id", "");
+      setValue("recovery-case-id", String(DEMO_DEFAULTS.recoveryCaseId));
+      setValue("recovery-operator-user-id", String(DEMO_DEFAULTS.operatorUserId));
+      setValue("recovery-decision", DEMO_DEFAULTS.recoveryDecision);
+      setValue("recovery-comment", DEMO_DEFAULTS.recoveryComment);
+      renderSummary("quick-actions-summary", "Seeded demo defaults restored across operator actions.", "ok");
+    }
+
+    async function runInventoryLookup(slotId, itemId) {
+      syncInventoryFields(slotId, itemId);
+      return await apiRequest("inventory-output", "GET", "/inventory/" + slotId + "/" + itemId);
+    }
+
+    async function refreshInventoryFromOperation(payload, fallbackSlotId, fallbackItemId) {
+      const slotId = payload && payload.slot_id !== null && payload.slot_id !== undefined ? payload.slot_id : fallbackSlotId;
+      const itemId = payload && payload.item_id !== null && payload.item_id !== undefined ? payload.item_id : fallbackItemId;
+      if (slotId === null || slotId === undefined || itemId === null || itemId === undefined) {
+        renderSummary("inventory-summary", "Inventory refresh skipped because slot_id or item_id is missing.", "error");
+        return null;
+      }
+      return await runInventoryLookup(slotId, itemId);
     }
 
     async function refreshStatus() {
@@ -480,6 +684,85 @@ def render_operator_page() -> str:
     }
 
     document.getElementById("refresh-status").addEventListener("click", refreshStatus);
+    document.getElementById("defaults-apply").addEventListener("click", applyDemoDefaults);
+
+    document.getElementById("quick-resolve-demo-user").addEventListener("click", async function () {
+      applyDemoDefaults();
+      renderSummary("quick-actions-summary", "Resolving seeded demo user by code.", "muted");
+      const result = await apiRequest("auth-output", "POST", "/auth/resolve", {
+        user_code: DEMO_DEFAULTS.authUserCode
+      });
+      if (result && result.response.ok) {
+        renderSummary("quick-actions-summary", "Demo user resolved by code.", "ok");
+      }
+    });
+
+    document.getElementById("quick-inventory-baseline").addEventListener("click", async function () {
+      applyDemoDefaults();
+      renderSummary("quick-actions-summary", "Loading seeded slot/item inventory baseline.", "muted");
+      const result = await runInventoryLookup(DEMO_DEFAULTS.slotId, DEMO_DEFAULTS.itemId);
+      if (result && result.response.ok) {
+        renderSummary("quick-actions-summary", "Inventory baseline loaded for slot 1 / item 1.", "ok");
+      }
+    });
+
+    document.getElementById("quick-happy-path").addEventListener("click", async function () {
+      applyDemoDefaults();
+      renderSummary("quick-actions-summary", "Running seeded happy-path smoke: resolve, inventory, dispense, inventory.", "muted");
+
+      const auth = await apiRequest("auth-output", "POST", "/auth/resolve", {
+        user_code: DEMO_DEFAULTS.authUserCode
+      });
+      if (!auth || !auth.response.ok) {
+        renderSummary("quick-actions-summary", "Happy-path smoke stopped at auth resolve.", "error");
+        return;
+      }
+
+      const beforeInventory = await runInventoryLookup(DEMO_DEFAULTS.slotId, DEMO_DEFAULTS.itemId);
+      if (!beforeInventory || !beforeInventory.response.ok) {
+        renderSummary("quick-actions-summary", "Happy-path smoke stopped at baseline inventory.", "error");
+        return;
+      }
+
+      const dispense = await apiRequest("dispense-output", "POST", "/operations/dispense", {
+        user_id: DEMO_DEFAULTS.authUserId,
+        item_id: DEMO_DEFAULTS.itemId,
+        slot_id: DEMO_DEFAULTS.slotId,
+        quantity: DEMO_DEFAULTS.quantity,
+        session_id: null
+      });
+      if (!dispense || !dispense.response.ok) {
+        renderSummary("quick-actions-summary", "Happy-path smoke stopped at dispense.", "error");
+        return;
+      }
+
+      const refreshedInventory = await refreshInventoryFromOperation(dispense.payload, DEMO_DEFAULTS.slotId, DEMO_DEFAULTS.itemId);
+      if (refreshedInventory && refreshedInventory.response.ok) {
+        renderSummary("quick-actions-summary", "Happy-path smoke completed through post-dispense inventory refresh.", "ok");
+      }
+    });
+
+    document.getElementById("quick-recovery-smoke").addEventListener("click", async function () {
+      applyDemoDefaults();
+      renderSummary("quick-actions-summary", "Running recovery smoke: scan and read the single open case if present.", "muted");
+
+      const scan = await apiRequest("recovery-output", "POST", "/recovery/scan");
+      if (!scan || !scan.response.ok) {
+        renderSummary("quick-actions-summary", "Recovery smoke stopped at scan.", "error");
+        return;
+      }
+
+      if (!autoFillRecoveryCaseId(scan.payload)) {
+        renderSummary("quick-actions-summary", "Recovery smoke ended after scan because there was not exactly one open case.", "error");
+        return;
+      }
+
+      const caseId = intOrRequired("recovery-case-id");
+      const readCase = await apiRequest("recovery-output", "GET", "/recovery/cases/" + caseId);
+      if (readCase && readCase.response.ok) {
+        renderSummary("quick-actions-summary", "Recovery smoke completed for case " + caseId + ".", "ok");
+      }
+    });
 
     document.getElementById("auth-by-id").addEventListener("click", async function () {
       await apiRequest("auth-output", "POST", "/auth/resolve", {
@@ -496,42 +779,60 @@ def render_operator_page() -> str:
     document.getElementById("inventory-run").addEventListener("click", async function () {
       const slotId = intOrRequired("inventory-slot-id");
       const itemId = intOrRequired("inventory-item-id");
-      await apiRequest("inventory-output", "GET", "/inventory/" + slotId + "/" + itemId);
+      await runInventoryLookup(slotId, itemId);
     });
 
     document.getElementById("dispense-run").addEventListener("click", async function () {
-      await apiRequest("dispense-output", "POST", "/operations/dispense", {
+      const slotId = intOrRequired("dispense-slot-id");
+      const itemId = intOrRequired("dispense-item-id");
+      const result = await apiRequest("dispense-output", "POST", "/operations/dispense", {
         user_id: intOrRequired("dispense-user-id"),
-        item_id: intOrRequired("dispense-item-id"),
-        slot_id: intOrRequired("dispense-slot-id"),
+        item_id: itemId,
+        slot_id: slotId,
         quantity: intOrRequired("dispense-quantity"),
         session_id: intOrNull("dispense-session-id")
       });
+      if (result && result.response.ok) {
+        await refreshInventoryFromOperation(result.payload, slotId, itemId);
+      }
     });
 
     document.getElementById("return-run").addEventListener("click", async function () {
-      await apiRequest("return-output", "POST", "/operations/return", {
+      const slotId = intOrNull("return-slot-id");
+      const itemId = intOrRequired("return-item-id");
+      const result = await apiRequest("return-output", "POST", "/operations/return", {
         user_id: intOrRequired("return-user-id"),
-        item_id: intOrRequired("return-item-id"),
-        slot_id: intOrNull("return-slot-id"),
+        item_id: itemId,
+        slot_id: slotId,
         quantity: intOrRequired("return-quantity"),
         session_id: intOrNull("return-session-id")
       });
+      if (result && result.response.ok) {
+        await refreshInventoryFromOperation(result.payload, slotId, itemId);
+      }
     });
 
     document.getElementById("refill-run").addEventListener("click", async function () {
-      await apiRequest("refill-output", "POST", "/operations/refill", {
+      const slotId = intOrRequired("refill-slot-id");
+      const itemId = intOrRequired("refill-item-id");
+      const result = await apiRequest("refill-output", "POST", "/operations/refill", {
         operator_user_id: intOrRequired("refill-operator-user-id"),
-        item_id: intOrRequired("refill-item-id"),
-        slot_id: intOrRequired("refill-slot-id"),
+        item_id: itemId,
+        slot_id: slotId,
         quantity: intOrRequired("refill-quantity"),
         mode: value("refill-mode"),
         session_id: intOrNull("refill-session-id")
       });
+      if (result && result.response.ok) {
+        await refreshInventoryFromOperation(result.payload, slotId, itemId);
+      }
     });
 
     document.getElementById("recovery-scan").addEventListener("click", async function () {
-      await apiRequest("recovery-output", "POST", "/recovery/scan");
+      const result = await apiRequest("recovery-output", "POST", "/recovery/scan");
+      if (result && result.response.ok && autoFillRecoveryCaseId(result.payload)) {
+        renderSummary("recovery-summary", summarizeSuccess("/recovery/scan", result.payload) + " Auto-filled recovery_case_id.", "ok");
+      }
     });
 
     document.getElementById("recovery-case").addEventListener("click", async function () {
@@ -553,6 +854,7 @@ def render_operator_page() -> str:
       });
     });
 
+    applyDemoDefaults();
     refreshStatus();
   </script>
 </body>
