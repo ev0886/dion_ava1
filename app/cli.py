@@ -4,8 +4,15 @@ import argparse
 import sys
 
 from app.application.composition import ApplicationContainer, create_bootstrapped_application_container
+from app.devtools.demo_seed import DemoSeedError, seed_demo_data
 from app.domain.enums import StartupReadinessStatus
 from app.runtime import add_common_settings_arguments, render_json, settings_from_args
+
+
+class CliJsonError(Exception):
+    def __init__(self, payload: dict[str, object]) -> None:
+        super().__init__(str(payload))
+        self.payload = payload
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -32,6 +39,9 @@ def build_parser() -> argparse.ArgumentParser:
     service_mode_close.add_argument("--user-id", type=int, required=True)
     service_mode_close.add_argument("--comment", type=str, default=None)
 
+    seed_demo = subparsers.add_parser("seed-demo", help="Seed minimal demo data into an empty domain database")
+    seed_demo.add_argument("--with-recovery", action="store_true")
+
     return parser
 
 
@@ -42,6 +52,9 @@ def main(argv: list[str] | None = None) -> int:
     container = create_bootstrapped_application_container(settings)
     try:
         return _dispatch(args, container)
+    except CliJsonError as error:
+        print(render_json(error.payload), file=sys.stderr)
+        return 1
     except Exception as error:
         print(f"ERROR: {error}", file=sys.stderr)
         return 1
@@ -101,6 +114,39 @@ def _dispatch(args: argparse.Namespace, container: ApplicationContainer) -> int:
             comment=args.comment,
         )
         print(render_json(result))
+        return 0
+
+    if args.command == "seed-demo":
+        try:
+            result = seed_demo_data(container.session, with_recovery=args.with_recovery)
+        except DemoSeedError as error:
+            raise CliJsonError(
+                {
+                    "command": "seed-demo",
+                    "status": "error",
+                    "error": "demo_seed_rejected",
+                    "detail": str(error),
+                }
+            ) from error
+        payload = {
+            "command": "seed-demo",
+            "status": "ok",
+            "with_recovery": args.with_recovery,
+            "seeded": {
+                "role_ids": result.role_ids,
+                "user_ids": result.user_ids,
+                "item_id": result.item_id,
+                "slot_id": result.slot_id,
+                "binding_id": result.binding_id,
+                "inventory_balance_id": result.inventory_balance_id,
+                "inventory_quantity": result.inventory_quantity,
+                "user_rfid_card_id": result.user_rfid_card_id,
+                "user_rfid_card_uid": result.user_rfid_card_uid,
+                "recovery_operation_id": result.recovery_operation_id,
+                "recovery_history_id": result.recovery_history_id,
+            },
+        }
+        print(render_json(payload))
         return 0
 
     raise ValueError(f"Unsupported command: {args.command}")

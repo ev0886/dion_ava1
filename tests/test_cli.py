@@ -2,9 +2,13 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from io import StringIO
+import json
 from pathlib import Path
 from types import SimpleNamespace
 from contextlib import redirect_stderr, redirect_stdout
+
+from sqlalchemy import create_engine, select
+from sqlalchemy.orm import sessionmaker
 
 from app.application.dto.startup import (
     DatabaseReadinessDTO,
@@ -15,6 +19,7 @@ from app.application.dto.startup import (
 from app.cli import main
 from app.domain.enums import HardwareEndpointType, StartupReadinessStatus
 from app.hardware.dto import HardwareHealthEntry, HardwareHealthSnapshot, HardwareOperationStatus
+from app.persistence.models import InventoryBalance, Operation, OperationStateHistory, Role, SlotItemBinding, User, UserRfidCard
 
 
 def test_startup_check_returns_success_for_healthy_temp_environment(tmp_path: Path) -> None:
@@ -127,7 +132,96 @@ def test_cli_help_lists_operator_commands() -> None:
     assert "startup-check" in stdout
     assert "hardware-health" in stdout
     assert "recovery-scan" in stdout
+    assert "seed-demo" in stdout
     assert stderr == ""
+
+
+def test_seed_demo_seeds_expected_minimal_domain_data(tmp_path: Path) -> None:
+    sqlite_filename = "cli_seed_demo.sqlite3"
+
+    exit_code, stdout, stderr = _run_cli(
+        [
+            "--data-dir",
+            str(tmp_path),
+            "--sqlite-filename",
+            sqlite_filename,
+            "--alembic-config-path",
+            "alembic.ini",
+            "seed-demo",
+        ]
+    )
+
+    payload = json.loads(stdout)
+    assert exit_code == 0
+    assert "ERROR:" not in stderr
+    assert payload["status"] == "ok"
+    assert payload["with_recovery"] is False
+    assert payload["seeded"]["inventory_quantity"] == 5
+    assert payload["seeded"]["user_rfid_card_uid"] == "DEMO-USER-1"
+
+    with _session_factory(tmp_path, sqlite_filename)() as session:
+        assert len(session.execute(select(Role)).scalars().all()) == 3
+        assert len(session.execute(select(User)).scalars().all()) == 3
+        assert len(session.execute(select(SlotItemBinding)).scalars().all()) == 1
+        assert session.execute(select(InventoryBalance)).scalar_one().quantity == 5
+        assert session.execute(select(UserRfidCard)).scalar_one().card_uid == "DEMO-USER-1"
+        assert session.execute(select(Operation)).scalars().all() == []
+
+
+def test_seed_demo_rejects_non_empty_domain_database(tmp_path: Path) -> None:
+    sqlite_filename = "cli_seed_demo_non_empty.sqlite3"
+    argv = [
+        "--data-dir",
+        str(tmp_path),
+        "--sqlite-filename",
+        sqlite_filename,
+        "--alembic-config-path",
+        "alembic.ini",
+        "seed-demo",
+    ]
+
+    first_exit_code, _first_stdout, first_stderr = _run_cli(argv)
+    second_exit_code, second_stdout, second_stderr = _run_cli(argv)
+
+    assert first_exit_code == 0
+    assert "ERROR:" not in first_stderr
+    assert second_exit_code == 1
+    assert second_stdout == ""
+    error_payload = json.loads(second_stderr[second_stderr.find("{") :])
+    assert error_payload["command"] == "seed-demo"
+    assert error_payload["error"] == "demo_seed_rejected"
+    assert "empty domain database" in error_payload["detail"]
+    assert "roles" in error_payload["detail"]
+
+
+def test_seed_demo_with_recovery_creates_operation_candidate(tmp_path: Path) -> None:
+    sqlite_filename = "cli_seed_demo_recovery.sqlite3"
+
+    exit_code, stdout, stderr = _run_cli(
+        [
+            "--data-dir",
+            str(tmp_path),
+            "--sqlite-filename",
+            sqlite_filename,
+            "--alembic-config-path",
+            "alembic.ini",
+            "seed-demo",
+            "--with-recovery",
+        ]
+    )
+
+    payload = json.loads(stdout)
+    assert exit_code == 0
+    assert "ERROR:" not in stderr
+    assert payload["with_recovery"] is True
+    assert payload["seeded"]["recovery_operation_id"] is not None
+    assert payload["seeded"]["recovery_history_id"] is not None
+
+    with _session_factory(tmp_path, sqlite_filename)() as session:
+        operation = session.execute(select(Operation)).scalar_one()
+        history = session.execute(select(OperationStateHistory)).scalar_one()
+        assert operation.id == payload["seeded"]["recovery_operation_id"]
+        assert history.operation_id == operation.id
 
 
 @dataclass(slots=True)
@@ -200,3 +294,12 @@ def _run_cli(argv: list[str]) -> tuple[int, str, str]:
         except SystemExit as error:
             exit_code = int(error.code)
     return exit_code, stdout_buffer.getvalue(), stderr_buffer.getvalue()
+
+
+def _session_factory(tmp_path: Path, sqlite_filename: str) -> sessionmaker:
+    engine = create_engine(
+        f"sqlite:///{(tmp_path / sqlite_filename).resolve()}",
+        future=True,
+        connect_args={"check_same_thread": False},
+    )
+    return sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
