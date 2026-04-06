@@ -8,6 +8,7 @@ from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.application.manual_resolution_service import ManualResolutionPreparationService
+from app.application.dto.recovery import ManualResolutionRequestDTO
 from app.application.reconciliation_service import RecoveryReconciliationService
 from app.application.recovery_service import RecoveryService
 from app.application.time import utc_now
@@ -138,6 +139,37 @@ def test_existing_open_recovery_case_reused_instead_of_duplicated(session_factor
         assert len(cases) == 1
         assert result.candidates[0].recovery_case_id == existing_case.id
         assert result.candidates[0].reused_existing_case is True
+
+
+def test_manually_resolved_case_is_not_reopened_when_rescan_finds_same_evidence(
+    session_factory: sessionmaker[Session],
+) -> None:
+    with session_factory() as session:
+        ids = _seed_domain(session)
+        operation = _add_operation(session, ids=ids, state=OperationState.USER_ACTION_PENDING)
+        service = _recovery_service(session)
+
+        initial_scan = service.scan_recovery_targets()
+        recovery_case_id = initial_scan.candidates[0].recovery_case_id
+        service.resolve_manual_case(
+            recovery_case_id,
+            ManualResolutionRequestDTO(
+                operator_user_id=ids.user_id,
+                decision="close_case",
+                comment="Confirmed no further action is required",
+            ),
+        )
+
+        rescan = service.scan_recovery_targets()
+
+        cases = session.execute(select(RecoveryCase).order_by(RecoveryCase.id.asc())).scalars().all()
+        open_cases = [case for case in cases if case.status is RecoveryStatus.OPEN]
+        assert len(cases) == 1
+        assert cases[0].id == recovery_case_id
+        assert cases[0].status is RecoveryStatus.RESOLVED
+        assert rescan.candidate_operation_ids == ()
+        assert rescan.open_case_count == 0
+        assert open_cases == []
 
 
 def test_reconciliation_reports_missing_inventory_write_when_appropriate(

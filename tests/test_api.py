@@ -247,6 +247,42 @@ def test_manual_recovery_resolution_success_updates_case_and_persists_actions(tm
     assert manual_actions[0].comment == "Operator verified physical state"
 
 
+def test_recovery_rescan_does_not_create_new_case_after_manual_resolution(tmp_path: Path) -> None:
+    app = create_app(_settings(tmp_path, "api_manual_recovery_rescan.sqlite3"))
+    _seed_base_domain(app)
+    _seed_recovery_operation(app)
+
+    with TestClient(app) as client:
+        first_scan = client.post("/recovery/scan")
+        recovery_case_id = first_scan.json()["open_cases"][0]["recovery_case_id"]
+
+        manual_resolution = client.post(
+            f"/recovery/cases/{recovery_case_id}/manual-resolution",
+            json={
+                "operator_user_id": 1,
+                "decision": "close_case",
+                "comment": "Operator verified physical state",
+            },
+        )
+        rescan = client.post("/recovery/scan")
+
+    assert first_scan.status_code == 200
+    assert manual_resolution.status_code == 200
+    assert rescan.status_code == 200
+    assert rescan.json()["candidate_operation_ids"] == []
+    assert rescan.json()["open_case_count"] == 0
+    assert rescan.json()["open_cases"] == []
+
+    with app.state.session_factory() as session:
+        recovery_cases = session.execute(select(RecoveryCase).order_by(RecoveryCase.id.asc())).scalars().all()
+        open_cases = [case for case in recovery_cases if case.status is RecoveryStatus.OPEN]
+
+    assert len(recovery_cases) == 1
+    assert recovery_cases[0].id == recovery_case_id
+    assert recovery_cases[0].status is RecoveryStatus.RESOLVED
+    assert open_cases == []
+
+
 def test_manual_recovery_resolution_returns_404_for_missing_case(tmp_path: Path) -> None:
     app = create_app(_settings(tmp_path, "api_manual_recovery_missing.sqlite3"))
     _seed_base_domain(app)

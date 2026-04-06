@@ -58,13 +58,16 @@ class RecoveryService:
             detected_state = operation.operation_state
             reconciliation = self._reconciliation_service.reconcile_operation(operation)
             classification = self._classify_recovery_case(reconciliation.outcome)
-            recovery_case, reused_existing_case = self._ensure_recovery_case(
+            recovery_case_result = self._ensure_recovery_case(
                 operation,
                 classification=classification,
                 reconciliation_outcome=reconciliation.outcome,
                 reconciliation_reason=reconciliation.reason,
                 inventory_transaction_ids=reconciliation.inventory_transaction_ids,
             )
+            if recovery_case_result is None:
+                continue
+            recovery_case, reused_existing_case = recovery_case_result
             self._mark_operation_for_recovery(operation, recovery_case.id, reconciliation.outcome)
             candidates.append(
                 RecoveryCandidateDTO(
@@ -143,7 +146,7 @@ class RecoveryService:
         reconciliation_outcome: str,
         reconciliation_reason: str,
         inventory_transaction_ids: tuple[int, ...],
-    ) -> tuple[RecoveryCase, bool]:
+    ) -> tuple[RecoveryCase, bool] | None:
         existing_case = self.recovery_repository.find_open_case_by_operation_id(operation.id or 0)
         summary = self._build_summary(operation, reconciliation_outcome)
         context = {
@@ -163,6 +166,15 @@ class RecoveryService:
             self.recovery_repository.session.flush()
             return (existing_case, True)
 
+        resolved_case = self.recovery_repository.find_latest_case_by_operation_id(operation.id or 0)
+        if self._resolved_case_matches_current_evidence(
+            resolved_case,
+            operation=operation,
+            reconciliation_outcome=reconciliation_outcome,
+            inventory_transaction_ids=inventory_transaction_ids,
+        ):
+            return None
+
         recovery_case = RecoveryCase(
             classification=classification,
             status=RecoveryStatus.OPEN,
@@ -174,6 +186,31 @@ class RecoveryService:
         self.recovery_repository.session.flush()
         self._ensure_case_entities(recovery_case.id, operation, inventory_transaction_ids)
         return (recovery_case, False)
+
+    @staticmethod
+    def _resolved_case_matches_current_evidence(
+        recovery_case: RecoveryCase | None,
+        *,
+        operation: Operation,
+        reconciliation_outcome: str,
+        inventory_transaction_ids: tuple[int, ...],
+    ) -> bool:
+        if recovery_case is None:
+            return False
+        if recovery_case.status is not RecoveryStatus.RESOLVED or recovery_case.resolved_at is None:
+            return False
+
+        context = dict(recovery_case.context_json or {})
+        if not isinstance(context.get("manual_resolution"), dict):
+            return False
+
+        persisted_outcome = context.get("reconciliation_outcome")
+        persisted_transaction_ids = context.get("inventory_transaction_ids")
+        if persisted_transaction_ids != list(inventory_transaction_ids):
+            return False
+        if persisted_outcome == reconciliation_outcome:
+            return True
+        return operation.operation_state is OperationState.RECOVERY_REQUIRED
 
     def _ensure_case_entities(
         self,

@@ -36,6 +36,18 @@ class RecoveryRepository(Repository):
         )
         return self.session.execute(statement).scalars().first()
 
+    def find_latest_case_by_operation_id(self, operation_id: int) -> RecoveryCase | None:
+        statement = (
+            select(RecoveryCase)
+            .join(RecoveryCaseEntity, RecoveryCaseEntity.recovery_case_id == RecoveryCase.id)
+            .where(
+                RecoveryCaseEntity.entity_type == "operation",
+                RecoveryCaseEntity.entity_id == str(operation_id),
+            )
+            .order_by(RecoveryCase.id.desc())
+        )
+        return self.session.execute(statement).scalars().first()
+
     def add_case_entity(self, recovery_case_entity: RecoveryCaseEntity) -> None:
         self.session.add(recovery_case_entity)
 
