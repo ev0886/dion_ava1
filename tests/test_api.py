@@ -159,7 +159,7 @@ def test_refill_operation_creates_session_when_session_id_is_null(tmp_path: Path
         assert session.get(OperationSession, response.json()["session_id"]) is not None
 
 
-def test_openapi_operation_examples_do_not_suggest_invalid_session_id(tmp_path: Path) -> None:
+def test_openapi_operation_examples_use_seeded_values_and_clear_session_guidance(tmp_path: Path) -> None:
     app = create_app(_settings(tmp_path, "api_openapi.sqlite3"))
 
     with TestClient(app) as client:
@@ -176,6 +176,35 @@ def test_openapi_operation_examples_do_not_suggest_invalid_session_id(tmp_path: 
     refill_example = paths["/operations/refill"]["post"]["requestBody"]["content"]["application/json"]["examples"]["default"][
         "value"
     ]
+    auth_user_id_example = paths["/auth/resolve"]["post"]["requestBody"]["content"]["application/json"]["examples"]["by_user_id"][
+        "value"
+    ]
+    auth_user_code_example = paths["/auth/resolve"]["post"]["requestBody"]["content"]["application/json"]["examples"][
+        "by_user_code"
+    ]["value"]
+    manual_resolution_example = paths["/recovery/cases/{recovery_case_id}/manual-resolution"]["post"]["requestBody"][
+        "content"
+    ]["application/json"]["examples"]["default"]["value"]
+    dispense_schema = response.json()["components"]["schemas"]["DispenseOperationRequest"]
+    return_schema = response.json()["components"]["schemas"]["ReturnOperationRequest"]
+    refill_schema = response.json()["components"]["schemas"]["RefillOperationRequest"]
+
+    assert dispense_example == {"user_id": 3, "item_id": 1, "slot_id": 1, "quantity": 1}
+    assert return_example == {"user_id": 3, "item_id": 1, "quantity": 1}
+    assert refill_example == {"operator_user_id": 2, "item_id": 1, "slot_id": 1, "quantity": 5, "mode": "set"}
+    assert auth_user_id_example == {"user_id": 3}
+    assert auth_user_code_example == {"user_code": "user-1"}
+    assert manual_resolution_example == {
+        "operator_user_id": 2,
+        "decision": "close_case",
+        "comment": "Operator verified physical state",
+    }
+    assert dispense_schema["properties"]["session_id"]["description"].startswith("Optional operation session. Use null")
+    assert return_schema["properties"]["session_id"]["description"].startswith("Optional operation session. Use null")
+    assert refill_schema["properties"]["session_id"]["description"].startswith("Optional service session. Use null")
+    assert {"type": "null"} in dispense_schema["properties"]["session_id"]["anyOf"]
+    assert {"type": "null"} in return_schema["properties"]["session_id"]["anyOf"]
+    assert {"type": "null"} in refill_schema["properties"]["session_id"]["anyOf"]
     assert "session_id" not in dispense_example
     assert "session_id" not in return_example
     assert "session_id" not in refill_example

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from contextlib import asynccontextmanager
 
-from fastapi import Body, Depends, FastAPI
+from fastapi import Body, Depends, FastAPI, Path
 from fastapi.responses import JSONResponse
 
 from app.api.dependencies import get_application_container
@@ -10,6 +10,7 @@ from app.api.errors import register_exception_handlers
 from app.api.schemas import (
     AuthResolveRequest,
     DispenseOperationRequest,
+    ErrorResponse,
     ExportCreateRequest,
     RecoveryManualResolutionRequest,
     RefillOperationRequest,
@@ -53,9 +54,32 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
     def readiness(container: ApplicationContainer = Depends(get_application_container)) -> JSONResponse:
         return JSONResponse(to_api_payload(container.services.startup.run_startup_checks()))
 
-    @app.post("/auth/resolve")
+    @app.post(
+        "/auth/resolve",
+        summary="Resolve an operator or user identity",
+        description=(
+            "Use this first when the operator needs to confirm who is about to interact with the stand. "
+            "Provide either user_id or user_code. Demo-seeded values include user_id 3, user_code "
+            '"user-1", and operator user_code "operator-1".'
+        ),
+    )
     def auth_resolve(
-        payload: AuthResolveRequest,
+        payload: AuthResolveRequest = Body(
+            openapi_examples={
+                "by_user_id": {
+                    "summary": "Resolve the seeded demo user by ID",
+                    "value": {"user_id": 3},
+                },
+                "by_user_code": {
+                    "summary": "Resolve the seeded demo user by code",
+                    "value": {"user_code": "user-1"},
+                },
+                "operator_only": {
+                    "summary": "Resolve only if the identity is an operator",
+                    "value": {"user_code": "operator-1", "allowed_roles": ["operator"]},
+                },
+            }
+        ),
         container: ApplicationContainer = Depends(get_application_container),
     ) -> JSONResponse:
         dto = container.services.auth.authorize(
@@ -67,21 +91,39 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
         )
         return JSONResponse(to_api_payload(dto))
 
-    @app.get("/inventory/{slot_id}/{item_id}")
+    @app.get(
+        "/inventory/{slot_id}/{item_id}",
+        summary="Check slot inventory for an item",
+        description=(
+            "Use this to confirm the seeded slot and item combination before a demo or operator action. "
+            "Demo stand example: slot_id 1 with item_id 1."
+        ),
+    )
     def inventory_lookup(
-        slot_id: int,
-        item_id: int,
+        slot_id: int = Path(description="Physical slot ID. Demo stand example: 1."),
+        item_id: int = Path(description="Item ID expected in the slot. Demo stand example: 1."),
         container: ApplicationContainer = Depends(get_application_container),
     ) -> JSONResponse:
         return JSONResponse(to_api_payload(container.services.inventory.lookup_inventory(slot_id=slot_id, item_id=item_id)))
 
-    @app.post("/operations/dispense")
+    @app.post(
+        "/operations/dispense",
+        summary="Dispense an item to a user",
+        description=(
+            "Operator-tested happy path: resolve the user, optionally inspect inventory, then execute this request. "
+            "Use session_id null or omit it entirely when no service session is active."
+        ),
+    )
     def dispense_operation(
         payload: DispenseOperationRequest = Body(
             openapi_examples={
                 "default": {
-                    "summary": "Dispense without service session",
-                    "value": {"user_id": 1, "item_id": 1, "slot_id": 1, "quantity": 1, "session_id": None},
+                    "summary": "Happy path from the seeded stand",
+                    "value": {"user_id": 3, "item_id": 1, "slot_id": 1, "quantity": 1},
+                },
+                "with_null_session": {
+                    "summary": "Explicitly send null session_id",
+                    "value": {"user_id": 3, "item_id": 1, "slot_id": 1, "quantity": 1, "session_id": None},
                 }
             }
         ),
@@ -99,13 +141,25 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
         )
         return JSONResponse(to_api_payload(dto))
 
-    @app.post("/operations/return")
+    @app.post(
+        "/operations/return",
+        summary="Return an item from a user",
+        description=(
+            "Operator-tested happy path: use the seeded user and item, and leave session_id null or omitted unless "
+            "you are already working inside a real service session. slot_id may stay null when the backend should "
+            "resolve it automatically."
+        ),
+    )
     def return_operation(
         payload: ReturnOperationRequest = Body(
             openapi_examples={
                 "default": {
-                    "summary": "Return without service session",
-                    "value": {"user_id": 1, "item_id": 1, "slot_id": None, "quantity": 1, "session_id": None},
+                    "summary": "Happy path with automatic slot resolution",
+                    "value": {"user_id": 3, "item_id": 1, "quantity": 1},
+                },
+                "with_null_slot_and_session": {
+                    "summary": "Explicit null slot_id and session_id",
+                    "value": {"user_id": 3, "item_id": 1, "slot_id": None, "quantity": 1, "session_id": None},
                 }
             }
         ),
@@ -123,12 +177,29 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
         )
         return JSONResponse(to_api_payload(dto))
 
-    @app.post("/operations/refill")
+    @app.post(
+        "/operations/refill",
+        summary="Refill inventory for a slot",
+        description=(
+            "Use this for service/operator restocking. If session_id is null or omitted, the backend can create or "
+            "resolve the service-session flow automatically."
+        ),
+    )
     def refill_operation(
         payload: RefillOperationRequest = Body(
             openapi_examples={
                 "default": {
-                    "summary": "Refill and let the service create a session",
+                    "summary": "Set the seeded slot balance using the demo operator",
+                    "value": {
+                        "operator_user_id": 2,
+                        "item_id": 1,
+                        "slot_id": 1,
+                        "quantity": 5,
+                        "mode": "set",
+                    },
+                },
+                "with_null_session": {
+                    "summary": "Explicitly allow the backend to create or reuse the service session",
                     "value": {
                         "operator_user_id": 2,
                         "item_id": 1,
@@ -155,28 +226,74 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
         )
         return JSONResponse(to_api_payload(dto))
 
-    @app.post("/recovery/scan")
+    @app.post(
+        "/recovery/scan",
+        summary="Scan for recovery candidates",
+        description=(
+            "Run this first when investigating incomplete or stuck operations. On the demo stand with recovery seed "
+            "enabled, this can produce recovery_case_id 1."
+        ),
+    )
     def recovery_scan(container: ApplicationContainer = Depends(get_application_container)) -> JSONResponse:
         return JSONResponse(to_api_payload(container.services.recovery.scan_recovery_targets()))
 
-    @app.get("/recovery/cases/{recovery_case_id}")
+    @app.get(
+        "/recovery/cases/{recovery_case_id}",
+        summary="Read a recovery case",
+        description="Use recovery_case_id from /recovery/scan. Demo recovery example: recovery_case_id 1.",
+        responses={
+            404: {"model": ErrorResponse, "description": "Recovery case was not found."},
+        },
+    )
     def recovery_case(
-        recovery_case_id: int,
+        recovery_case_id: int = Path(description="Recovery case ID from /recovery/scan. Demo example: 1."),
         container: ApplicationContainer = Depends(get_application_container),
     ) -> JSONResponse:
         return JSONResponse(to_api_payload(container.services.recovery.get_case(recovery_case_id)))
 
-    @app.get("/recovery/cases/{recovery_case_id}/manual-resolution")
+    @app.get(
+        "/recovery/cases/{recovery_case_id}/manual-resolution",
+        summary="Prepare manual recovery resolution",
+        description=(
+            "Use this after reading the case details and before posting a manual decision. It returns the impacted "
+            "entities and current case context the operator should verify physically."
+        ),
+        responses={
+            404: {"model": ErrorResponse, "description": "Recovery case was not found."},
+        },
+    )
     def recovery_manual_resolution(
-        recovery_case_id: int,
+        recovery_case_id: int = Path(description="Recovery case ID to inspect for operator resolution. Demo example: 1."),
         container: ApplicationContainer = Depends(get_application_container),
     ) -> JSONResponse:
         return JSONResponse(to_api_payload(container.services.recovery.prepare_manual_resolution(recovery_case_id)))
 
-    @app.post("/recovery/cases/{recovery_case_id}/manual-resolution")
+    @app.post(
+        "/recovery/cases/{recovery_case_id}/manual-resolution",
+        summary="Apply manual recovery resolution",
+        description=(
+            "Typical operator flow: scan for cases, inspect the case, review this preparation endpoint, then post a "
+            'decision such as "close_case" with an operator comment.'
+        ),
+        responses={
+            404: {"model": ErrorResponse, "description": "Recovery case was not found."},
+            409: {"model": ErrorResponse, "description": "Recovery case cannot be manually resolved in its current state."},
+        },
+    )
     def recovery_manual_resolution_apply(
-        recovery_case_id: int,
-        payload: RecoveryManualResolutionRequest,
+        recovery_case_id: int = Path(description="Recovery case ID to resolve manually. Demo example: 1."),
+        payload: RecoveryManualResolutionRequest = Body(
+            openapi_examples={
+                "default": {
+                    "summary": "Close the demo recovery case after physical verification",
+                    "value": {
+                        "operator_user_id": 2,
+                        "decision": "close_case",
+                        "comment": "Operator verified physical state",
+                    },
+                }
+            }
+        ),
         container: ApplicationContainer = Depends(get_application_container),
     ) -> JSONResponse:
         return JSONResponse(

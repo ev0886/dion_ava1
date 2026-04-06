@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.domain.enums import RoleCode
 
@@ -12,16 +12,25 @@ class ApiModel(BaseModel):
 
 
 class AuthResolveRequest(ApiModel):
-    user_id: int | None = None
-    user_code: str | None = None
-    allowed_roles: tuple[RoleCode, ...] = ()
+    user_id: int | None = Field(
+        default=None,
+        description="Known user ID. Demo stand example: 3 for user-1.",
+    )
+    user_code: str | None = Field(
+        default=None,
+        description='Alternative identifier when resolving by code instead of numeric ID. Demo stand example: "user-1".',
+    )
+    allowed_roles: tuple[RoleCode, ...] = Field(
+        default=(),
+        description="Optional role filter. Leave empty to resolve any active user.",
+    )
 
 
 class DispenseOperationRequest(ApiModel):
     model_config = ConfigDict(
         json_schema_extra={
             "example": {
-                "user_id": 1,
+                "user_id": 3,
                 "item_id": 1,
                 "slot_id": 1,
                 "quantity": 1,
@@ -30,18 +39,21 @@ class DispenseOperationRequest(ApiModel):
         }
     )
 
-    user_id: int
-    item_id: int
-    slot_id: int
-    quantity: int = 1
-    session_id: int | None = None
+    user_id: int = Field(description="End user performing the dispense. Demo stand example: 3 for user-1.")
+    item_id: int = Field(description="Item to dispense. Demo stand example: 1.")
+    slot_id: int = Field(description="Physical slot expected to dispense the item. Demo stand example: 1.")
+    quantity: int = Field(default=1, description="Requested quantity. The tested happy path uses 1.")
+    session_id: int | None = Field(
+        default=None,
+        description="Optional operation session. Use null for the normal happy path when no service session is active.",
+    )
 
 
 class ReturnOperationRequest(ApiModel):
     model_config = ConfigDict(
         json_schema_extra={
             "example": {
-                "user_id": 1,
+                "user_id": 3,
                 "item_id": 1,
                 "slot_id": None,
                 "quantity": 1,
@@ -50,11 +62,17 @@ class ReturnOperationRequest(ApiModel):
         }
     )
 
-    user_id: int
-    item_id: int
-    slot_id: int | None = None
-    quantity: int = 1
-    session_id: int | None = None
+    user_id: int = Field(description="End user returning the item. Demo stand example: 3 for user-1.")
+    item_id: int = Field(description="Returned item ID. Demo stand example: 1.")
+    slot_id: int | None = Field(
+        default=None,
+        description="Optional return slot. Leave null when the backend should resolve the return-capable slot automatically.",
+    )
+    quantity: int = Field(default=1, description="Returned quantity. The tested happy path uses 1.")
+    session_id: int | None = Field(
+        default=None,
+        description="Optional operation session. Use null for the normal happy path when no service session is active.",
+    )
 
 
 class RefillOperationRequest(ApiModel):
@@ -71,12 +89,18 @@ class RefillOperationRequest(ApiModel):
         }
     )
 
-    operator_user_id: int
-    item_id: int
-    slot_id: int
-    quantity: int
-    mode: Literal["set", "add"] = "set"
-    session_id: int | None = None
+    operator_user_id: int = Field(description="Operator performing the refill. Demo stand example: 2 for operator-1.")
+    item_id: int = Field(description="Item being refilled. Demo stand example: 1.")
+    slot_id: int = Field(description="Slot being refilled. Demo stand example: 1.")
+    quantity: int = Field(description="Quantity to apply using the selected mode.")
+    mode: Literal["set", "add"] = Field(
+        default="set",
+        description='Refill strategy: "set" replaces the quantity, "add" increments the current balance.',
+    )
+    session_id: int | None = Field(
+        default=None,
+        description="Optional service session. Use null to let the backend create or resolve the service session flow.",
+    )
 
 
 class ServiceModeStartRequest(ApiModel):
@@ -98,9 +122,12 @@ class ExportCreateRequest(ApiModel):
 
 
 class RecoveryManualResolutionRequest(ApiModel):
-    operator_user_id: int
-    decision: str
-    comment: str | None = None
+    operator_user_id: int = Field(description="Operator resolving the case. Demo stand example: 2 for operator-1.")
+    decision: str = Field(description='Manual resolution decision. Operator-tested example: "close_case".')
+    comment: str | None = Field(
+        default=None,
+        description='Optional operator note recorded with the resolution. Example: "Operator verified physical state".',
+    )
 
 
 class ErrorResponse(ApiModel):
