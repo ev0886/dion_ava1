@@ -139,7 +139,7 @@ class StartupOrchestrationService:
             ok=True,
             degraded=True,
             entries=entries,
-            message="One or more hardware endpoints reported unavailable status.",
+            message=self._build_hardware_degraded_message(entries),
         )
 
     def _check_recovery_readiness(self) -> RecoveryReadinessDTO:
@@ -197,10 +197,24 @@ class StartupOrchestrationService:
             return "Startup checks passed."
         reasons: list[str] = []
         if hardware.degraded:
-            reasons.append("hardware degraded")
+            detail = "hardware degraded"
+            if hardware.message:
+                detail += f" ({hardware.message})"
+            reasons.append(detail)
         if recovery.recovery_candidates_found:
             reasons.append("recovery candidates detected")
         return "Startup checks completed with degraded readiness: " + ", ".join(reasons) + "."
+
+    @staticmethod
+    def _build_hardware_degraded_message(entries: tuple[HardwareReadinessEntryDTO, ...]) -> str:
+        unavailable_devices = [entry.device_type for entry in entries if not entry.is_available]
+        if not unavailable_devices:
+            return "One or more hardware endpoints reported unavailable status."
+        return (
+            "One or more hardware endpoints reported unavailable status during ping-only boundary checks: "
+            + ", ".join(unavailable_devices)
+            + "."
+        )
 
 
 StartupService = StartupOrchestrationService

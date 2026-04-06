@@ -79,6 +79,9 @@ def test_cli_hardware_health_smoke_with_composed_real_provider(
     exit_code, stdout, stderr = _run_cli(["hardware-health"])
 
     assert exit_code == 0
+    assert '"provider": "real"' in stdout
+    assert '"safe_boundary_check": true' in stdout
+    assert '"real_endpoint_config"' in stdout
     assert '"drum"' in stdout
     assert '"lock"' in stdout
     assert '"rfid"' in stdout

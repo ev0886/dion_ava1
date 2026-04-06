@@ -17,6 +17,7 @@ from app.application.dto.startup import (
     StartupReadinessDTO,
 )
 from app.cli import main
+from app.config import AppSettings, HardwareProvider
 from app.domain.enums import HardwareEndpointType, StartupReadinessStatus
 from app.hardware.dto import HardwareHealthEntry, HardwareHealthSnapshot, HardwareOperationStatus
 from app.persistence.models import InventoryBalance, Operation, OperationStateHistory, Role, SlotItemBinding, User, UserRfidCard
@@ -87,6 +88,9 @@ def test_hardware_health_prints_three_mock_device_statuses(tmp_path: Path) -> No
     )
 
     assert exit_code == 0
+    assert '"provider": "mock"' in stdout
+    assert '"healthcheck_scope": "ping_only"' in stdout
+    assert '"snapshot"' in stdout
     assert '"drum"' in stdout
     assert '"lock"' in stdout
     assert '"rfid"' in stdout
@@ -101,6 +105,7 @@ def test_hardware_health_returns_non_zero_when_any_device_is_unavailable(monkeyp
     exit_code, stdout, stderr = _run_cli(["hardware-health"])
 
     assert exit_code == 1
+    assert '"provider"' in stdout
     assert '"all_ok"' not in stdout
     assert '"status": "failure"' in stdout
     assert stderr == ""
@@ -277,9 +282,14 @@ class _FakeHardwareFacade:
 class _FakeHardwareContainer:
     all_ok: bool
     hardware: SimpleNamespace | None = None
+    settings: AppSettings | None = None
 
     def __post_init__(self) -> None:
         self.hardware = SimpleNamespace(facade=_FakeHardwareFacade(self.all_ok))
+        self.settings = AppSettings(
+            hardware_provider=HardwareProvider.MOCK,
+            hardware_real_endpoints={},
+        )
 
     def close(self) -> None:
         return None

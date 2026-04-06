@@ -1,8 +1,16 @@
 from __future__ import annotations
 
+import json
 from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+
+REAL_HARDWARE_ENDPOINT_NAMES: tuple[str, ...] = (
+    "drum_controller",
+    "lock_controller",
+    "rfid_reader",
+)
 
 
 class EndpointTimeoutSettings(BaseModel):
@@ -83,3 +91,69 @@ class RealHardwareSettings(BaseModel):
     drum_controller: HardwareEndpointTransportConfig | None = None
     lock_controller: HardwareEndpointTransportConfig | None = None
     rfid_reader: HardwareEndpointTransportConfig | None = None
+
+
+def real_hardware_endpoints_example() -> dict[str, object]:
+    return {
+        "drum_controller": {
+            "endpoint": {
+                "code": "drum-1",
+                "driver_name": "drum-driver",
+                "enabled": True,
+                "timeouts": {
+                    "connect_timeout_ms": 1000,
+                    "read_timeout_ms": 1000,
+                    "write_timeout_ms": 1000,
+                },
+            },
+            "transport": {
+                "transport": "serial",
+                "port": "/dev/ttyUSB0",
+                "baudrate": 9600,
+                "data_bits": 8,
+                "parity": "none",
+                "stop_bits": 1,
+            },
+        },
+        "lock_controller": {
+            "endpoint": {
+                "code": "lock-1",
+                "driver_name": "lock-driver",
+                "enabled": True,
+                "timeouts": {
+                    "connect_timeout_ms": 1000,
+                    "read_timeout_ms": 1000,
+                    "write_timeout_ms": 1000,
+                },
+            },
+            "transport": {
+                "transport": "tcp",
+                "host": "192.168.1.50",
+                "port": 9001,
+            },
+        },
+        "rfid_reader": {
+            "endpoint": {
+                "code": "rfid-1",
+                "driver_name": "rfid-driver",
+                "enabled": True,
+                "timeouts": {
+                    "connect_timeout_ms": 1000,
+                    "read_timeout_ms": 1000,
+                    "write_timeout_ms": 1000,
+                },
+            },
+            "transport": {
+                "transport": "serial",
+                "port": "/dev/ttyUSB1",
+                "baudrate": 9600,
+                "data_bits": 8,
+                "parity": "none",
+                "stop_bits": 1,
+            },
+        },
+    }
+
+
+def real_hardware_endpoints_example_json() -> str:
+    return json.dumps(real_hardware_endpoints_example(), separators=(",", ":"))

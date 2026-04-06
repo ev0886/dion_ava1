@@ -18,6 +18,7 @@ from app.hardware import (
     StubRealRfidAdapter,
     create_hardware_bundle,
 )
+from app.hardware.factory import summarize_real_endpoint_configs
 
 
 def test_hardware_provider_selection_defaults_to_mock_and_supports_stub_real_and_real(tmp_path: Path) -> None:
@@ -166,6 +167,7 @@ def test_real_mode_with_invalid_or_incomplete_transport_config_fails_safely(tmp_
         assert drum_entry.message is not None
         assert "invalid" in drum_entry.message
         assert "transport.serial.port" in drum_entry.message
+        assert "DION_HARDWARE_REAL_ENDPOINTS" in drum_entry.message
     finally:
         container.close()
 
@@ -221,8 +223,36 @@ def test_readiness_in_real_mode_is_still_degraded_without_working_real_transport
         assert entries["drum_controller"].is_available is False
         assert entries["drum_controller"].message is not None
         assert any(entry.is_available is False for entry in entries.values())
+        assert result.message is not None
+        assert "ping-only boundary checks" in result.message
     finally:
         container.close()
+
+
+def test_real_endpoint_config_summary_reports_unexpected_keys_and_targets(tmp_path: Path) -> None:
+    settings = AppSettings(
+        data_dir=tmp_path,
+        sqlite_filename="real_summary.sqlite3",
+        alembic_config_path=Path("alembic.ini"),
+        hardware_provider=HardwareProvider.REAL,
+        hardware_real_endpoints={
+            "drum_controller": _serial_endpoint_config(code="drum-1", driver_name="drum-driver", port="/dev/ttyUSB0"),
+            "lock_controller": _tcp_endpoint_config(code="lock-1", driver_name="lock-driver", host="192.168.1.50", port=9001),
+            "unused_endpoint": {},
+        },
+    )
+
+    summary = summarize_real_endpoint_configs(settings)
+
+    assert len(summary.entries) == 3
+    assert summary.warnings
+    assert "unused_endpoint" in summary.warnings[0]
+    drum_entry = next(entry for entry in summary.entries if entry.endpoint_name == "drum_controller")
+    assert drum_entry.transport == "serial"
+    assert drum_entry.target == "/dev/ttyUSB0"
+    lock_entry = next(entry for entry in summary.entries if entry.endpoint_name == "lock_controller")
+    assert lock_entry.transport == "tcp"
+    assert lock_entry.target == "192.168.1.50:9001"
 
 
 def _serial_endpoint_config(*, code: str, driver_name: str, port: str) -> dict[str, object]:

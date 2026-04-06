@@ -6,6 +6,8 @@ import sys
 from app.application.composition import ApplicationContainer, create_bootstrapped_application_container
 from app.devtools.demo_seed import DemoSeedError, seed_demo_data
 from app.domain.enums import StartupReadinessStatus
+from app.hardware.factory import summarize_real_endpoint_configs
+from app.hardware.transport_config import real_hardware_endpoints_example_json
 from app.runtime import add_common_settings_arguments, render_json, settings_from_args
 
 
@@ -20,8 +22,8 @@ def build_parser() -> argparse.ArgumentParser:
     add_common_settings_arguments(parser)
     subparsers = parser.add_subparsers(dest="command", required=True)
 
-    subparsers.add_parser("startup-check", help="Run startup readiness checks")
-    subparsers.add_parser("hardware-health", help="Ping hardware endpoints and print availability")
+    subparsers.add_parser("startup-check", help="Run startup readiness checks without executing hardware operations")
+    subparsers.add_parser("hardware-health", help="Run ping-only hardware boundary checks and print availability")
     subparsers.add_parser("recovery-scan", help="Scan unfinished operations and open recovery cases")
 
     export_plan = subparsers.add_parser("export-plan")
@@ -70,7 +72,29 @@ def _dispatch(args: argparse.Namespace, container: ApplicationContainer) -> int:
 
     if args.command == "hardware-health":
         snapshot = container.hardware.facade.hardware_healthcheck()
-        print(render_json(snapshot))
+        endpoint_summary = summarize_real_endpoint_configs(container.settings)
+        payload = {
+            "provider": container.settings.hardware_provider,
+            "healthcheck_scope": "ping_only",
+            "safe_boundary_check": True,
+            "warning": (
+                "Do not call dispense/return/refill endpoints while validating real hardware boundary wiring."
+                if container.settings.hardware_provider.value == "real"
+                else None
+            ),
+            "real_endpoint_config": (
+                {
+                    "entries": endpoint_summary.entries,
+                    "warnings": endpoint_summary.warnings,
+                    "env_var": "DION_HARDWARE_REAL_ENDPOINTS",
+                    "example_json": real_hardware_endpoints_example_json(),
+                }
+                if container.settings.hardware_provider.value == "real"
+                else None
+            ),
+            "snapshot": snapshot,
+        }
+        print(render_json(payload))
         return 0 if snapshot.all_ok else 1
 
     if args.command == "recovery-scan":
