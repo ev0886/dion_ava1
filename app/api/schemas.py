@@ -18,6 +18,18 @@ class AuthResolveRequest(ApiModel):
 
 
 class DispenseOperationRequest(ApiModel):
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "user_id": 1,
+                "item_id": 1,
+                "slot_id": 1,
+                "quantity": 1,
+                "session_id": None,
+            }
+        }
+    )
+
     user_id: int
     item_id: int
     slot_id: int
@@ -26,6 +38,18 @@ class DispenseOperationRequest(ApiModel):
 
 
 class ReturnOperationRequest(ApiModel):
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "user_id": 1,
+                "item_id": 1,
+                "slot_id": None,
+                "quantity": 1,
+                "session_id": None,
+            }
+        }
+    )
+
     user_id: int
     item_id: int
     slot_id: int | None = None
@@ -34,6 +58,19 @@ class ReturnOperationRequest(ApiModel):
 
 
 class RefillOperationRequest(ApiModel):
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "operator_user_id": 2,
+                "item_id": 1,
+                "slot_id": 1,
+                "quantity": 5,
+                "mode": "set",
+                "session_id": None,
+            }
+        }
+    )
+
     operator_user_id: int
     item_id: int
     slot_id: int

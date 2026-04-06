@@ -7,7 +7,7 @@ from fastapi.testclient import TestClient
 from app.api import create_app
 from app.config import AppSettings
 from app.domain.enums import BindingType, ItemStatus, OperationState, RoleCode, SlotStatus, SlotType, UserStatus
-from app.persistence.models import InventoryBalance, Item, Operation, OperationStateHistory, RecoveryCase, Role, Slot, SlotItemBinding, User
+from app.persistence.models import InventoryBalance, Item, Operation, OperationSession, OperationStateHistory, RecoveryCase, Role, Slot, SlotItemBinding, User
 
 
 def test_app_creation_smoke(tmp_path: Path) -> None:
@@ -61,6 +61,100 @@ def test_dispense_operation_happy_path(tmp_path: Path) -> None:
     assert response.json()["qty_confirmed"] == 1
 
 
+def test_dispense_operation_accepts_null_session_id(tmp_path: Path) -> None:
+    app = create_app(_settings(tmp_path, "api_dispense_null_session.sqlite3"))
+    _seed_base_domain(app)
+
+    with TestClient(app) as client:
+        response = client.post(
+            "/operations/dispense",
+            json={"user_id": 1, "item_id": 1, "slot_id": 1, "quantity": 1, "session_id": None},
+        )
+
+    assert response.status_code == 200
+    assert response.json()["session_id"] is None
+
+
+def test_dispense_operation_invalid_session_id_returns_404(tmp_path: Path) -> None:
+    app = create_app(_settings(tmp_path, "api_dispense_invalid_session.sqlite3"))
+    _seed_base_domain(app)
+
+    with TestClient(app) as client:
+        response = client.post(
+            "/operations/dispense",
+            json={"user_id": 1, "item_id": 1, "slot_id": 1, "quantity": 1, "session_id": 0},
+        )
+
+    assert response.status_code == 404
+    assert response.json() == {"error": "not_found", "detail": "Operation session not found: 0"}
+
+
+def test_return_operation_invalid_session_id_returns_404(tmp_path: Path) -> None:
+    app = create_app(_settings(tmp_path, "api_return_invalid_session.sqlite3"))
+    _seed_base_domain(app)
+
+    with TestClient(app) as client:
+        response = client.post(
+            "/operations/return",
+            json={"user_id": 1, "item_id": 1, "slot_id": 1, "quantity": 1, "session_id": 0},
+        )
+
+    assert response.status_code == 404
+    assert response.json() == {"error": "not_found", "detail": "Operation session not found: 0"}
+
+
+def test_refill_operation_invalid_session_id_returns_404(tmp_path: Path) -> None:
+    app = create_app(_settings(tmp_path, "api_refill_invalid_session.sqlite3"))
+    _seed_base_domain(app)
+
+    with TestClient(app) as client:
+        response = client.post(
+            "/operations/refill",
+            json={"operator_user_id": 2, "item_id": 1, "slot_id": 1, "quantity": 5, "mode": "set", "session_id": 0},
+        )
+
+    assert response.status_code == 404
+    assert response.json() == {"error": "not_found", "detail": "Operation session not found: 0"}
+
+
+def test_refill_operation_creates_session_when_session_id_is_null(tmp_path: Path) -> None:
+    app = create_app(_settings(tmp_path, "api_refill_null_session.sqlite3"))
+    _seed_base_domain(app)
+
+    with TestClient(app) as client:
+        response = client.post(
+            "/operations/refill",
+            json={"operator_user_id": 2, "item_id": 1, "slot_id": 1, "quantity": 5, "mode": "set", "session_id": None},
+        )
+
+    assert response.status_code == 200
+    assert response.json()["session_id"] is not None
+    with app.state.session_factory() as session:
+        assert session.get(OperationSession, response.json()["session_id"]) is not None
+
+
+def test_openapi_operation_examples_do_not_suggest_invalid_session_id(tmp_path: Path) -> None:
+    app = create_app(_settings(tmp_path, "api_openapi.sqlite3"))
+
+    with TestClient(app) as client:
+        response = client.get("/openapi.json")
+
+    assert response.status_code == 200
+    paths = response.json()["paths"]
+    dispense_example = paths["/operations/dispense"]["post"]["requestBody"]["content"]["application/json"]["examples"]["default"][
+        "value"
+    ]
+    return_example = paths["/operations/return"]["post"]["requestBody"]["content"]["application/json"]["examples"]["default"][
+        "value"
+    ]
+    refill_example = paths["/operations/refill"]["post"]["requestBody"]["content"]["application/json"]["examples"]["default"][
+        "value"
+    ]
+    assert "session_id" not in dispense_example
+    assert "session_id" not in return_example
+    assert "session_id" not in refill_example
+
+
 def test_recovery_endpoints_happy_path(tmp_path: Path) -> None:
     app = create_app(_settings(tmp_path, "api_recovery.sqlite3"))
     _seed_base_domain(app)
@@ -102,14 +196,22 @@ def _settings(tmp_path: Path, sqlite_filename: str) -> AppSettings:
 
 def _seed_base_domain(app) -> None:
     with app.state.session_factory() as session:
-        role = Role(code=RoleCode.USER, name="User")
-        session.add(role)
+        user_role = Role(code=RoleCode.USER, name="User")
+        operator_role = Role(code=RoleCode.OPERATOR, name="Operator")
+        session.add_all((user_role, operator_role))
         session.flush()
 
         user = User(
-            role_id=role.id,
+            role_id=user_role.id,
             user_code="user-1",
             full_name="User One",
+            status=UserStatus.ACTIVE,
+            is_active=True,
+        )
+        operator = User(
+            role_id=operator_role.id,
+            user_code="operator-1",
+            full_name="Operator One",
             status=UserStatus.ACTIVE,
             is_active=True,
         )
@@ -132,7 +234,7 @@ def _seed_base_domain(app) -> None:
             capacity=10,
             status=SlotStatus.ACTIVE,
         )
-        session.add_all((user, item, slot))
+        session.add_all((user, operator, item, slot))
         session.flush()
         session.add(
             SlotItemBinding(

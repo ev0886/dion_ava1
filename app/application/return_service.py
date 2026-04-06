@@ -20,13 +20,14 @@ from app.hardware.dto import DrumPositionResult
 from app.hardware.exceptions import HardwareError
 from app.persistence.models import Operation, Slot
 from app.persistence.repositories.inventory import InventoryRepository
-from app.persistence.repositories.operations import OperationRepository
+from app.persistence.repositories.operations import OperationRepository, OperationSessionRepository
 
 
 @dataclass(slots=True)
 class ReturnOperationService:
     operation_repository: OperationRepository
     inventory_repository: InventoryRepository
+    session_repository: OperationSessionRepository
     _recorder: OperationRecorder = field(init=False, repr=False)
     _inventory_mutation: InventoryMutationService = field(init=False, repr=False)
 
@@ -53,6 +54,7 @@ class ReturnOperationService:
         if not validation.valid:
             raise ValidationError("; ".join(validation.messages))
 
+        self._ensure_session_exists(request.session_id)
         slot = self._resolve_slot(request)
         command = CreateOperationCommand(
             operation_type=OperationType.RETURN,
@@ -238,6 +240,12 @@ class ReturnOperationService:
         if slot is None:
             raise NotFoundError(f"Slot not found: {binding.slot_id}")
         return slot
+
+    def _ensure_session_exists(self, session_id: int | None) -> None:
+        if session_id is None:
+            return
+        if self.session_repository.get_by_id(session_id) is None:
+            raise NotFoundError(f"Operation session not found: {session_id}")
 
     @staticmethod
     def _slot_hardware_context(slot: Slot) -> dict[str, object]:

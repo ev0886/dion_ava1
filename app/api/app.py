@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from contextlib import asynccontextmanager
 
-from fastapi import Depends, FastAPI
+from fastapi import Body, Depends, FastAPI
 from fastapi.responses import JSONResponse
 
 from app.api.dependencies import get_application_container
@@ -75,7 +75,14 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
 
     @app.post("/operations/dispense")
     def dispense_operation(
-        payload: DispenseOperationRequest,
+        payload: DispenseOperationRequest = Body(
+            openapi_examples={
+                "default": {
+                    "summary": "Dispense without service session",
+                    "value": {"user_id": 1, "item_id": 1, "slot_id": 1, "quantity": 1, "session_id": None},
+                }
+            }
+        ),
         container: ApplicationContainer = Depends(get_application_container),
     ) -> JSONResponse:
         dto = container.services.dispense.execute(
@@ -92,7 +99,14 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
 
     @app.post("/operations/return")
     def return_operation(
-        payload: ReturnOperationRequest,
+        payload: ReturnOperationRequest = Body(
+            openapi_examples={
+                "default": {
+                    "summary": "Return without service session",
+                    "value": {"user_id": 1, "item_id": 1, "slot_id": None, "quantity": 1, "session_id": None},
+                }
+            }
+        ),
         container: ApplicationContainer = Depends(get_application_container),
     ) -> JSONResponse:
         dto = container.services.return_ops.execute(
@@ -109,7 +123,21 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
 
     @app.post("/operations/refill")
     def refill_operation(
-        payload: RefillOperationRequest,
+        payload: RefillOperationRequest = Body(
+            openapi_examples={
+                "default": {
+                    "summary": "Refill and let the service create a session",
+                    "value": {
+                        "operator_user_id": 2,
+                        "item_id": 1,
+                        "slot_id": 1,
+                        "quantity": 5,
+                        "mode": "set",
+                        "session_id": None,
+                    },
+                }
+            }
+        ),
         container: ApplicationContainer = Depends(get_application_container),
     ) -> JSONResponse:
         dto = container.services.refill.execute(

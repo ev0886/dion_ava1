@@ -64,7 +64,11 @@ def session_factory(tmp_path: Path) -> Iterator[sessionmaker[Session]]:
 def test_successful_dispense_flow_with_mock_hardware(session_factory: sessionmaker[Session]) -> None:
     with session_factory() as session:
         ids = _seed_catalog(session, starting_quantity=5)
-        service = DispenseOperationService(OperationRepository(session), InventoryRepository(session))
+        service = DispenseOperationService(
+            OperationRepository(session),
+            InventoryRepository(session),
+            OperationSessionRepository(session),
+        )
 
         result = service.execute(
             DispenseRequest(user_id=ids.user_id, item_id=ids.item_id, slot_id=ids.slot_id, quantity=2),
@@ -83,7 +87,11 @@ def test_successful_dispense_flow_with_mock_hardware(session_factory: sessionmak
 def test_successful_return_flow_with_mock_hardware(session_factory: sessionmaker[Session]) -> None:
     with session_factory() as session:
         ids = _seed_catalog(session, starting_quantity=1)
-        service = ReturnOperationService(OperationRepository(session), InventoryRepository(session))
+        service = ReturnOperationService(
+            OperationRepository(session),
+            InventoryRepository(session),
+            OperationSessionRepository(session),
+        )
 
         result = service.execute(
             ReturnRequest(user_id=ids.user_id, item_id=ids.item_id, slot_id=None, quantity=2),
@@ -129,7 +137,11 @@ def test_dispense_hardware_failure_does_not_mutate_inventory_incorrectly(
 ) -> None:
     with session_factory() as session:
         ids = _seed_catalog(session, starting_quantity=5)
-        service = DispenseOperationService(OperationRepository(session), InventoryRepository(session))
+        service = DispenseOperationService(
+            OperationRepository(session),
+            InventoryRepository(session),
+            OperationSessionRepository(session),
+        )
         failing_facade = _hardware_facade(drum_mode=MockHardwareMode.TIMEOUT)
 
         result = service.execute(
@@ -147,7 +159,11 @@ def test_dispense_hardware_failure_does_not_mutate_inventory_incorrectly(
 def test_operation_history_entries_are_written(session_factory: sessionmaker[Session]) -> None:
     with session_factory() as session:
         ids = _seed_catalog(session, starting_quantity=5)
-        service = DispenseOperationService(OperationRepository(session), InventoryRepository(session))
+        service = DispenseOperationService(
+            OperationRepository(session),
+            InventoryRepository(session),
+            OperationSessionRepository(session),
+        )
 
         result = service.execute(
             DispenseRequest(user_id=ids.user_id, item_id=ids.item_id, slot_id=ids.slot_id, quantity=1),
@@ -175,8 +191,16 @@ def test_inventory_transaction_rows_are_written_for_successful_inventory_flows(
         ids = _seed_catalog(session, starting_quantity=10)
         inventory_repository = InventoryRepository(session)
 
-        dispense_service = DispenseOperationService(OperationRepository(session), inventory_repository)
-        return_service = ReturnOperationService(OperationRepository(session), inventory_repository)
+        dispense_service = DispenseOperationService(
+            OperationRepository(session),
+            inventory_repository,
+            OperationSessionRepository(session),
+        )
+        return_service = ReturnOperationService(
+            OperationRepository(session),
+            inventory_repository,
+            OperationSessionRepository(session),
+        )
         refill_service = RefillOperationService(
             OperationRepository(session),
             inventory_repository,

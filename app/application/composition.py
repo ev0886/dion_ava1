@@ -99,8 +99,16 @@ def build_services(
         auth=auth_service,
         inventory=inventory_service,
         operation_sessions=operation_session_service,
-        dispense=DispenseOperationService(repositories.operations, repositories.inventory),
-        return_ops=ReturnOperationService(repositories.operations, repositories.inventory),
+        dispense=DispenseOperationService(
+            repositories.operations,
+            repositories.inventory,
+            repositories.operation_sessions,
+        ),
+        return_ops=ReturnOperationService(
+            repositories.operations,
+            repositories.inventory,
+            repositories.operation_sessions,
+        ),
         refill=RefillOperationService(
             repositories.operations,
             repositories.inventory,
