@@ -58,6 +58,23 @@ def test_health_and_readiness(tmp_path: Path) -> None:
     assert readiness.json()["readiness_status"] == "ready"
 
 
+def test_operator_ui_page_loads_with_seeded_defaults(tmp_path: Path) -> None:
+    app = create_app(_settings(tmp_path, "api_operator_ui.sqlite3"))
+
+    with TestClient(app) as client:
+        response = client.get("/operator")
+
+    assert response.status_code == 200
+    assert "text/html" in response.headers["content-type"]
+    assert "DION ABA1 Operator UI" in response.text
+    assert 'value="3"' in response.text
+    assert 'value="user-1"' in response.text
+    assert 'value="2"' in response.text
+    assert 'value="1"' in response.text
+    assert "Operator verified physical state" in response.text
+    assert "/recovery/cases/" in response.text
+
+
 def test_auth_and_inventory_happy_path(tmp_path: Path) -> None:
     app = create_app(_settings(tmp_path, "api_auth_inventory.sqlite3"))
     _seed_base_domain(app)

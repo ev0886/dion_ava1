@@ -3,7 +3,7 @@ from __future__ import annotations
 from contextlib import asynccontextmanager
 
 from fastapi import Body, Depends, FastAPI, Path
-from fastapi.responses import JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 
 from app.api.dependencies import get_application_container
 from app.api.errors import register_exception_handlers
@@ -26,6 +26,7 @@ from app.application.dto.recovery import ManualResolutionRequestDTO
 from app.bootstrap import bootstrap
 from app.config import AppSettings, get_settings
 from app.persistence.session import create_session_factory, create_sqlalchemy_engine
+from app.ui.operator_page import render_operator_page
 
 
 def create_app(settings: AppSettings | None = None) -> FastAPI:
@@ -45,6 +46,10 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
     app.state.engine = engine
     app.state.session_factory = session_factory
     register_exception_handlers(app)
+
+    @app.get("/operator", include_in_schema=False)
+    def operator_ui() -> HTMLResponse:
+        return HTMLResponse(render_operator_page())
 
     @app.get("/health")
     def health() -> JSONResponse:
