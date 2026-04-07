@@ -182,14 +182,16 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
         )
         return JSONResponse(to_api_payload(dto))
 
-    @app.post(
-        "/operations/refill",
-        summary="Refill inventory for a slot",
-        description=(
+    refill_route_kwargs = {
+        "summary": "Refill inventory for a slot",
+        "description": (
             "Use this for service/operator restocking. If session_id is null or omitted, the backend can create or "
             "resolve the service-session flow automatically."
         ),
-    )
+    }
+
+    @app.post("/operations/refill-item", include_in_schema=False)
+    @app.post("/operations/refill", **refill_route_kwargs)
     def refill_operation(
         payload: RefillOperationRequest = Body(
             openapi_examples={

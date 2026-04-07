@@ -182,6 +182,39 @@ def test_refill_operation_invalid_session_id_returns_404(tmp_path: Path) -> None
     assert response.json() == {"error": "not_found", "detail": "Operation session not found: 0"}
 
 
+def test_refill_item_route_alias_happy_path(tmp_path: Path) -> None:
+    app = create_app(_settings(tmp_path, "api_refill_item_alias.sqlite3"))
+    _seed_base_domain(app)
+
+    with TestClient(app) as client:
+        response = client.post(
+            "/operations/refill-item",
+            json={"operator_user_id": 2, "item_id": 1, "slot_id": 1, "quantity": 3, "mode": "add"},
+        )
+        inventory_response = client.get("/inventory/slots/1/items/1")
+
+    assert response.status_code == 200
+    assert response.json()["operation_state"] == "session_completed"
+    assert response.json()["slot_id"] == 1
+    assert response.json()["item_id"] == 1
+    assert inventory_response.status_code == 200
+    assert inventory_response.json()["balance"]["quantity"] == 8
+
+
+def test_refill_item_route_alias_invalid_session_id_returns_404(tmp_path: Path) -> None:
+    app = create_app(_settings(tmp_path, "api_refill_item_alias_invalid_session.sqlite3"))
+    _seed_base_domain(app)
+
+    with TestClient(app) as client:
+        response = client.post(
+            "/operations/refill-item",
+            json={"operator_user_id": 2, "item_id": 1, "slot_id": 1, "quantity": 5, "mode": "set", "session_id": 0},
+        )
+
+    assert response.status_code == 404
+    assert response.json() == {"error": "not_found", "detail": "Operation session not found: 0"}
+
+
 def test_refill_operation_creates_session_when_session_id_is_null(tmp_path: Path) -> None:
     app = create_app(_settings(tmp_path, "api_refill_null_session.sqlite3"))
     _seed_base_domain(app)
