@@ -129,7 +129,7 @@ class RefillOperationService:
             self.operation_repository.session.commit()
         except HardwareError as error:
             session.status = SessionStatus.FAILED
-            session.finished_at = datetime.utcnow()
+            session.finished_at = utc_now()
             self._handle_hardware_error(operation, error)
         except Exception:
             self.operation_repository.session.rollback()

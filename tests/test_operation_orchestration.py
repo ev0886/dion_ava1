@@ -87,6 +87,7 @@ def test_successful_dispense_flow_with_mock_hardware(session_factory: sessionmak
 def test_successful_return_flow_with_mock_hardware(session_factory: sessionmaker[Session]) -> None:
     with session_factory() as session:
         ids = _seed_catalog(session, starting_quantity=1)
+        hardware = _hardware_facade()
         service = ReturnOperationService(
             OperationRepository(session),
             InventoryRepository(session),
@@ -95,18 +96,46 @@ def test_successful_return_flow_with_mock_hardware(session_factory: sessionmaker
 
         result = service.execute(
             ReturnRequest(user_id=ids.user_id, item_id=ids.item_id, slot_id=None, quantity=2),
-            _hardware_facade(),
+            hardware,
         )
 
         balance = session.execute(select(InventoryBalance)).scalar_one()
+        operation = session.get(Operation, result.operation_id)
         assert result.operation_state is OperationState.COMPLETED
+        assert result.result == "completed"
         assert result.slot_id == ids.slot_id
         assert balance.quantity == 3
+        assert hardware.get_drum_position().position == 4
+        assert hardware.get_lock_status(1, 1).lock_state is LockState.OPEN
+        assert result.hardware_context == {
+            "slot": {
+                "drum_position": 4,
+                "board_address": 1,
+                "lock_number": 1,
+            },
+            "drum_move": {
+                "device_type": "drum_controller",
+                "status": "success",
+                "ok": True,
+                "position": 4,
+            },
+            "unlock": {
+                "device_type": "lock_controller",
+                "status": "success",
+                "ok": True,
+                "board_address": 1,
+                "lock_number": 1,
+                "lock_state": "open",
+            },
+        }
+        assert operation is not None
+        assert operation.hardware_context_json == result.hardware_context
 
 
 def test_successful_refill_flow_with_mock_hardware(session_factory: sessionmaker[Session]) -> None:
     with session_factory() as session:
         ids = _seed_catalog(session, starting_quantity=4)
+        hardware = _hardware_facade()
         service = RefillOperationService(
             OperationRepository(session),
             InventoryRepository(session),
@@ -121,15 +150,70 @@ def test_successful_refill_flow_with_mock_hardware(session_factory: sessionmaker
                 quantity=3,
                 mode="add",
             ),
-            _hardware_facade(),
+            hardware,
         )
 
         balance = session.execute(select(InventoryBalance)).scalar_one()
+        operation = session.get(Operation, result.operation_id)
         refill_session = session.get(OperationSession, result.session_id)
         assert result.operation_state is OperationState.SESSION_COMPLETED
+        assert result.result == "completed"
         assert balance.quantity == 7
+        assert hardware.get_drum_position().position == 4
+        assert result.hardware_context == {
+            "slot": {
+                "drum_position": 4,
+                "board_address": 1,
+                "lock_number": 1,
+            },
+            "drum_move": {
+                "device_type": "drum_controller",
+                "status": "success",
+                "ok": True,
+                "position": 4,
+            },
+        }
+        assert operation is not None
+        assert operation.hardware_context_json == result.hardware_context
+        assert result.business_context["service_session_id"] == result.session_id
         assert refill_session is not None
+        assert refill_session.session_type.value == "refill"
         assert refill_session.status is SessionStatus.COMPLETED
+
+
+def test_refill_hardware_failure_marks_session_failed_without_inventory_write(
+    session_factory: sessionmaker[Session],
+) -> None:
+    with session_factory() as session:
+        ids = _seed_catalog(session, starting_quantity=4)
+        service = RefillOperationService(
+            OperationRepository(session),
+            InventoryRepository(session),
+            OperationSessionRepository(session),
+        )
+        failing_facade = _hardware_facade(drum_mode=MockHardwareMode.TIMEOUT)
+
+        result = service.execute(
+            RefillRequest(
+                operator_user_id=ids.operator_user_id,
+                item_id=ids.item_id,
+                slot_id=ids.slot_id,
+                quantity=3,
+                mode="add",
+            ),
+            failing_facade,
+        )
+
+        balance = session.execute(select(InventoryBalance)).scalar_one()
+        transactions = session.execute(select(InventoryTransaction)).scalars().all()
+        refill_session = session.get(OperationSession, result.session_id)
+        assert result.operation_state is OperationState.FAILED
+        assert result.result == "hardware_error"
+        assert balance.quantity == 4
+        assert transactions == []
+        assert refill_session is not None
+        assert refill_session.status is SessionStatus.FAILED
+        assert refill_session.finished_at is not None
 
 
 def test_dispense_hardware_failure_does_not_mutate_inventory_incorrectly(
