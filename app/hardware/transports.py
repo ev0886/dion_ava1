@@ -131,6 +131,8 @@ class SerialTransport:
                 connection.reset_output_buffer()
             for payload in payloads:
                 connection.write(payload)
+                if hasattr(connection, "flush"):
+                    connection.flush()
                 response = _read_serial_response(connection)
                 if not response:
                     raise TimeoutError("Serial transport read timed out.")

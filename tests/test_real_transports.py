@@ -36,6 +36,32 @@ def test_serial_transport_request_response_happy_path() -> None:
     assert response == b"PONG\n"
 
 
+def test_serial_transport_request_sequence_flushes_each_write_before_reading() -> None:
+    serial_module = _FakeSerialModule([bytes.fromhex("21 AA AA C4"), bytes.fromhex("25 C0")], require_flush=True)
+    transport = SerialTransport(
+        settings=SerialTransportSettings(
+            transport="serial",
+            port="COM7",
+            baudrate=9600,
+            data_bits=8,
+            parity="none",
+            stop_bits=1,
+        ),
+        timeouts=EndpointTimeoutSettings(connect_timeout_ms=1000, read_timeout_ms=1000, write_timeout_ms=1000),
+        serial_module_loader=lambda: serial_module,
+    )
+
+    responses = transport.request_sequence([bytes.fromhex("11 00 01 F5"), bytes.fromhex("30 D5")])
+
+    assert responses == [bytes.fromhex("21 AA AA C4"), bytes.fromhex("25 C0")]
+    assert serial_module.last_connection is not None
+    assert serial_module.last_connection.writes == [bytes.fromhex("11 00 01 F5"), bytes.fromhex("30 D5")]
+    assert serial_module.last_connection.flush_count == 2
+    assert serial_module.last_connection.events[:3] == ["write", "flush", "read"]
+    assert serial_module.last_connection.events.count("write") == 2
+    assert serial_module.last_connection.events.count("flush") == 2
+
+
 def test_tcp_transport_request_response_happy_path() -> None:
     fake_socket = _FakeSocket(response=b"UID:ABC123\n")
     transport = TcpTransport(
@@ -144,19 +170,27 @@ class _FakeTransport:
 
 
 class _FakeSerialModule:
-    def __init__(self, responses: list[bytes]) -> None:
+    def __init__(self, responses: list[bytes], *, require_flush: bool = False) -> None:
         self._responses = responses
+        self._require_flush = require_flush
+        self.last_connection: _FakeSerialConnection | None = None
 
     def Serial(self, **kwargs):  # noqa: N802
-        return _FakeSerialConnection(self._responses)
+        self.last_connection = _FakeSerialConnection(self._responses, require_flush=self._require_flush)
+        return self.last_connection
 
 
 class _FakeSerialConnection:
-    def __init__(self, responses: list[bytes]) -> None:
+    def __init__(self, responses: list[bytes], *, require_flush: bool = False) -> None:
         self._responses = responses
+        self._require_flush = require_flush
         self.writes: list[bytes] = []
+        self.events: list[str] = []
+        self.flush_count = 0
         self._current = b""
         self.in_waiting = 0
+        self._flushed_since_write = not require_flush
+        self._response_ready = False
 
     def reset_input_buffer(self) -> None:
         return None
@@ -166,11 +200,28 @@ class _FakeSerialConnection:
 
     def write(self, payload: bytes) -> None:
         self.writes.append(payload)
+        self.events.append("write")
+        if self._require_flush:
+            self._flushed_since_write = False
+            self._response_ready = False
+        else:
+            self._response_ready = True
+
+    def flush(self) -> None:
+        self.flush_count += 1
+        self.events.append("flush")
+        self._flushed_since_write = True
+        self._response_ready = True
 
     def read(self, size: int = 1) -> bytes:
-        if not self._current and self._responses:
+        self.events.append("read")
+        if self._require_flush and not self._flushed_since_write:
+            self.in_waiting = 0
+            return b""
+        if not self._current and self._response_ready and self._responses:
             self._current = self._responses.pop(0)
             self.in_waiting = len(self._current)
+            self._response_ready = False
         if not self._current:
             self.in_waiting = 0
             return b""
