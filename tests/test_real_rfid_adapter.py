@@ -83,6 +83,31 @@ def test_real_rfid_adapter_reads_one_card_from_rusguard_acm_serial_transport() -
     assert transport.requests == [b""]
 
 
+def test_real_rfid_adapter_reads_binary_uid_from_rusguard_acm_serial_transport() -> None:
+    transport = _FakeTransport([b"\xe2v|\x00E"])
+    adapter = RealRfidAdapter(config=_serial_rusguard_acm_config(), transport=transport)
+
+    result = adapter.read_card()
+
+    assert result.ok is True
+    assert result.status is HardwareOperationStatus.SUCCESS
+    assert result.uid == "E2767C0045"
+    assert result.is_duplicate is False
+    assert transport.requests == [b""]
+
+
+def test_real_rfid_adapter_marks_duplicate_binary_rusguard_acm_reads() -> None:
+    adapter = RealRfidAdapter(config=_serial_rusguard_acm_config(), transport=_FakeTransport([b"\xe2v|\x00E", b"\xe2v|\x00E"]))
+
+    first_result = adapter.read_card()
+    second_result = adapter.read_card()
+
+    assert first_result.uid == "E2767C0045"
+    assert first_result.is_duplicate is False
+    assert second_result.uid == "E2767C0045"
+    assert second_result.is_duplicate is True
+
+
 def test_real_rfid_adapter_reads_real_like_linux_input_sequence_with_separators_and_key_releases() -> None:
     adapter = RealRfidAdapter(
         config=_linux_input_rfid_config(),
@@ -183,6 +208,26 @@ def test_real_rfid_adapter_rejects_unsupported_rusguard_acm_read_response() -> N
 
     with pytest.raises(HardwareFailureError, match="unsupported read response: 'PING'"):
         adapter.read_card()
+
+
+def test_real_rfid_adapter_rejects_empty_binary_rusguard_acm_read_response() -> None:
+    adapter = RealRfidAdapter(config=_serial_rusguard_acm_config(), transport=_FakeTransport([b""]))
+
+    with pytest.raises(HardwareFailureError, match="empty card UID"):
+        adapter.read_card()
+
+
+def test_real_rfid_adapter_reads_uid_from_generic_serial_text_transport() -> None:
+    transport = _FakeTransport([b"UID:E2 76-7C 00 45\n"])
+    adapter = RealRfidAdapter(config=_generic_serial_rfid_config(), transport=transport)
+
+    result = adapter.read_card()
+
+    assert result.ok is True
+    assert result.status is HardwareOperationStatus.SUCCESS
+    assert result.uid == "E2767C0045"
+    assert result.is_duplicate is False
+    assert transport.requests == [b"READ\n"]
 
 
 def test_real_rfid_adapter_clear_buffer_success_with_linux_input_transport() -> None:
@@ -318,6 +363,12 @@ def _linux_input_rfid_config() -> RfidHardwareEndpointTransportConfig:
 def _serial_rusguard_acm_config() -> RfidHardwareEndpointTransportConfig:
     return RfidHardwareEndpointTransportConfig.model_validate(
         _serial_endpoint_config(code="rfid-1", driver_name="rusguard-acm", port="/dev/ttyACM0")
+    )
+
+
+def _generic_serial_rfid_config() -> RfidHardwareEndpointTransportConfig:
+    return RfidHardwareEndpointTransportConfig.model_validate(
+        _serial_endpoint_config(code="rfid-1", driver_name="rfid-driver", port="COM7")
     )
 
 

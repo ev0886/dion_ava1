@@ -105,7 +105,8 @@ class RealRfidAdapter(RealHardwareAdapterBase):
         return self._success_result()
 
     def _read_card_rusguard_acm(self, *, timeout_ms: int | None) -> RfidReadResult:
-        response = self._send_request(self._RUSGUARD_ACM_READ_REQUEST, operation="read_card", timeout_ms=timeout_ms)
+        raw_response = self._send_binary_request(self._RUSGUARD_ACM_READ_REQUEST, operation="read_card", timeout_ms=timeout_ms)
+        response = self._decode_rusguard_acm_read_response(raw_response)
         if response == self._NO_CARD_RESPONSE:
             return RfidReadResult(
                 device_type=self.device_type,
@@ -131,6 +132,21 @@ class RealRfidAdapter(RealHardwareAdapterBase):
             uid=uid,
             is_duplicate=is_duplicate,
         )
+
+    @classmethod
+    def _decode_rusguard_acm_read_response(cls, raw_response: bytes) -> str:
+        stripped_response = raw_response.strip()
+        if not stripped_response:
+            raise HardwareFailureError(
+                "RFID reader returned an empty card UID.",
+                device_type=HardwareEndpointType.RFID_READER,
+                operation="read_card",
+            )
+        try:
+            decoded_response = stripped_response.decode("ascii")
+        except UnicodeDecodeError:
+            return stripped_response.hex().upper()
+        return decoded_response.strip()
 
     def _uses_rusguard_acm_protocol(self) -> bool:
         if self._config is None:
