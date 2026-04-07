@@ -14,10 +14,14 @@ class RealRfidAdapter(RealHardwareAdapterBase):
     _PING_REQUEST = b"PING\n"
     _READ_REQUEST = b"READ\n"
     _CLEAR_REQUEST = b"CLEAR\n"
+    _RUSGUARD_ACM_READ_REQUEST = b""
     _PONG_RESPONSE = "PONG"
     _NO_CARD_RESPONSE = "NO_CARD"
     _CLEARED_RESPONSE = "CLEARED"
     _UID_PREFIX = "UID:"
+    _RUSGUARD_ACM_DRIVER_NAMES = frozenset({"rusguard-acm", "rusguard-r5-usb-acm"})
+    _RUSGUARD_ACM_PING_RESPONSES = frozenset({"PING", "PONG"})
+    _RUSGUARD_ACM_UNSUPPORTED_READ_RESPONSES = frozenset({"PING", "PONG", "READ", "CLEAR", "CLEARED"})
 
     def __init__(
         self,
@@ -35,6 +39,8 @@ class RealRfidAdapter(RealHardwareAdapterBase):
         self._last_uid: str | None = None
 
     def ping(self) -> HardwareOperationResult:
+        if self._uses_rusguard_acm_protocol():
+            return self._ping_rusguard_acm()
         response = self._send_request(self._PING_REQUEST, operation="ping")
         if response != self._PONG_RESPONSE:
             raise HardwareFailureError(
@@ -45,6 +51,8 @@ class RealRfidAdapter(RealHardwareAdapterBase):
         return self._success_result()
 
     def read_card(self, *, timeout_ms: int | None = None) -> RfidReadResult:
+        if self._uses_rusguard_acm_protocol():
+            return self._read_card_rusguard_acm(timeout_ms=timeout_ms)
         response = self._send_request(self._READ_REQUEST, operation="read_card", timeout_ms=timeout_ms)
         if response == self._NO_CARD_RESPONSE:
             return RfidReadResult(
@@ -85,6 +93,49 @@ class RealRfidAdapter(RealHardwareAdapterBase):
             status=HardwareOperationStatus.SUCCESS,
             ok=True,
         )
+
+    def _ping_rusguard_acm(self) -> HardwareOperationResult:
+        response = self._send_request(self._PING_REQUEST, operation="ping")
+        if response not in self._RUSGUARD_ACM_PING_RESPONSES:
+            raise HardwareFailureError(
+                f"RFID reader returned unsupported ping response: {response!r}",
+                device_type=self.device_type,
+                operation="ping",
+            )
+        return self._success_result()
+
+    def _read_card_rusguard_acm(self, *, timeout_ms: int | None) -> RfidReadResult:
+        response = self._send_request(self._RUSGUARD_ACM_READ_REQUEST, operation="read_card", timeout_ms=timeout_ms)
+        if response == self._NO_CARD_RESPONSE:
+            return RfidReadResult(
+                device_type=self.device_type,
+                status=HardwareOperationStatus.NO_CARD,
+                ok=True,
+                uid=None,
+                is_duplicate=False,
+                message=f"No RFID card present ({DEFAULT_RFID_UID_FORMAT})",
+            )
+        if response in self._RUSGUARD_ACM_UNSUPPORTED_READ_RESPONSES:
+            raise HardwareFailureError(
+                f"RFID reader returned unsupported read response: {response!r}",
+                device_type=self.device_type,
+                operation="read_card",
+            )
+        uid = self._normalize_uid(response)
+        is_duplicate = uid == self._last_uid
+        self._last_uid = uid
+        return RfidReadResult(
+            device_type=self.device_type,
+            status=HardwareOperationStatus.SUCCESS,
+            ok=True,
+            uid=uid,
+            is_duplicate=is_duplicate,
+        )
+
+    def _uses_rusguard_acm_protocol(self) -> bool:
+        if self._config is None:
+            return False
+        return self._config.endpoint.driver_name.strip().casefold() in self._RUSGUARD_ACM_DRIVER_NAMES
 
     @staticmethod
     def _normalize_uid(uid: str) -> str:

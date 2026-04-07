@@ -30,6 +30,17 @@ def test_real_rfid_adapter_ping_success_with_fake_transport() -> None:
     assert result.status is HardwareOperationStatus.SUCCESS
 
 
+def test_real_rfid_adapter_ping_success_with_rusguard_acm_echo_response() -> None:
+    transport = _FakeTransport([b"PING\n"])
+    adapter = RealRfidAdapter(config=_serial_rusguard_acm_config(), transport=transport)
+
+    result = adapter.ping()
+
+    assert result.ok is True
+    assert result.status is HardwareOperationStatus.SUCCESS
+    assert transport.requests == [b"PING\n"]
+
+
 def test_real_rfid_adapter_reads_uid_from_linux_input_events() -> None:
     adapter = RealRfidAdapter(
         config=_linux_input_rfid_config(),
@@ -57,6 +68,19 @@ def test_real_rfid_adapter_reads_uid_from_linux_input_events() -> None:
     assert result.status is HardwareOperationStatus.SUCCESS
     assert result.uid == "E2767C0045"
     assert result.is_duplicate is False
+
+
+def test_real_rfid_adapter_reads_one_card_from_rusguard_acm_serial_transport() -> None:
+    transport = _FakeTransport([b"E2 76-7C 00 45\n"])
+    adapter = RealRfidAdapter(config=_serial_rusguard_acm_config(), transport=transport)
+
+    result = adapter.read_card()
+
+    assert result.ok is True
+    assert result.status is HardwareOperationStatus.SUCCESS
+    assert result.uid == "E2767C0045"
+    assert result.is_duplicate is False
+    assert transport.requests == [b""]
 
 
 def test_real_rfid_adapter_reads_real_like_linux_input_sequence_with_separators_and_key_releases() -> None:
@@ -125,6 +149,13 @@ def test_real_rfid_adapter_timeout_is_reported_for_incomplete_linux_input_scan()
         adapter.read_card()
 
 
+def test_real_rfid_adapter_reports_timeout_when_rusguard_acm_scan_does_not_arrive() -> None:
+    adapter = RealRfidAdapter(config=_serial_rusguard_acm_config(), transport=_FakeTransport([TimeoutError("scan timed out")]))
+
+    with pytest.raises(HardwareTimeoutError, match="scan timed out"):
+        adapter.read_card()
+
+
 def test_real_rfid_adapter_unavailable_when_linux_input_device_cannot_be_opened() -> None:
     transport = LinuxInputEventTransport(
         settings=LinuxInputTransportSettings(transport="linux_input", device_path="/dev/input/event7"),
@@ -144,6 +175,13 @@ def test_real_rfid_adapter_malformed_linux_input_sequence_raises_safe_failure() 
     )
 
     with pytest.raises(HardwareFailureError, match="unsupported read response"):
+        adapter.read_card()
+
+
+def test_real_rfid_adapter_rejects_unsupported_rusguard_acm_read_response() -> None:
+    adapter = RealRfidAdapter(config=_serial_rusguard_acm_config(), transport=_FakeTransport([b"PING\n"]))
+
+    with pytest.raises(HardwareFailureError, match="unsupported read response: 'PING'"):
         adapter.read_card()
 
 
@@ -188,14 +226,44 @@ def test_real_provider_composition_supports_linux_input_rfid_transport() -> None
     assert clear_result.ok is True
 
 
+def test_real_provider_composition_supports_rusguard_acm_rfid_transport() -> None:
+    settings = AppSettings(
+        hardware_provider=HardwareProvider.REAL,
+        hardware_real_endpoints={
+            "drum_controller": _serial_endpoint_config(code="drum-1", driver_name="drum-driver", port="COM1"),
+            "lock_controller": _lock_serial_endpoint_config(code="lock-1", driver_name="lock-driver", port="COM2"),
+            "rfid_reader": _serial_endpoint_config(
+                code="rfid-1",
+                driver_name="rusguard-acm",
+                port="/dev/serial/by-id/usb-RusGuard_Reader_0F00C022-if01",
+            ),
+        },
+    )
+
+    transport = _FakeTransport([b"PING\n", b"E2767C0045\n"])
+    bundle = create_hardware_bundle(settings, transport_overrides={"rfid_reader": transport})
+
+    ping_result = bundle.rfid_reader.ping()
+    read_result = bundle.rfid_reader.read_card()
+
+    assert bundle.provider is HardwareProvider.REAL
+    assert ping_result.ok is True
+    assert read_result.uid == "E2767C0045"
+    assert transport.requests == [b"PING\n", b""]
+
+
 class _FakeTransport:
     def __init__(self, responses: list[object]) -> None:
         self._responses = list(responses)
+        self.requests: list[bytes] = []
 
     def request(self, payload: bytes, *, timeout_ms: int | None = None) -> bytes:
+        self.requests.append(payload)
         if not self._responses:
             raise AssertionError("No fake transport responses remain.")
         response = self._responses.pop(0)
+        if isinstance(response, Exception):
+            raise response
         return response  # type: ignore[return-value]
 
 
@@ -244,6 +312,12 @@ def _linux_input_transport(
 def _linux_input_rfid_config() -> RfidHardwareEndpointTransportConfig:
     return RfidHardwareEndpointTransportConfig.model_validate(
         _linux_input_endpoint_config(code="rfid-1", driver_name="rusguard-hid", device_path="/dev/input/event7")
+    )
+
+
+def _serial_rusguard_acm_config() -> RfidHardwareEndpointTransportConfig:
+    return RfidHardwareEndpointTransportConfig.model_validate(
+        _serial_endpoint_config(code="rfid-1", driver_name="rusguard-acm", port="/dev/ttyACM0")
     )
 
 
