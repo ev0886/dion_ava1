@@ -14,6 +14,8 @@ class SerialRequestResponseTransport(Protocol):
 
     def send(self, payload: bytes) -> None: ...
 
+    def request_sequence(self, payloads: list[bytes], *, timeout_ms: int | None = None) -> list[bytes]: ...
+
 
 @runtime_checkable
 class TcpRequestResponseTransport(Protocol):
@@ -103,6 +105,49 @@ class SerialTransport:
             if connection is not None and hasattr(connection, "close"):
                 connection.close()
 
+    def request_sequence(self, payloads: list[bytes], *, timeout_ms: int | None = None) -> list[bytes]:
+        if not payloads:
+            return []
+        effective_read_timeout_ms = timeout_ms if timeout_ms is not None else self._timeouts.read_timeout_ms
+        connection = None
+        start = time.monotonic()
+        responses: list[bytes] = []
+        try:
+            serial_module = self._serial_module_loader()
+            connection = serial_module.Serial(
+                port=self._settings.port,
+                baudrate=self._settings.baudrate,
+                bytesize=self._settings.data_bits,
+                parity=_serial_parity(self._settings.parity),
+                stopbits=self._settings.stop_bits,
+                timeout=effective_read_timeout_ms / 1000,
+                write_timeout=self._timeouts.write_timeout_ms / 1000,
+            )
+            if (time.monotonic() - start) * 1000 > self._timeouts.connect_timeout_ms:
+                raise TimeoutError("Serial transport open timed out.")
+            if hasattr(connection, "reset_input_buffer"):
+                connection.reset_input_buffer()
+            if hasattr(connection, "reset_output_buffer"):
+                connection.reset_output_buffer()
+            for payload in payloads:
+                connection.write(payload)
+                response = _read_serial_response(connection)
+                if not response:
+                    raise TimeoutError("Serial transport read timed out.")
+                responses.append(response)
+            return responses
+        except ModuleNotFoundError as error:
+            raise OSError("pyserial dependency is not available.") from error
+        except TimeoutError:
+            raise
+        except OSError:
+            raise
+        except Exception as error:
+            raise OSError(f"Serial transport request sequence failed: {error}") from error
+        finally:
+            if connection is not None and hasattr(connection, "close"):
+                connection.close()
+
 
 class TcpTransport:
     def __init__(
@@ -144,6 +189,9 @@ class SerialTransportSkeleton:
         raise NotImplementedError("Serial transport I/O is not implemented yet.")
 
     def send(self, payload: bytes) -> None:
+        raise NotImplementedError("Serial transport I/O is not implemented yet.")
+
+    def request_sequence(self, payloads: list[bytes], *, timeout_ms: int | None = None) -> list[bytes]:
         raise NotImplementedError("Serial transport I/O is not implemented yet.")
 
 

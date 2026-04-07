@@ -33,23 +33,27 @@ def test_real_drum_adapter_get_position_success() -> None:
     assert isinstance(result, DrumPositionResult)
     assert result.ok is True
     assert result.position == 4
+    assert transport.request_payloads == [bytes.fromhex("12 00 00 F7")]
     assert transport.sent_payloads == [bytes.fromhex("30 D5")]
 
 
 def test_real_drum_adapter_move_to_position_success() -> None:
-    adapter = RealDrumAdapter(
-        config=_drum_config(),
-        transport=_FakeTransport([bytes.fromhex("21 AA AA C4"), bytes.fromhex("25 C0")]),
-    )
+    transport = _FakeTransport([], sequence_responses=[bytes.fromhex("21 AA AA C4"), bytes.fromhex("25 C0")])
+    adapter = RealDrumAdapter(config=_drum_config(), transport=transport)
 
     result = adapter.move_to_position(7)
 
     assert result.ok is True
     assert result.position == 7
+    assert transport.sequence_payloads == [[bytes.fromhex("11 00 07 F3"), bytes.fromhex("30 D5")]]
+    assert transport.request_payloads == []
 
 
 def test_real_drum_adapter_move_to_position_busy_maps_to_busy_error() -> None:
-    adapter = RealDrumAdapter(config=_drum_config(), transport=_FakeTransport([bytes.fromhex("22 AA AA C7")]))
+    adapter = RealDrumAdapter(
+        config=_drum_config(),
+        transport=_FakeTransport([], sequence_responses=[bytes.fromhex("22 AA AA C7"), bytes.fromhex("25 C0")]),
+    )
 
     with pytest.raises(HardwareBusyError, match="busy"):
         adapter.move_to_position(7)
@@ -86,7 +90,8 @@ def test_real_provider_composition_still_works_with_operational_drum_transport()
         settings,
         transport_overrides={
             "drum_controller": _FakeTransport(
-                [bytes.fromhex("24 00 02 C3"), bytes.fromhex("24 00 02 C3"), bytes.fromhex("21 AA AA C4"), bytes.fromhex("25 C0")]
+                [bytes.fromhex("24 00 02 C3"), bytes.fromhex("24 00 02 C3")],
+                sequence_responses=[bytes.fromhex("21 AA AA C4"), bytes.fromhex("25 C0")],
             )
         },
     )
@@ -102,11 +107,15 @@ def test_real_provider_composition_still_works_with_operational_drum_transport()
 
 
 class _FakeTransport:
-    def __init__(self, responses: list[object]) -> None:
+    def __init__(self, responses: list[object], *, sequence_responses: list[object] | None = None) -> None:
         self._responses = list(responses)
+        self._sequence_responses = list(sequence_responses or [])
+        self.request_payloads: list[bytes] = []
         self.sent_payloads: list[bytes] = []
+        self.sequence_payloads: list[list[bytes]] = []
 
     def request(self, payload: bytes, *, timeout_ms: int | None = None) -> bytes:
+        self.request_payloads.append(payload)
         if not self._responses:
             raise AssertionError("No fake responses remain.")
         response = self._responses.pop(0)
@@ -114,6 +123,14 @@ class _FakeTransport:
 
     def send(self, payload: bytes) -> None:
         self.sent_payloads.append(payload)
+
+    def request_sequence(self, payloads: list[bytes], *, timeout_ms: int | None = None) -> list[bytes]:
+        self.sequence_payloads.append(list(payloads))
+        if len(self._sequence_responses) < len(payloads):
+            raise AssertionError("Not enough fake sequence responses remain.")
+        responses = self._sequence_responses[: len(payloads)]
+        del self._sequence_responses[: len(payloads)]
+        return responses  # type: ignore[return-value]
 
 
 class _RaisingTransport:
@@ -124,6 +141,9 @@ class _RaisingTransport:
         raise self._error
 
     def send(self, payload: bytes) -> None:
+        raise self._error
+
+    def request_sequence(self, payloads: list[bytes], *, timeout_ms: int | None = None) -> list[bytes]:
         raise self._error
 
 
