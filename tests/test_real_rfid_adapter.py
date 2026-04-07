@@ -150,6 +150,42 @@ def test_real_rfid_adapter_reads_real_like_linux_input_sequence_with_separators_
     assert result.is_duplicate is False
 
 
+def test_real_rfid_adapter_reads_live_like_linux_input_sequence_with_recoverable_prefix_noise() -> None:
+    transport = _StatefulLinuxInputTransport(
+        stale_chunks=[],
+        read_chunks=[
+            _event_chunk(1, 59, 1),
+            _event_chunk(1, 57, 1),
+            _event_chunk(0, 0, 0),
+            _event_chunk(1, 18, 1),
+            _event_chunk(1, 18, 0),
+            _event_chunk(1, 3, 1),
+            _event_chunk(1, 3, 0),
+            _event_chunk(1, 57, 1),
+            _event_chunk(1, 57, 0),
+            _event_chunk(1, 8, 1),
+            _event_chunk(1, 8, 0),
+            _event_chunk(1, 12, 1),
+            _event_chunk(1, 12, 0),
+            _event_chunk(1, 7, 1),
+            _event_chunk(1, 7, 0),
+            _event_chunk(1, 8, 1),
+            _event_chunk(1, 8, 0),
+            _event_chunk(1, 46, 1),
+            _event_chunk(1, 46, 0),
+            _event_chunk(1, 96, 1),
+        ],
+    )
+    adapter = RealRfidAdapter(config=_linux_input_rfid_config(), transport=transport)
+
+    result = adapter.read_card()
+
+    assert result.ok is True
+    assert result.status is HardwareOperationStatus.SUCCESS
+    assert result.uid == "E2767C"
+    assert result.is_duplicate is False
+
+
 def test_real_rfid_adapter_no_card_when_linux_input_reader_stays_idle() -> None:
     adapter = RealRfidAdapter(
         config=_linux_input_rfid_config(),
@@ -165,10 +201,12 @@ def test_real_rfid_adapter_no_card_when_linux_input_reader_stays_idle() -> None:
 
 
 def test_real_rfid_adapter_timeout_is_reported_for_incomplete_linux_input_scan() -> None:
-    adapter = RealRfidAdapter(
-        config=_linux_input_rfid_config(),
-        transport=_linux_input_transport([_event_chunk(1, 18, 1), _event_chunk(1, 3, 1)], readable_sequence=[True, True, False]),
+    transport = _StatefulLinuxInputTransport(
+        stale_chunks=[],
+        read_chunks=[_event_chunk(1, 18, 1), _event_chunk(1, 3, 1)],
+        read_readable_sequence=[True, True, False],
     )
+    adapter = RealRfidAdapter(config=_linux_input_rfid_config(), transport=transport)
 
     with pytest.raises(HardwareTimeoutError, match="end-of-card marker"):
         adapter.read_card()
@@ -194,13 +232,41 @@ def test_real_rfid_adapter_unavailable_when_linux_input_device_cannot_be_opened(
 
 
 def test_real_rfid_adapter_malformed_linux_input_sequence_raises_safe_failure() -> None:
-    adapter = RealRfidAdapter(
-        config=_linux_input_rfid_config(),
-        transport=_linux_input_transport([_event_chunk(1, 59, 1)]),
-    )
+    transport = _StatefulLinuxInputTransport(stale_chunks=[], read_chunks=[_event_chunk(1, 59, 1)])
+    adapter = RealRfidAdapter(config=_linux_input_rfid_config(), transport=transport)
 
     with pytest.raises(HardwareFailureError, match="unsupported read response"):
         adapter.read_card()
+
+
+def test_real_rfid_adapter_clears_stale_linux_input_buffer_before_reading_next_card() -> None:
+    transport = _StatefulLinuxInputTransport(
+        stale_chunks=[
+            _event_chunk(1, 16, 1),
+            _event_chunk(1, 17, 1),
+            _event_chunk(1, 28, 1),
+        ],
+        read_chunks=[
+            _event_chunk(1, 18, 1),
+            _event_chunk(1, 3, 1),
+            _event_chunk(1, 8, 1),
+            _event_chunk(1, 7, 1),
+            _event_chunk(1, 8, 1),
+            _event_chunk(1, 46, 1),
+            _event_chunk(1, 11, 1),
+            _event_chunk(1, 11, 1),
+            _event_chunk(1, 5, 1),
+            _event_chunk(1, 6, 1),
+            _event_chunk(1, 28, 1),
+        ],
+    )
+    adapter = RealRfidAdapter(config=_linux_input_rfid_config(), transport=transport)
+
+    result = adapter.read_card()
+
+    assert result.ok is True
+    assert result.uid == "E2767C0045"
+    assert transport.clear_calls == 1
 
 
 def test_real_rfid_adapter_rejects_unsupported_rusguard_acm_read_response() -> None:
@@ -340,6 +406,31 @@ class _FakeInputDevice:
 
     def __exit__(self, exc_type, exc, tb) -> None:
         self.close()
+
+
+class _StatefulLinuxInputTransport(LinuxInputEventTransport):
+    def __init__(
+        self,
+        *,
+        stale_chunks: list[bytes],
+        read_chunks: list[bytes],
+        clear_readable_sequence: list[bool] | None = None,
+        read_readable_sequence: list[bool] | None = None,
+    ) -> None:
+        self.clear_calls = 0
+        self._clear_device = _FakeInputDevice(stale_chunks, readable_sequence=clear_readable_sequence)
+        self._read_device = _FakeInputDevice(read_chunks, readable_sequence=read_readable_sequence)
+        super().__init__(
+            settings=LinuxInputTransportSettings(transport="linux_input", device_path="/dev/input/event7"),
+            timeouts=EndpointTimeoutSettings(connect_timeout_ms=1000, read_timeout_ms=1000, write_timeout_ms=1000),
+            device_opener=self._open_device,
+        )
+
+    def _open_device(self, device_path: str, nonblocking: bool) -> _FakeInputDevice:
+        if self.clear_calls == 0:
+            self.clear_calls += 1
+            return self._clear_device
+        return self._read_device
 
 
 def _linux_input_transport(

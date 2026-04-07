@@ -31,7 +31,7 @@ class LinuxInputEventTransport:
     _EV_SYN = 0x00
     _KEY_ENTER_CODES = frozenset({28, 96})
     _IGNORED_KEY_CODES = frozenset({29, 42, 54, 56, 97, 100, 125, 126})
-    _IGNORED_SCAN_KEY_CODES = frozenset({12})
+    _IGNORED_SEPARATOR_KEY_CODES = frozenset({12, 13, 39, 40, 43, 51, 52, 53, 57, 74, 83})
     _KEYMAP = {
         2: "1",
         3: "2",
@@ -115,6 +115,7 @@ class LinuxInputEventTransport:
         chars: list[str] = []
         buffer = bytearray()
         saw_activity = False
+        saw_recoverable_noise = False
 
         with self._device_opener(self._settings.device_path, True) as device:
             while True:
@@ -122,18 +123,18 @@ class LinuxInputEventTransport:
                 if remaining <= 0:
                     if chars:
                         raise TimeoutError("RFID HID input read timed out before end-of-card marker.")
-                    if buffer:
+                    if saw_recoverable_noise or buffer:
                         return self._MALFORMED_RESPONSE
                     return self._NO_CARD_RESPONSE
                 if not device.wait_until_readable(remaining):
                     if chars:
                         raise TimeoutError("RFID HID input read timed out before end-of-card marker.")
-                    if buffer:
+                    if saw_recoverable_noise or buffer:
                         return self._MALFORMED_RESPONSE
                     return self._NO_CARD_RESPONSE
                 chunk = device.read()
                 if not chunk:
-                    if saw_activity or chars or buffer:
+                    if saw_activity or saw_recoverable_noise or chars or buffer:
                         return self._MALFORMED_RESPONSE
                     return self._NO_CARD_RESPONSE
                 saw_activity = True
@@ -150,14 +151,18 @@ class LinuxInputEventTransport:
                         continue
                     if event.code in self._IGNORED_KEY_CODES:
                         continue
-                    if event.code in self._IGNORED_SCAN_KEY_CODES:
+                    if event.code in self._IGNORED_SEPARATOR_KEY_CODES:
                         continue
                     if event.code in self._KEY_ENTER_CODES:
                         if chars:
                             return f"UID:{''.join(chars)}\n".encode("ascii")
+                        saw_recoverable_noise = True
                         continue
                     character = self._KEYMAP.get(event.code)
                     if character is None:
+                        if not chars:
+                            saw_recoverable_noise = True
+                            continue
                         return self._MALFORMED_RESPONSE
                     chars.append(character)
 

@@ -53,6 +53,8 @@ class RealRfidAdapter(RealHardwareAdapterBase):
     def read_card(self, *, timeout_ms: int | None = None) -> RfidReadResult:
         if self._uses_rusguard_acm_protocol():
             return self._read_card_rusguard_acm(timeout_ms=timeout_ms)
+        if isinstance(self._transport, LinuxInputEventTransport):
+            self.clear_buffer()
         response = self._send_request(self._READ_REQUEST, operation="read_card", timeout_ms=timeout_ms)
         if response == self._NO_CARD_RESPONSE:
             return RfidReadResult(
