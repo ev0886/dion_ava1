@@ -20,9 +20,20 @@ class AuthResolveRequest(ApiModel):
         default=None,
         description='Alternative identifier when resolving by code instead of numeric ID. Demo stand example: "user-1".',
     )
+    rfid_uid: str | None = Field(
+        default=None,
+        description='RFID card UID stored in `user_rfid_cards.card_uid`. Demo stand example: "DEMO-USER-1".',
+    )
     allowed_roles: tuple[RoleCode, ...] = Field(
         default=(),
         description="Optional role filter. Leave empty to resolve any active user.",
+    )
+
+
+class AuthReadResolveRfidRequest(ApiModel):
+    allowed_roles: tuple[RoleCode, ...] = Field(
+        default=(),
+        description="Optional role filter applied after the live RFID read resolves to a user.",
     )
 
 

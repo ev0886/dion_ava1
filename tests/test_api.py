@@ -6,6 +6,8 @@ from fastapi.testclient import TestClient
 from sqlalchemy import select
 
 from app.api import create_app
+from app.api.dependencies import get_application_container
+from app.application.composition import build_application_container
 from app.application.time import utc_now
 from app.config import AppSettings
 from app.domain.enums import (
@@ -33,7 +35,9 @@ from app.persistence.models import (
     Slot,
     SlotItemBinding,
     User,
+    UserRfidCard,
 )
+from app.hardware import MockRfidAdapter
 
 
 def test_app_creation_smoke(tmp_path: Path) -> None:
@@ -98,6 +102,90 @@ def test_auth_and_inventory_happy_path(tmp_path: Path) -> None:
             "valid_to": None,
         }
     ]
+
+
+def test_auth_resolve_accepts_rfid_uid(tmp_path: Path) -> None:
+    app = create_app(_settings(tmp_path, "api_auth_rfid.sqlite3"))
+    _seed_base_domain(app, with_rfid_card=True)
+
+    with TestClient(app) as client:
+        response = client.post("/auth/resolve", json={"rfid_uid": "DEMO-USER-1"})
+
+    assert response.status_code == 200
+    assert response.json()["user_id"] == 1
+    assert response.json()["user_code"] == "user-1"
+
+
+def test_auth_resolve_returns_404_for_unknown_rfid_uid(tmp_path: Path) -> None:
+    app = create_app(_settings(tmp_path, "api_auth_rfid_missing.sqlite3"))
+    _seed_base_domain(app, with_rfid_card=True)
+
+    with TestClient(app) as client:
+        response = client.post("/auth/resolve", json={"rfid_uid": "UNKNOWN-CARD"})
+
+    assert response.status_code == 404
+    assert response.json() == {"error": "not_found", "detail": "User not found"}
+
+
+def test_auth_resolve_returns_404_for_inactive_rfid_card_mapping(tmp_path: Path) -> None:
+    app = create_app(_settings(tmp_path, "api_auth_rfid_inactive_card.sqlite3"))
+    _seed_base_domain(app, with_rfid_card=True, rfid_card_active=False)
+
+    with TestClient(app) as client:
+        response = client.post("/auth/resolve", json={"rfid_uid": "DEMO-USER-1"})
+
+    assert response.status_code == 404
+    assert response.json() == {"error": "not_found", "detail": "User not found"}
+
+
+def test_auth_resolve_returns_403_for_inactive_user_with_rfid_uid(tmp_path: Path) -> None:
+    app = create_app(_settings(tmp_path, "api_auth_rfid_inactive_user.sqlite3"))
+    _seed_base_domain(app, with_rfid_card=True, user_is_active=False)
+
+    with TestClient(app) as client:
+        response = client.post("/auth/resolve", json={"rfid_uid": "DEMO-USER-1"})
+
+    assert response.status_code == 403
+    assert response.json() == {"error": "authorization_error", "detail": "User is inactive"}
+
+
+def test_auth_read_and_resolve_rfid_reads_from_mock_hardware(tmp_path: Path) -> None:
+    app = create_app(_settings(tmp_path, "api_auth_read_rfid.sqlite3"))
+    _seed_base_domain(app, with_rfid_card=True)
+    container = _build_overridden_container(app)
+    assert isinstance(container.hardware.rfid_reader, MockRfidAdapter)
+    container.hardware.rfid_reader.queue_card("demo-user-1")
+    app.dependency_overrides[get_application_container] = lambda: container
+
+    try:
+        with TestClient(app) as client:
+            response = client.post("/auth/read-and-resolve-rfid", json={})
+    finally:
+        app.dependency_overrides.clear()
+        container.session.close()
+
+    assert response.status_code == 200
+    assert response.json()["user_id"] == 1
+    assert response.json()["user_code"] == "user-1"
+
+
+def test_auth_read_and_resolve_rfid_returns_404_for_unknown_card(tmp_path: Path) -> None:
+    app = create_app(_settings(tmp_path, "api_auth_read_rfid_unknown.sqlite3"))
+    _seed_base_domain(app, with_rfid_card=True)
+    container = _build_overridden_container(app)
+    assert isinstance(container.hardware.rfid_reader, MockRfidAdapter)
+    container.hardware.rfid_reader.queue_card("missing-card")
+    app.dependency_overrides[get_application_container] = lambda: container
+
+    try:
+        with TestClient(app) as client:
+            response = client.post("/auth/read-and-resolve-rfid", json={})
+    finally:
+        app.dependency_overrides.clear()
+        container.session.close()
+
+    assert response.status_code == 404
+    assert response.json() == {"error": "not_found", "detail": "User not found"}
 
 
 def test_inventory_lookup_returns_404_for_missing_slot_item_pair(tmp_path: Path) -> None:
@@ -254,6 +342,12 @@ def test_openapi_operation_examples_use_seeded_values_and_clear_session_guidance
     auth_user_code_example = paths["/auth/resolve"]["post"]["requestBody"]["content"]["application/json"]["examples"][
         "by_user_code"
     ]["value"]
+    auth_rfid_example = paths["/auth/resolve"]["post"]["requestBody"]["content"]["application/json"]["examples"][
+        "by_rfid_uid"
+    ]["value"]
+    auth_live_rfid_example = paths["/auth/read-and-resolve-rfid"]["post"]["requestBody"]["content"]["application/json"][
+        "examples"
+    ]["default"]["value"]
     manual_resolution_example = paths["/recovery/cases/{recovery_case_id}/manual-resolution"]["post"]["requestBody"][
         "content"
     ]["application/json"]["examples"]["default"]["value"]
@@ -266,6 +360,8 @@ def test_openapi_operation_examples_use_seeded_values_and_clear_session_guidance
     assert refill_example == {"operator_user_id": 2, "item_id": 1, "slot_id": 1, "quantity": 5, "mode": "set"}
     assert auth_user_id_example == {"user_id": 3}
     assert auth_user_code_example == {"user_code": "user-1"}
+    assert auth_rfid_example == {"rfid_uid": "DEMO-USER-1"}
+    assert auth_live_rfid_example == {}
     assert manual_resolution_example == {
         "operator_user_id": 2,
         "decision": "close_case",
@@ -431,7 +527,13 @@ def _settings(tmp_path: Path, sqlite_filename: str) -> AppSettings:
     )
 
 
-def _seed_base_domain(app) -> None:
+def _seed_base_domain(
+    app,
+    *,
+    with_rfid_card: bool = False,
+    rfid_card_active: bool = True,
+    user_is_active: bool = True,
+) -> None:
     with app.state.session_factory() as session:
         user_role = Role(code=RoleCode.USER, name="User")
         operator_role = Role(code=RoleCode.OPERATOR, name="Operator")
@@ -443,7 +545,7 @@ def _seed_base_domain(app) -> None:
             user_code="user-1",
             full_name="User One",
             status=UserStatus.ACTIVE,
-            is_active=True,
+            is_active=user_is_active,
         )
         operator = User(
             role_id=operator_role.id,
@@ -484,7 +586,27 @@ def _seed_base_domain(app) -> None:
             )
         )
         session.add(InventoryBalance(slot_id=slot.id, item_id=item.id, quantity=5))
+        if with_rfid_card:
+            session.add(
+                UserRfidCard(
+                    user_id=user.id,
+                    card_uid="DEMO-USER-1",
+                    is_active=rfid_card_active,
+                    issued_at=utc_now(),
+                    revoked_at=None if rfid_card_active else utc_now(),
+                )
+            )
         session.commit()
+
+
+def _build_overridden_container(app):
+    session = app.state.session_factory()
+    return build_application_container(
+        settings=app.state.settings,
+        engine=app.state.engine,
+        session_factory=app.state.session_factory,
+        session=session,
+    )
 
 
 def _seed_recovery_operation(app) -> None:

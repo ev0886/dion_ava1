@@ -35,13 +35,32 @@ class AuthService:
             raise NotFoundError(f"User not found: {user_code}")
         return self._to_dto(user, self._resolve_role_code(user))
 
+    def get_user_by_rfid_uid(self, rfid_uid: str) -> AuthenticatedUserDTO:
+        normalized_uid = rfid_uid.strip()
+        if not normalized_uid:
+            raise ValidationError("rfid_uid must not be empty")
+        user = self.user_repository.get_by_rfid_uid(normalized_uid)
+        if user is None:
+            raise NotFoundError(f"User not found: {normalized_uid}")
+        return self._to_dto(user, self._resolve_role_code(user))
+
     def _load_user(self, request: AuthRequest) -> User:
-        if request.user_id is None and request.user_code is None:
-            raise ValidationError("user_id or user_code is required")
+        provided_identifiers = sum(
+            value is not None for value in (request.user_id, request.user_code, request.rfid_uid)
+        )
+        if provided_identifiers == 0:
+            raise ValidationError("user_id, user_code, or rfid_uid is required")
+        if provided_identifiers > 1:
+            raise ValidationError("Provide only one of user_id, user_code, or rfid_uid")
         if request.user_id is not None:
             user = self.user_repository.get_by_id(request.user_id)
+        elif request.user_code is not None:
+            user = self.user_repository.get_by_user_code(request.user_code)
         else:
-            user = self.user_repository.get_by_user_code(request.user_code or "")
+            normalized_uid = (request.rfid_uid or "").strip()
+            if not normalized_uid:
+                raise ValidationError("rfid_uid must not be empty")
+            user = self.user_repository.get_by_rfid_uid(normalized_uid)
         if user is None:
             raise NotFoundError("User not found")
         return user

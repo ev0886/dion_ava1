@@ -4,7 +4,7 @@ import pytest
 
 from app.application.auth_service import AuthService
 from app.application.dto.auth import AuthRequest
-from app.application.exceptions import AuthorizationError
+from app.application.exceptions import AuthorizationError, ValidationError
 from app.domain.enums import UserStatus
 from app.persistence.models import User
 
@@ -23,6 +23,9 @@ class _FakeUserRepository:
         return self.user
 
     def get_by_user_code(self, _user_code: str) -> User | None:
+        return self.user
+
+    def get_by_rfid_uid(self, _rfid_uid: str) -> User | None:
         return self.user
 
 
@@ -50,3 +53,10 @@ def test_auth_rejects_blocked_user() -> None:
 
     with pytest.raises(AuthorizationError, match="blocked"):
         service.authorize(AuthRequest(user_id=1))
+
+
+def test_auth_rejects_multiple_identifiers() -> None:
+    service = AuthService(_FakeUserRepository(_build_user(status=UserStatus.ACTIVE, is_active=True)))
+
+    with pytest.raises(ValidationError, match="Provide only one"):
+        service.authorize(AuthRequest(user_id=1, rfid_uid="CARD-1"))

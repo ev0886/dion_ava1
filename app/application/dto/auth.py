@@ -9,6 +9,7 @@ from app.domain.enums import RoleCode, UserStatus
 class AuthRequest:
     user_id: int | None = None
     user_code: str | None = None
+    rfid_uid: str | None = None
     allowed_roles: tuple[RoleCode, ...] = ()
 
 

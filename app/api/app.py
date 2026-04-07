@@ -8,6 +8,7 @@ from fastapi.responses import HTMLResponse, JSONResponse
 from app.api.dependencies import get_application_container
 from app.api.errors import register_exception_handlers
 from app.api.schemas import (
+    AuthReadResolveRfidRequest,
     AuthResolveRequest,
     DispenseOperationRequest,
     ErrorResponse,
@@ -64,8 +65,8 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
         summary="Resolve an operator or user identity",
         description=(
             "Use this first when the operator needs to confirm who is about to interact with the stand. "
-            "Provide either user_id or user_code. Demo-seeded values include user_id 3, user_code "
-            '"user-1", and operator user_code "operator-1".'
+            "Provide exactly one of user_id, user_code, or rfid_uid. Demo-seeded values include user_id 3, "
+            'user_code "user-1", operator user_code "operator-1", and RFID UID "DEMO-USER-1".'
         ),
     )
     def auth_resolve(
@@ -79,6 +80,10 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
                     "summary": "Resolve the seeded demo user by code",
                     "value": {"user_code": "user-1"},
                 },
+                "by_rfid_uid": {
+                    "summary": "Resolve the seeded demo user by RFID UID",
+                    "value": {"rfid_uid": "DEMO-USER-1"},
+                },
                 "operator_only": {
                     "summary": "Resolve only if the identity is an operator",
                     "value": {"user_code": "operator-1", "allowed_roles": ["operator"]},
@@ -91,6 +96,40 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
             AuthRequest(
                 user_id=payload.user_id,
                 user_code=payload.user_code,
+                rfid_uid=payload.rfid_uid,
+                allowed_roles=payload.allowed_roles,
+            )
+        )
+        return JSONResponse(to_api_payload(dto))
+
+    @app.post(
+        "/auth/read-and-resolve-rfid",
+        summary="Read one RFID card from hardware and resolve it to a user",
+        description=(
+            "Use this when the backend should read the next RFID card from the configured reader and immediately "
+            "return the same resolved user payload as /auth/resolve."
+        ),
+    )
+    def auth_read_and_resolve_rfid(
+        payload: AuthReadResolveRfidRequest = Body(
+            default=AuthReadResolveRfidRequest(),
+            openapi_examples={
+                "default": {
+                    "summary": "Read from hardware and resolve any active user",
+                    "value": {},
+                },
+                "operator_only": {
+                    "summary": "Require the scanned card to belong to an operator",
+                    "value": {"allowed_roles": ["operator"]},
+                },
+            },
+        ),
+        container: ApplicationContainer = Depends(get_application_container),
+    ) -> JSONResponse:
+        read_result = container.hardware.facade.read_rfid_card()
+        dto = container.services.auth.authorize(
+            AuthRequest(
+                rfid_uid=read_result.uid,
                 allowed_roles=payload.allowed_roles,
             )
         )
