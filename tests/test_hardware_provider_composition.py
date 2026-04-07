@@ -243,6 +243,9 @@ def test_real_endpoint_config_summary_reports_unexpected_keys_and_targets(tmp_pa
         hardware_real_endpoints={
             "drum_controller": _serial_endpoint_config(code="drum-1", driver_name="drum-driver", port="/dev/ttyUSB0"),
             "lock_controller": _lock_serial_endpoint_config(code="lock-1", driver_name="lock-driver", port="/dev/ttyUSB1"),
+            "rfid_reader": _linux_input_endpoint_config(
+                code="rfid-1", driver_name="rusguard-hid", device_path="/dev/input/event7"
+            ),
             "unused_endpoint": {},
         },
     )
@@ -258,6 +261,9 @@ def test_real_endpoint_config_summary_reports_unexpected_keys_and_targets(tmp_pa
     lock_entry = next(entry for entry in summary.entries if entry.endpoint_name == "lock_controller")
     assert lock_entry.transport == "serial"
     assert lock_entry.target == "/dev/ttyUSB1"
+    rfid_entry = next(entry for entry in summary.entries if entry.endpoint_name == "rfid_reader")
+    assert rfid_entry.transport == "linux_input"
+    assert rfid_entry.target == "/dev/input/event7"
 
 
 def _serial_endpoint_config(*, code: str, driver_name: str, port: str) -> dict[str, object]:
@@ -279,6 +285,25 @@ def _serial_endpoint_config(*, code: str, driver_name: str, port: str) -> dict[s
             "data_bits": 8,
             "parity": "none",
             "stop_bits": 1,
+        },
+    }
+
+
+def _linux_input_endpoint_config(*, code: str, driver_name: str, device_path: str) -> dict[str, object]:
+    return {
+        "endpoint": {
+            "code": code,
+            "driver_name": driver_name,
+            "enabled": True,
+            "timeouts": {
+                "connect_timeout_ms": 1000,
+                "read_timeout_ms": 1000,
+                "write_timeout_ms": 1000,
+            },
+        },
+        "transport": {
+            "transport": "linux_input",
+            "device_path": device_path,
         },
     }
 

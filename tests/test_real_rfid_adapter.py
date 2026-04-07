@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import struct
+
 import pytest
 
 from app.config import AppSettings, HardwareProvider
@@ -7,13 +9,20 @@ from app.hardware import (
     HardwareFailureError,
     HardwareOperationStatus,
     HardwareTimeoutError,
+    HardwareUnavailableError,
+    LinuxInputEventTransport,
     RealRfidAdapter,
     create_hardware_bundle,
+)
+from app.hardware.transport_config import (
+    EndpointTimeoutSettings,
+    LinuxInputTransportSettings,
+    RfidHardwareEndpointTransportConfig,
 )
 
 
 def test_real_rfid_adapter_ping_success_with_fake_transport() -> None:
-    adapter = RealRfidAdapter(config=_rfid_config(), transport=_FakeTransport([b"PONG\n"]))
+    adapter = RealRfidAdapter(config=_linux_input_rfid_config(), transport=_FakeTransport([b"PONG\n"]))
 
     result = adapter.ping()
 
@@ -21,19 +30,40 @@ def test_real_rfid_adapter_ping_success_with_fake_transport() -> None:
     assert result.status is HardwareOperationStatus.SUCCESS
 
 
-def test_real_rfid_adapter_read_card_success_with_fake_transport() -> None:
-    adapter = RealRfidAdapter(config=_rfid_config(), transport=_FakeTransport([b"UID:aa-bb cc\n"]))
+def test_real_rfid_adapter_reads_uid_from_linux_input_events() -> None:
+    adapter = RealRfidAdapter(
+        config=_linux_input_rfid_config(),
+        transport=_linux_input_transport(
+            [
+                _event_chunk(1, 18, 1),
+                _event_chunk(0, 0, 0),
+                _event_chunk(1, 3, 1),
+                _event_chunk(1, 8, 1),
+                _event_chunk(1, 7, 1),
+                _event_chunk(1, 8, 1),
+                _event_chunk(1, 46, 1),
+                _event_chunk(1, 11, 1),
+                _event_chunk(1, 11, 1),
+                _event_chunk(1, 5, 1),
+                _event_chunk(1, 6, 1),
+                _event_chunk(1, 28, 1),
+            ]
+        ),
+    )
 
     result = adapter.read_card()
 
     assert result.ok is True
     assert result.status is HardwareOperationStatus.SUCCESS
-    assert result.uid == "AABBCC"
+    assert result.uid == "E2767C0045"
     assert result.is_duplicate is False
 
 
-def test_real_rfid_adapter_read_card_handles_no_card_response() -> None:
-    adapter = RealRfidAdapter(config=_rfid_config(), transport=_FakeTransport([b"NO_CARD\n"]))
+def test_real_rfid_adapter_no_card_when_linux_input_reader_stays_idle() -> None:
+    adapter = RealRfidAdapter(
+        config=_linux_input_rfid_config(),
+        transport=_linux_input_transport([], readable_sequence=[False]),
+    )
 
     result = adapter.read_card()
 
@@ -43,42 +73,67 @@ def test_real_rfid_adapter_read_card_handles_no_card_response() -> None:
     assert result.is_duplicate is False
 
 
-def test_real_rfid_adapter_malformed_response_raises_safe_failure() -> None:
-    adapter = RealRfidAdapter(config=_rfid_config(), transport=_FakeTransport([123]))  # type: ignore[list-item]
+def test_real_rfid_adapter_timeout_is_reported_for_incomplete_linux_input_scan() -> None:
+    adapter = RealRfidAdapter(
+        config=_linux_input_rfid_config(),
+        transport=_linux_input_transport([_event_chunk(1, 18, 1), _event_chunk(1, 3, 1)], readable_sequence=[True, True, False]),
+    )
 
-    with pytest.raises(HardwareFailureError, match="malformed response"):
+    with pytest.raises(HardwareTimeoutError, match="end-of-card marker"):
         adapter.read_card()
 
 
-def test_real_rfid_adapter_clear_buffer_success() -> None:
-    adapter = RealRfidAdapter(config=_rfid_config(), transport=_FakeTransport([b"CLEARED\n"]))
+def test_real_rfid_adapter_unavailable_when_linux_input_device_cannot_be_opened() -> None:
+    transport = LinuxInputEventTransport(
+        settings=LinuxInputTransportSettings(transport="linux_input", device_path="/dev/input/event7"),
+        timeouts=EndpointTimeoutSettings(connect_timeout_ms=1000, read_timeout_ms=1000, write_timeout_ms=1000),
+        device_opener=lambda device_path, nonblocking: (_ for _ in ()).throw(OSError("Permission denied")),
+    )
+    adapter = RealRfidAdapter(config=_linux_input_rfid_config(), transport=transport)
+
+    with pytest.raises(HardwareUnavailableError, match="Permission denied"):
+        adapter.read_card()
+
+
+def test_real_rfid_adapter_malformed_linux_input_sequence_raises_safe_failure() -> None:
+    adapter = RealRfidAdapter(
+        config=_linux_input_rfid_config(),
+        transport=_linux_input_transport([_event_chunk(1, 59, 1)]),
+    )
+
+    with pytest.raises(HardwareFailureError, match="unsupported read response"):
+        adapter.read_card()
+
+
+def test_real_rfid_adapter_clear_buffer_success_with_linux_input_transport() -> None:
+    device = _FakeInputDevice([_event_chunk(1, 18, 1), _event_chunk(1, 28, 1)])
+    transport = LinuxInputEventTransport(
+        settings=LinuxInputTransportSettings(transport="linux_input", device_path="/dev/input/event7"),
+        timeouts=EndpointTimeoutSettings(connect_timeout_ms=1000, read_timeout_ms=1000, write_timeout_ms=1000),
+        device_opener=lambda device_path, nonblocking: device,
+    )
+    adapter = RealRfidAdapter(config=_linux_input_rfid_config(), transport=transport)
 
     result = adapter.clear_buffer()
 
     assert result.ok is True
     assert result.status is HardwareOperationStatus.SUCCESS
+    assert device.read_calls == 2
 
 
-def test_real_rfid_adapter_timeout_is_reported_as_safe_timeout() -> None:
-    adapter = RealRfidAdapter(config=_rfid_config(), transport=_RaisingTransport(TimeoutError("timed out")))
-
-    with pytest.raises(HardwareTimeoutError, match="timed out"):
-        adapter.read_card()
-
-
-def test_real_provider_composition_still_works_with_operational_rfid_transport() -> None:
+def test_real_provider_composition_supports_linux_input_rfid_transport() -> None:
     settings = AppSettings(
         hardware_provider=HardwareProvider.REAL,
         hardware_real_endpoints={
             "drum_controller": _serial_endpoint_config(code="drum-1", driver_name="drum-driver", port="COM1"),
-            "lock_controller": _serial_endpoint_config(code="lock-1", driver_name="lock-driver", port="COM2"),
-            "rfid_reader": _serial_endpoint_config(code="rfid-1", driver_name="rfid-driver", port="COM3"),
+            "lock_controller": _lock_serial_endpoint_config(code="lock-1", driver_name="lock-driver", port="COM2"),
+            "rfid_reader": _linux_input_endpoint_config(code="rfid-1", driver_name="rusguard-hid", device_path="/dev/input/event7"),
         },
     )
 
     bundle = create_hardware_bundle(
         settings,
-        transport_overrides={"rfid_reader": _FakeTransport([b"PONG\n", b"UID:012345\n", b"CLEARED\n"])},
+        transport_overrides={"rfid_reader": _FakeTransport([b"PONG\n", b"UID:E2767C0045\n", b"CLEARED\n"])},
     )
 
     ping_result = bundle.rfid_reader.ping()
@@ -87,35 +142,86 @@ def test_real_provider_composition_still_works_with_operational_rfid_transport()
 
     assert bundle.provider is HardwareProvider.REAL
     assert ping_result.ok is True
-    assert read_result.uid == "012345"
+    assert read_result.uid == "E2767C0045"
     assert clear_result.ok is True
 
 
 class _FakeTransport:
     def __init__(self, responses: list[object]) -> None:
         self._responses = list(responses)
-        self.requests: list[tuple[bytes, int | None]] = []
 
     def request(self, payload: bytes, *, timeout_ms: int | None = None) -> bytes:
-        self.requests.append((payload, timeout_ms))
         if not self._responses:
             raise AssertionError("No fake transport responses remain.")
         response = self._responses.pop(0)
         return response  # type: ignore[return-value]
 
 
-class _RaisingTransport:
-    def __init__(self, error: Exception) -> None:
-        self._error = error
+class _FakeInputDevice:
+    def __init__(self, chunks: list[bytes], *, readable_sequence: list[bool] | None = None) -> None:
+        self._chunks = list(chunks)
+        self._readable_sequence = list(readable_sequence) if readable_sequence is not None else None
+        self.read_calls = 0
+        self.closed = False
 
-    def request(self, payload: bytes, *, timeout_ms: int | None = None) -> bytes:
-        raise self._error
+    def read(self) -> bytes:
+        self.read_calls += 1
+        if not self._chunks:
+            return b""
+        return self._chunks.pop(0)
+
+    def wait_until_readable(self, timeout_seconds: float) -> bool:
+        if self._readable_sequence is not None:
+            if not self._readable_sequence:
+                return False
+            return self._readable_sequence.pop(0)
+        return bool(self._chunks)
+
+    def close(self) -> None:
+        self.closed = True
+
+    def __enter__(self) -> "_FakeInputDevice":
+        return self
+
+    def __exit__(self, exc_type, exc, tb) -> None:
+        self.close()
 
 
-def _rfid_config():
-    from app.hardware.transport_config import HardwareEndpointTransportConfig
+def _linux_input_transport(
+    chunks: list[bytes],
+    *,
+    readable_sequence: list[bool] | None = None,
+) -> LinuxInputEventTransport:
+    return LinuxInputEventTransport(
+        settings=LinuxInputTransportSettings(transport="linux_input", device_path="/dev/input/event7"),
+        timeouts=EndpointTimeoutSettings(connect_timeout_ms=1000, read_timeout_ms=1000, write_timeout_ms=1000),
+        device_opener=lambda device_path, nonblocking: _FakeInputDevice(chunks, readable_sequence=readable_sequence),
+    )
 
-    return HardwareEndpointTransportConfig.model_validate(_serial_endpoint_config(code="rfid-1", driver_name="rfid-driver", port="COM7"))
+
+def _linux_input_rfid_config() -> RfidHardwareEndpointTransportConfig:
+    return RfidHardwareEndpointTransportConfig.model_validate(
+        _linux_input_endpoint_config(code="rfid-1", driver_name="rusguard-hid", device_path="/dev/input/event7")
+    )
+
+
+def _linux_input_endpoint_config(*, code: str, driver_name: str, device_path: str) -> dict[str, object]:
+    return {
+        "endpoint": {
+            "code": code,
+            "driver_name": driver_name,
+            "enabled": True,
+            "timeouts": {
+                "connect_timeout_ms": 1000,
+                "read_timeout_ms": 1000,
+                "write_timeout_ms": 1000,
+            },
+        },
+        "transport": {
+            "transport": "linux_input",
+            "device_path": device_path,
+        },
+    }
 
 
 def _serial_endpoint_config(*, code: str, driver_name: str, port: str) -> dict[str, object]:
@@ -139,3 +245,33 @@ def _serial_endpoint_config(*, code: str, driver_name: str, port: str) -> dict[s
             "stop_bits": 1,
         },
     }
+
+
+def _lock_serial_endpoint_config(*, code: str, driver_name: str, port: str, board_address: int = 0) -> dict[str, object]:
+    return {
+        "endpoint": {
+            "code": code,
+            "driver_name": driver_name,
+            "enabled": True,
+            "timeouts": {
+                "connect_timeout_ms": 1000,
+                "read_timeout_ms": 1000,
+                "write_timeout_ms": 1000,
+            },
+        },
+        "protocol": {
+            "board_address": board_address,
+        },
+        "transport": {
+            "transport": "serial",
+            "port": port,
+            "baudrate": 19200,
+            "data_bits": 8,
+            "parity": "none",
+            "stop_bits": 1,
+        },
+    }
+
+
+def _event_chunk(event_type: int, code: int, value: int) -> bytes:
+    return struct.pack("<qqHHi", 0, 0, event_type, code, value)

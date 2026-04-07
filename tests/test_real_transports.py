@@ -9,6 +9,7 @@ from app.config import AppSettings, HardwareProvider
 from app.domain.enums import StartupReadinessStatus
 from app.hardware import (
     HardwareTimeoutError,
+    LinuxInputEventTransport,
     RealRfidAdapter,
     SerialTransport,
     TcpTransport,
@@ -103,7 +104,9 @@ def test_real_provider_composition_uses_actual_transport_implementations_by_defa
         hardware_real_endpoints={
             "drum_controller": _serial_endpoint_config(code="drum-1", driver_name="drum-driver", port="COM1"),
             "lock_controller": _lock_serial_endpoint_config(code="lock-1", driver_name="lock-driver", port="COM2"),
-            "rfid_reader": _serial_endpoint_config(code="rfid-1", driver_name="rfid-driver", port="COM3"),
+            "rfid_reader": _linux_input_endpoint_config(
+                code="rfid-1", driver_name="rusguard-hid", device_path="/dev/input/event7"
+            ),
         },
     )
 
@@ -111,7 +114,7 @@ def test_real_provider_composition_uses_actual_transport_implementations_by_defa
 
     assert isinstance(bundle.drum_controller._transport, SerialTransport)
     assert isinstance(bundle.lock_controller._transport, SerialTransport)
-    assert isinstance(bundle.rfid_reader._transport, SerialTransport)
+    assert isinstance(bundle.rfid_reader._transport, LinuxInputEventTransport)
 
 
 def test_real_readiness_can_become_healthy_when_rfid_lock_and_drum_transports_work(
@@ -139,7 +142,9 @@ def test_real_readiness_can_become_healthy_when_rfid_lock_and_drum_transports_wo
         hardware_real_endpoints={
             "drum_controller": _serial_endpoint_config(code="drum-1", driver_name="drum-driver", port="COM1"),
             "lock_controller": _lock_serial_endpoint_config(code="lock-1", driver_name="lock-driver", port="COM2"),
-            "rfid_reader": _serial_endpoint_config(code="rfid-1", driver_name="rfid-driver", port="COM3"),
+            "rfid_reader": _linux_input_endpoint_config(
+                code="rfid-1", driver_name="rusguard-hid", device_path="/dev/input/event7"
+            ),
         },
     )
 
@@ -288,6 +293,25 @@ def _serial_endpoint_config(*, code: str, driver_name: str, port: str) -> dict[s
             "data_bits": 8,
             "parity": "none",
             "stop_bits": 1,
+        },
+    }
+
+
+def _linux_input_endpoint_config(*, code: str, driver_name: str, device_path: str) -> dict[str, object]:
+    return {
+        "endpoint": {
+            "code": code,
+            "driver_name": driver_name,
+            "enabled": True,
+            "timeouts": {
+                "connect_timeout_ms": 1000,
+                "read_timeout_ms": 1000,
+                "write_timeout_ms": 1000,
+            },
+        },
+        "transport": {
+            "transport": "linux_input",
+            "device_path": device_path,
         },
     }
 

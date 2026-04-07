@@ -29,6 +29,7 @@ from app.hardware.lock_mock import MockLockAdapter
 from app.hardware.lock_real import RealLockAdapter
 from app.hardware.lock_stub_real import StubRealLockAdapter
 from app.hardware.rfid_mock import MockRfidAdapter
+from app.hardware.rfid_input_transport import LinuxInputEventTransport
 from app.hardware.rfid_real import RealRfidAdapter
 from app.hardware.rfid_stub_real import StubRealRfidAdapter
 from app.hardware.transport_config import (
@@ -37,10 +38,12 @@ from app.hardware.transport_config import (
     DrumHardwareEndpointTransportConfig,
     EndpointTimeoutSettings,
     HardwareEndpointTransportConfig,
+    LinuxInputTransportSettings,
     LockControllerProtocolSettings,
     LockHardwareEndpointTransportConfig,
     REAL_HARDWARE_ENDPOINT_NAMES,
     RealHardwareSettings,
+    RfidHardwareEndpointTransportConfig,
     SerialTransportSettings,
     TcpTransportSettings,
     real_hardware_endpoints_example,
@@ -71,6 +74,8 @@ __all__ = [
     "HardwareTimeoutError",
     "HardwareUnavailableError",
     "HardwareEndpointTransportConfig",
+    "LinuxInputEventTransport",
+    "LinuxInputTransportSettings",
     "LockControllerContract",
     "LockControllerProtocolSettings",
     "LockHardwareEndpointTransportConfig",
@@ -85,6 +90,7 @@ __all__ = [
     "RealHardwareSettings",
     "RealLockAdapter",
     "RealRfidAdapter",
+    "RfidHardwareEndpointTransportConfig",
     "RfidReadResult",
     "RfidReaderContract",
     "AnyHardwareEndpointTransportConfig",

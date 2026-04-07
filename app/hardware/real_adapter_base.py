@@ -10,6 +10,7 @@ from app.hardware.exceptions import (
     HardwareTimeoutError,
     HardwareUnavailableError,
 )
+from app.hardware.rfid_input_transport import LinuxInputEventTransport
 from app.hardware.transport_config import AnyHardwareEndpointTransportConfig
 from app.hardware.transports import SerialRequestResponseTransport, TcpRequestResponseTransport
 
@@ -29,7 +30,7 @@ class RealHardwareAdapterBase:
         *,
         device_type: HardwareEndpointType,
         config: AnyHardwareEndpointTransportConfig | None,
-        transport: SerialRequestResponseTransport | TcpRequestResponseTransport | None,
+        transport: SerialRequestResponseTransport | TcpRequestResponseTransport | LinuxInputEventTransport | None,
         config_error: str | None = None,
     ) -> None:
         self.device_type = device_type

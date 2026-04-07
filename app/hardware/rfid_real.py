@@ -5,7 +5,8 @@ from app.domain.enums import HardwareEndpointType
 from app.hardware.dto import HardwareOperationResult, HardwareOperationStatus, RfidReadResult
 from app.hardware.exceptions import HardwareFailureError
 from app.hardware.real_adapter_base import RealHardwareAdapterBase
-from app.hardware.transport_config import HardwareEndpointTransportConfig
+from app.hardware.rfid_input_transport import LinuxInputEventTransport
+from app.hardware.transport_config import RfidHardwareEndpointTransportConfig
 from app.hardware.transports import SerialRequestResponseTransport, TcpRequestResponseTransport
 
 
@@ -21,8 +22,8 @@ class RealRfidAdapter(RealHardwareAdapterBase):
     def __init__(
         self,
         *,
-        config: HardwareEndpointTransportConfig | None,
-        transport: SerialRequestResponseTransport | TcpRequestResponseTransport | None,
+        config: RfidHardwareEndpointTransportConfig | None,
+        transport: SerialRequestResponseTransport | TcpRequestResponseTransport | LinuxInputEventTransport | None,
         config_error: str | None = None,
     ) -> None:
         super().__init__(

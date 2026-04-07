@@ -15,6 +15,7 @@ from app.hardware.lock_mock import MockLockAdapter
 from app.hardware.lock_real import RealLockAdapter
 from app.hardware.lock_stub_real import StubRealLockAdapter
 from app.hardware.rfid_mock import MockRfidAdapter
+from app.hardware.rfid_input_transport import LinuxInputEventTransport
 from app.hardware.rfid_real import RealRfidAdapter
 from app.hardware.rfid_stub_real import StubRealRfidAdapter
 from app.hardware.transport_config import (
@@ -23,6 +24,7 @@ from app.hardware.transport_config import (
     HardwareEndpointTransportConfig,
     LockHardwareEndpointTransportConfig,
     REAL_HARDWARE_ENDPOINT_NAMES,
+    RfidHardwareEndpointTransportConfig,
     real_hardware_endpoints_example_json,
 )
 from app.hardware.transports import (
@@ -69,7 +71,10 @@ class RealEndpointConfigSummary:
 def create_hardware_bundle(
     settings: AppSettings,
     *,
-    transport_overrides: dict[str, SerialRequestResponseTransport | TcpRequestResponseTransport] | None = None,
+    transport_overrides: dict[
+        str, SerialRequestResponseTransport | TcpRequestResponseTransport | LinuxInputEventTransport
+    ]
+    | None = None,
 ) -> HardwareBundle:
     """Create the configured hardware bundle without changing provider-selection semantics."""
 
@@ -99,7 +104,7 @@ def _build_real_hardware(
     settings: AppSettings,
     provider: HardwareProvider,
     *,
-    transport_overrides: dict[str, SerialRequestResponseTransport | TcpRequestResponseTransport],
+    transport_overrides: dict[str, SerialRequestResponseTransport | TcpRequestResponseTransport | LinuxInputEventTransport],
 ) -> HardwareBundle:
     """Build real adapters so each endpoint can fail independently and degrade readiness safely."""
 
@@ -172,6 +177,8 @@ def _endpoint_config_model(endpoint_name: str):
         return DrumHardwareEndpointTransportConfig
     if endpoint_name == "lock_controller":
         return LockHardwareEndpointTransportConfig
+    if endpoint_name == "rfid_reader":
+        return RfidHardwareEndpointTransportConfig
     return HardwareEndpointTransportConfig
 
 
@@ -210,11 +217,12 @@ def _summarize_real_endpoint_config(endpoint_name: str, raw_config: object) -> R
         )
 
     transport = parsed.config.transport.transport
-    target = (
-        parsed.config.transport.port
-        if transport == "serial"
-        else f"{parsed.config.transport.host}:{parsed.config.transport.port}"
-    )
+    if transport == "serial":
+        target = parsed.config.transport.port
+    elif transport == "tcp":
+        target = f"{parsed.config.transport.host}:{parsed.config.transport.port}"
+    else:
+        target = parsed.config.transport.device_path
     return RealEndpointConfigSummaryEntry(
         endpoint_name=endpoint_name,
         configured=True,
@@ -229,9 +237,11 @@ def _summarize_real_endpoint_config(endpoint_name: str, raw_config: object) -> R
 
 def _create_transport_client(
     config: AnyHardwareEndpointTransportConfig | None,
-) -> SerialRequestResponseTransport | TcpRequestResponseTransport | None:
+) -> SerialRequestResponseTransport | TcpRequestResponseTransport | LinuxInputEventTransport | None:
     if config is None:
         return None
     if config.transport.transport == "serial":
         return SerialTransport(settings=config.transport, timeouts=config.endpoint.timeouts)
+    if config.transport.transport == "linux_input":
+        return LinuxInputEventTransport(settings=config.transport, timeouts=config.endpoint.timeouts)
     return TcpTransport(settings=config.transport, timeouts=config.endpoint.timeouts)

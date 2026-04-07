@@ -75,7 +75,25 @@ class TcpTransportSettings(BaseModel):
         return cleaned
 
 
-TransportSettings = Annotated[SerialTransportSettings | TcpTransportSettings, Field(discriminator="transport")]
+class LinuxInputTransportSettings(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    transport: Literal["linux_input"]
+    device_path: str = Field(min_length=1, max_length=255)
+
+    @field_validator("device_path")
+    @classmethod
+    def _validate_device_path(cls, value: str) -> str:
+        cleaned = value.strip()
+        if not cleaned:
+            raise ValueError("must not be blank")
+        return cleaned
+
+
+TransportSettings = Annotated[
+    SerialTransportSettings | TcpTransportSettings | LinuxInputTransportSettings,
+    Field(discriminator="transport"),
+]
 
 
 class HardwareEndpointTransportConfig(BaseModel):
@@ -106,10 +124,21 @@ class LockHardwareEndpointTransportConfig(BaseModel):
     protocol: LockControllerProtocolSettings = Field(default_factory=LockControllerProtocolSettings)
 
 
+class RfidHardwareEndpointTransportConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    endpoint: CommonEndpointSettings
+    transport: Annotated[
+        SerialTransportSettings | TcpTransportSettings | LinuxInputTransportSettings,
+        Field(discriminator="transport"),
+    ]
+
+
 AnyHardwareEndpointTransportConfig = (
     HardwareEndpointTransportConfig
     | DrumHardwareEndpointTransportConfig
     | LockHardwareEndpointTransportConfig
+    | RfidHardwareEndpointTransportConfig
 )
 
 
@@ -118,7 +147,7 @@ class RealHardwareSettings(BaseModel):
 
     drum_controller: DrumHardwareEndpointTransportConfig | None = None
     lock_controller: LockHardwareEndpointTransportConfig | None = None
-    rfid_reader: HardwareEndpointTransportConfig | None = None
+    rfid_reader: RfidHardwareEndpointTransportConfig | None = None
 
 
 def real_hardware_endpoints_example() -> dict[str, object]:
@@ -178,12 +207,8 @@ def real_hardware_endpoints_example() -> dict[str, object]:
                 },
             },
             "transport": {
-                "transport": "serial",
-                "port": "/dev/input/event0",
-                "baudrate": 9600,
-                "data_bits": 8,
-                "parity": "none",
-                "stop_bits": 1,
+                "transport": "linux_input",
+                "device_path": "/dev/input/event7",
             },
         },
     }
