@@ -56,15 +56,13 @@ class RealLockAdapter(RealHardwareAdapterBase):
     def unlock_lock(self, board_address: int, lock_number: int) -> UnlockResult:
         configured_board_address = self._ensure_configured_board_address(board_address, operation="unlock_lock")
         protocol_number = protocol_lock_number(lock_number)
-        response = parse_packet(
-            self._send_binary_request(
-                build_packet(
-                    address=configured_board_address,
-                    lock_number=protocol_number,
-                    command=CU24_CMD_UNLOCK,
-                ),
-                operation="unlock_lock",
-            )
+        response = self._send_cu24_request(
+            build_packet(
+                address=configured_board_address,
+                lock_number=protocol_number,
+                command=CU24_CMD_UNLOCK,
+            ),
+            operation="unlock_lock",
         )
         self._assert_successful_response(
             response,
@@ -102,15 +100,13 @@ class RealLockAdapter(RealHardwareAdapterBase):
 
     def _query_version(self, *, operation: str) -> None:
         configured_board_address = self._configured_board_address
-        response = parse_packet(
-            self._send_binary_request(
-                build_packet(
-                    address=configured_board_address,
-                    lock_number=0,
-                    command=CU24_CMD_QUERY_VERSION,
-                ),
-                operation=operation,
-            )
+        response = self._send_cu24_request(
+            build_packet(
+                address=configured_board_address,
+                lock_number=0,
+                command=CU24_CMD_QUERY_VERSION,
+            ),
+            operation=operation,
         )
         self._assert_successful_response(
             response,
@@ -123,15 +119,13 @@ class RealLockAdapter(RealHardwareAdapterBase):
     def _probe_status(self, *, lock_number: int, operation: str) -> Cu24Packet:
         configured_board_address = self._configured_board_address
         protocol_number = protocol_lock_number(lock_number)
-        response = parse_packet(
-            self._send_binary_request(
-                build_packet(
-                    address=configured_board_address,
-                    lock_number=protocol_number,
-                    command=CU24_CMD_GET_STATUS,
-                ),
-                operation=operation,
-            )
+        response = self._send_cu24_request(
+            build_packet(
+                address=configured_board_address,
+                lock_number=protocol_number,
+                command=CU24_CMD_GET_STATUS,
+            ),
+            operation=operation,
         )
         self._assert_successful_response(
             response,
@@ -141,6 +135,16 @@ class RealLockAdapter(RealHardwareAdapterBase):
             operation=operation,
         )
         return response
+
+    def _send_cu24_request(self, payload: bytes, *, operation: str) -> Cu24Packet:
+        try:
+            return parse_packet(self._send_binary_request(payload, operation=operation))
+        except ValueError as error:
+            raise HardwareFailureError(
+                f"Lock controller returned a malformed response: {error}",
+                device_type=self.device_type,
+                operation=operation,
+            ) from error
 
     @property
     def _configured_board_address(self) -> int:

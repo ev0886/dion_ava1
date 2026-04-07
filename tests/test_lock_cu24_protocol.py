@@ -22,9 +22,24 @@ def test_cu24_packet_parsing_matches_verified_examples() -> None:
     assert packet.data == b""
 
 
+def test_cu24_packet_parsing_accepts_live_version_response_with_trailing_data() -> None:
+    packet = parse_packet(bytes.fromhex("02 00 00 8F 10 02 03 BA 13 01"))
+
+    assert packet.address == 0
+    assert packet.lock_number == 0
+    assert packet.command == 0x8F
+    assert packet.ask == 0x10
+    assert packet.data == bytes.fromhex("13 01")
+
+
 def test_cu24_packet_checksum_validation_fails_on_invalid_checksum() -> None:
     with pytest.raises(ValueError, match="checksum mismatch"):
         parse_packet(bytes.fromhex("02 00 01 81 10 00 03 00"))
+
+
+def test_cu24_packet_checksum_validation_uses_trailing_data_bytes() -> None:
+    with pytest.raises(ValueError, match="checksum mismatch"):
+        parse_packet(bytes.fromhex("02 00 00 8F 10 02 03 BA 13 00"))
 
 
 def test_cu24_lock_number_translation_is_one_based_in_domain() -> None:

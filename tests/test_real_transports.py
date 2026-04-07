@@ -100,7 +100,7 @@ def test_real_readiness_can_become_healthy_when_rfid_lock_and_drum_transports_wo
         if config.endpoint.code == "rfid-1":
             return _FakeTransport([b"PONG\n"])
         if config.endpoint.code == "lock-1":
-            return _FakeTransport([bytes.fromhex("02 00 00 8F 10 00 03 A4")])
+            return _FakeTransport([bytes.fromhex("02 00 00 8F 10 02 03 BA 13 01")])
         return _FakeTransport([bytes.fromhex("24 00 00 C1")])
 
     monkeypatch.setattr(hardware_factory, "_create_transport_client", fake_create_transport_client)

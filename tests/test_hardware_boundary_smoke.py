@@ -116,7 +116,7 @@ def _fake_transport_client(config):
     if config.endpoint.code == "rfid-1":
         return _FakeTransport([b"PONG\n"])
     if config.endpoint.code == "lock-1":
-        return _FakeTransport([bytes.fromhex("02 00 00 8F 10 00 03 A4")])
+        return _FakeTransport([bytes.fromhex("02 00 00 8F 10 02 03 BA 13 01")])
     return _FakeTransport([bytes.fromhex("24 00 00 C1")])
 
 

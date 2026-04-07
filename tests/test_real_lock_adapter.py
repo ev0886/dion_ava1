@@ -16,7 +16,7 @@ from app.hardware import (
 
 
 def test_real_lock_adapter_ping_success_with_fake_transport() -> None:
-    adapter = RealLockAdapter(config=_lock_config(), transport=_FakeTransport([bytes.fromhex("02 00 00 8F 10 00 03 A4")]))
+    adapter = RealLockAdapter(config=_lock_config(), transport=_FakeTransport([bytes.fromhex("02 00 00 8F 10 02 03 BA 13 01")]))
 
     result = adapter.ping()
 
@@ -88,7 +88,7 @@ def test_real_provider_composition_still_works_with_operational_lock_transport()
         settings,
         transport_overrides={
             "lock_controller": _FakeTransport(
-                [bytes.fromhex("02 00 00 8F 10 00 03 A4"), bytes.fromhex("02 00 01 81 10 00 03 97")]
+                [bytes.fromhex("02 00 00 8F 10 02 03 BA 13 01"), bytes.fromhex("02 00 01 81 10 00 03 97")]
             )
         },
     )
@@ -100,6 +100,13 @@ def test_real_provider_composition_still_works_with_operational_lock_transport()
     assert ping_result.ok is True
     assert unlock_result.lock_number == 2
     assert unlock_result.lock_state is LockState.OPEN
+
+
+def test_real_lock_adapter_ping_rejects_truncated_cu24_version_payload() -> None:
+    adapter = RealLockAdapter(config=_lock_config(), transport=_FakeTransport([bytes.fromhex("02 00 00 8F 10 02 03 BA 13")]))
+
+    with pytest.raises(HardwareFailureError, match="data length mismatch"):
+        adapter.ping()
 
 
 class _FakeTransport:

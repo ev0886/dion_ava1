@@ -39,15 +39,16 @@ def parse_packet(packet: bytes) -> Cu24Packet:
         raise ValueError("CU24 packet is too short")
     if packet[0] != CU24_STX:
         raise ValueError("CU24 packet STX mismatch")
+    data_length = packet[5]
+    expected_packet_length = 8 + data_length
+    if len(packet) != expected_packet_length:
+        raise ValueError("CU24 packet data length mismatch")
     if packet[6] != CU24_ETX:
         raise ValueError("CU24 packet ETX mismatch")
-    expected_checksum = sum(packet[:7]) & 0xFF
+    expected_checksum = (sum(packet[:7]) + sum(packet[8:])) & 0xFF
     if packet[7] != expected_checksum:
         raise ValueError("CU24 packet checksum mismatch")
-    data_length = packet[5]
     data = packet[8:]
-    if len(data) != data_length:
-        raise ValueError("CU24 packet data length mismatch")
     return Cu24Packet(
         address=packet[1],
         lock_number=packet[2],
