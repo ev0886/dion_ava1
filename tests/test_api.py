@@ -82,12 +82,33 @@ def test_auth_and_inventory_happy_path(tmp_path: Path) -> None:
 
     with TestClient(app) as client:
         auth_response = client.post("/auth/resolve", json={"user_id": 1})
-        inventory_response = client.get("/inventory/1/1")
+        inventory_response = client.get("/inventory/slots/1/items/1")
 
     assert auth_response.status_code == 200
     assert auth_response.json()["user_code"] == "user-1"
     assert inventory_response.status_code == 200
     assert inventory_response.json()["balance"]["quantity"] == 5
+    assert inventory_response.json()["bindings"] == [
+        {
+            "slot_id": 1,
+            "item_id": 1,
+            "binding_type": "return",
+            "is_active": True,
+            "valid_from": None,
+            "valid_to": None,
+        }
+    ]
+
+
+def test_inventory_lookup_returns_404_for_missing_slot_item_pair(tmp_path: Path) -> None:
+    app = create_app(_settings(tmp_path, "api_inventory_missing.sqlite3"))
+    _seed_base_domain(app)
+
+    with TestClient(app) as client:
+        response = client.get("/inventory/slots/1/items/999")
+
+    assert response.status_code == 404
+    assert response.json() == {"error": "not_found", "detail": "Inventory balance not found for slot 1 and item 999"}
 
 
 def test_dispense_operation_happy_path(tmp_path: Path) -> None:
@@ -363,7 +384,7 @@ def test_error_mapping_returns_400_for_validation_error(tmp_path: Path) -> None:
     app = create_app(_settings(tmp_path, "api_errors.sqlite3"))
 
     with TestClient(app) as client:
-        response = client.get("/inventory/0/1")
+        response = client.get("/inventory/slots/0/items/1")
 
     assert response.status_code == 400
     assert response.json()["error"] == "validation_error"

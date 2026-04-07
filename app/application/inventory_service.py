@@ -3,7 +3,7 @@ from __future__ import annotations
 from sqlalchemy import select
 
 from app.application.dto.inventory import InventoryBalanceDTO, InventoryLookupResult, SlotBindingDTO
-from app.application.exceptions import ValidationError
+from app.application.exceptions import NotFoundError, ValidationError
 from app.persistence.models import InventoryBalance, SlotItemBinding
 from app.persistence.repositories.inventory import InventoryRepository
 
@@ -22,11 +22,13 @@ class InventoryService:
     def lookup_inventory(self, slot_id: int, item_id: int) -> InventoryLookupResult:
         self._validate_slot_item_ids(slot_id, item_id)
         balance = self.inventory_repository.get_balance(slot_id, item_id)
+        if balance is None:
+            raise NotFoundError(f"Inventory balance not found for slot {slot_id} and item {item_id}")
         bindings = self.list_bindings(slot_id=slot_id, item_id=item_id)
         return InventoryLookupResult(
             slot_id=slot_id,
             item_id=item_id,
-            balance=self._to_balance_dto(balance) if balance is not None else None,
+            balance=self._to_balance_dto(balance),
             bindings=bindings,
         )
 

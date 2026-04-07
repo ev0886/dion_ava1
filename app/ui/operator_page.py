@@ -645,7 +645,7 @@ def render_operator_page() -> str:
 
     async function runInventoryLookup(slotId, itemId) {
       syncInventoryFields(slotId, itemId);
-      return await apiRequest("inventory-output", "GET", "/inventory/" + slotId + "/" + itemId);
+      return await apiRequest("inventory-output", "GET", "/inventory/slots/" + slotId + "/items/" + itemId);
     }
 
     async function refreshInventoryFromOperation(payload, fallbackSlotId, fallbackItemId) {

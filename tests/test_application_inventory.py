@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import pytest
+
+from app.application.exceptions import NotFoundError
 from app.application.inventory_service import InventoryService
 from app.domain.enums import BindingType
 from app.persistence.models import InventoryBalance, SlotItemBinding
@@ -53,3 +56,18 @@ def test_inventory_lookup_result_shape() -> None:
     assert result.balance.quantity == 7
     assert len(result.bindings) == 1
     assert result.bindings[0].binding_type is BindingType.PRIMARY
+
+
+def test_inventory_lookup_raises_not_found_when_balance_missing() -> None:
+    binding = SlotItemBinding(
+        slot_id=10,
+        item_id=20,
+        binding_type=BindingType.RETURN,
+        is_active=True,
+        valid_from=None,
+        valid_to=None,
+    )
+    service = InventoryService(_FakeInventoryRepository(None, [binding]))
+
+    with pytest.raises(NotFoundError, match="Inventory balance not found for slot 10 and item 20"):
+        service.lookup_inventory(slot_id=10, item_id=20)

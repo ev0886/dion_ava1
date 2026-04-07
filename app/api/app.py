@@ -97,7 +97,7 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
         return JSONResponse(to_api_payload(dto))
 
     @app.get(
-        "/inventory/{slot_id}/{item_id}",
+        "/inventory/slots/{slot_id}/items/{item_id}",
         summary="Check slot inventory for an item",
         description=(
             "Use this to confirm the seeded slot and item combination before a demo or operator action. "
