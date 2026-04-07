@@ -10,7 +10,7 @@ from app.hardware.exceptions import (
     HardwareTimeoutError,
     HardwareUnavailableError,
 )
-from app.hardware.transport_config import HardwareEndpointTransportConfig
+from app.hardware.transport_config import AnyHardwareEndpointTransportConfig
 from app.hardware.transports import SerialRequestResponseTransport, TcpRequestResponseTransport
 
 
@@ -28,7 +28,7 @@ class RealHardwareAdapterBase:
         self,
         *,
         device_type: HardwareEndpointType,
-        config: HardwareEndpointTransportConfig | None,
+        config: AnyHardwareEndpointTransportConfig | None,
         transport: SerialRequestResponseTransport | TcpRequestResponseTransport | None,
         config_error: str | None = None,
     ) -> None:
@@ -50,6 +50,17 @@ class RealHardwareAdapterBase:
         return self.device_type.value.replace("_", " ")
 
     def _send_request(self, payload: bytes, *, operation: str) -> str:
+        raw_response = self._send_binary_request(payload, operation=operation)
+        try:
+            return raw_response.decode("ascii").strip()
+        except (AttributeError, TypeError, UnicodeDecodeError) as error:
+            raise HardwareFailureError(
+                f"{self._device_label.capitalize()} returned a malformed response.",
+                device_type=self.device_type,
+                operation=operation,
+            ) from error
+
+    def _send_binary_request(self, payload: bytes, *, operation: str) -> bytes:
         self._raise_if_unavailable(operation=operation)
         assert self._transport is not None
         timeout_ms = self._config.endpoint.timeouts.read_timeout_ms if self._config is not None else None
@@ -73,14 +84,13 @@ class RealHardwareAdapterBase:
                 device_type=self.device_type,
                 operation=operation,
             ) from error
-        try:
-            return raw_response.decode("ascii").strip()
-        except (AttributeError, TypeError, UnicodeDecodeError) as error:
+        if not isinstance(raw_response, (bytes, bytearray)):
             raise HardwareFailureError(
                 f"{self._device_label.capitalize()} returned a malformed response.",
                 device_type=self.device_type,
                 operation=operation,
-            ) from error
+            )
+        return bytes(raw_response)
 
     def _success_result(self) -> HardwareOperationResult:
         return HardwareOperationResult(

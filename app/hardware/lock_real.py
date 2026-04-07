@@ -9,31 +9,28 @@ from app.hardware.dto import (
     UnlockResult,
     UnlockTimeResult,
 )
-from app.hardware.exceptions import HardwareFailureError, HardwareUnavailableError
+from app.hardware.exceptions import HardwareFailureError, HardwareProtocolNotImplementedError, HardwareUnavailableError
+from app.hardware.lock_cu24 import (
+    CU24_ACK_SUCCESS,
+    CU24_CMD_GET_STATUS,
+    CU24_CMD_QUERY_VERSION,
+    CU24_CMD_UNLOCK,
+    Cu24Packet,
+    build_packet,
+    parse_packet,
+    protocol_lock_number,
+)
 from app.hardware.real_adapter_base import RealHardwareAdapterBase
-from app.hardware.transport_config import HardwareEndpointTransportConfig
-from app.hardware.transports import SerialRequestResponseTransport, TcpRequestResponseTransport
+from app.hardware.transport_config import LockHardwareEndpointTransportConfig
+from app.hardware.transports import SerialRequestResponseTransport
 
 
 class RealLockAdapter(RealHardwareAdapterBase):
-    _PING_TEMPLATE = "PING {board}\n"
-    _GET_STATUS_TEMPLATE = "GET_LOCK_STATUS {board} {lock}\n"
-    _UNLOCK_TEMPLATE = "UNLOCK {board} {lock}\n"
-    _GET_UNLOCK_TIME_TEMPLATE = "GET_UNLOCK_TIME {board}\n"
-    _SET_UNLOCK_TIME_TEMPLATE = "SET_UNLOCK_TIME {board} {seconds}\n"
-    _PONG_RESPONSE = "PONG"
-    _STATUS_PREFIX = "STATUS:"
-    _UNLOCKED_RESPONSE = "UNLOCKED"
-    _ALREADY_OPEN_RESPONSE = "ALREADY_OPEN"
-    _UNAVAILABLE_RESPONSE = "UNAVAILABLE"
-    _UNLOCK_TIME_PREFIX = "UNLOCK_TIME:"
-    _SET_UNLOCK_TIME_PREFIX = "SET_UNLOCK_TIME:"
-
     def __init__(
         self,
         *,
-        config: HardwareEndpointTransportConfig | None,
-        transport: SerialRequestResponseTransport | TcpRequestResponseTransport | None,
+        config: LockHardwareEndpointTransportConfig | None,
+        transport: SerialRequestResponseTransport | None,
         config_error: str | None = None,
     ) -> None:
         super().__init__(
@@ -44,145 +41,163 @@ class RealLockAdapter(RealHardwareAdapterBase):
         )
 
     def ping(self) -> HardwareOperationResult:
-        response = self._send_request(self._PING_TEMPLATE.format(board=0).encode("ascii"), operation="ping")
-        if response != self._PONG_RESPONSE:
-            raise HardwareFailureError(
-                f"Lock controller returned unsupported ping response: {response!r}",
-                device_type=self.device_type,
-                operation="ping",
-            )
+        self._query_version(operation="ping")
         return self._success_result()
 
     def get_lock_status(self, board_address: int, lock_number: int) -> LockStatusResult:
-        response = self._send_request(
-            self._GET_STATUS_TEMPLATE.format(board=board_address, lock=lock_number).encode("ascii"),
-            operation="get_lock_status",
-        )
-        if not response.startswith(self._STATUS_PREFIX):
-            raise HardwareFailureError(
-                f"Lock controller returned unsupported status response: {response!r}",
-                device_type=self.device_type,
-                operation="get_lock_status",
-            )
-        lock_state = self._parse_lock_state(response.removeprefix(self._STATUS_PREFIX), operation="get_lock_status")
-        return LockStatusResult(
+        self._ensure_configured_board_address(board_address, operation="get_lock_status")
+        self._probe_status(lock_number=lock_number, operation="get_lock_status")
+        raise HardwareProtocolNotImplementedError(
+            "CU24 get_lock_status probe is wired, but lock-state decoding is not implemented yet.",
             device_type=self.device_type,
-            status=HardwareOperationStatus.SUCCESS,
-            ok=lock_state is not LockState.UNAVAILABLE,
-            board_address=board_address,
-            lock_number=lock_number,
-            lock_state=lock_state,
-            message="Lock is unavailable" if lock_state is LockState.UNAVAILABLE else None,
+            operation="get_lock_status",
         )
 
     def unlock_lock(self, board_address: int, lock_number: int) -> UnlockResult:
-        response = self._send_request(
-            self._UNLOCK_TEMPLATE.format(board=board_address, lock=lock_number).encode("ascii"),
-            operation="unlock_lock",
-        )
-        if response == self._UNLOCKED_RESPONSE:
-            return UnlockResult(
-                device_type=self.device_type,
-                status=HardwareOperationStatus.SUCCESS,
-                ok=True,
-                board_address=board_address,
-                lock_number=lock_number,
-                lock_state=LockState.OPEN,
-            )
-        if response == self._ALREADY_OPEN_RESPONSE:
-            return UnlockResult(
-                device_type=self.device_type,
-                status=HardwareOperationStatus.ALREADY_OPEN,
-                ok=True,
-                board_address=board_address,
-                lock_number=lock_number,
-                lock_state=LockState.OPEN,
-                message="Lock is already open",
-            )
-        if response == self._UNAVAILABLE_RESPONSE:
-            raise HardwareUnavailableError(
-                "Lock is unavailable",
-                device_type=self.device_type,
+        configured_board_address = self._ensure_configured_board_address(board_address, operation="unlock_lock")
+        protocol_number = protocol_lock_number(lock_number)
+        response = parse_packet(
+            self._send_binary_request(
+                build_packet(
+                    address=configured_board_address,
+                    lock_number=protocol_number,
+                    command=CU24_CMD_UNLOCK,
+                ),
                 operation="unlock_lock",
             )
-        raise HardwareFailureError(
-            f"Lock controller returned unsupported unlock response: {response!r}",
-            device_type=self.device_type,
+        )
+        self._assert_successful_response(
+            response,
+            expected_command=CU24_CMD_UNLOCK,
+            expected_address=configured_board_address,
+            expected_lock_number=protocol_number,
             operation="unlock_lock",
         )
-
-    def get_unlock_time(self, board_address: int) -> UnlockTimeResult:
-        response = self._send_request(
-            self._GET_UNLOCK_TIME_TEMPLATE.format(board=board_address).encode("ascii"),
-            operation="get_unlock_time",
-        )
-        if not response.startswith(self._UNLOCK_TIME_PREFIX):
-            raise HardwareFailureError(
-                f"Lock controller returned unsupported unlock time response: {response!r}",
-                device_type=self.device_type,
-                operation="get_unlock_time",
-            )
-        seconds = self._parse_seconds(response.removeprefix(self._UNLOCK_TIME_PREFIX), operation="get_unlock_time")
-        return UnlockTimeResult(
+        return UnlockResult(
             device_type=self.device_type,
             status=HardwareOperationStatus.SUCCESS,
             ok=True,
             board_address=board_address,
-            seconds=seconds,
+            lock_number=lock_number,
+            lock_state=LockState.OPEN,
+        )
+
+    def get_unlock_time(self, board_address: int) -> UnlockTimeResult:
+        self._ensure_configured_board_address(board_address, operation="get_unlock_time")
+        raise HardwareProtocolNotImplementedError(
+            "CU24 unlock-time reads are not implemented for the real adapter yet.",
+            device_type=self.device_type,
+            operation="get_unlock_time",
         )
 
     def set_unlock_time(self, board_address: int, seconds: int) -> UnlockTimeResult:
         if seconds <= 0:
             raise ValueError("seconds must be positive")
-        response = self._send_request(
-            self._SET_UNLOCK_TIME_TEMPLATE.format(board=board_address, seconds=seconds).encode("ascii"),
-            operation="set_unlock_time",
-        )
-        if not response.startswith(self._SET_UNLOCK_TIME_PREFIX):
-            raise HardwareFailureError(
-                f"Lock controller returned unsupported set unlock time response: {response!r}",
-                device_type=self.device_type,
-                operation="set_unlock_time",
-            )
-        applied_seconds = self._parse_seconds(
-            response.removeprefix(self._SET_UNLOCK_TIME_PREFIX),
-            operation="set_unlock_time",
-        )
-        return UnlockTimeResult(
+        self._ensure_configured_board_address(board_address, operation="set_unlock_time")
+        raise HardwareProtocolNotImplementedError(
+            "CU24 unlock-time writes are not implemented for the real adapter yet.",
             device_type=self.device_type,
-            status=HardwareOperationStatus.SUCCESS,
-            ok=True,
-            board_address=board_address,
-            seconds=applied_seconds,
+            operation="set_unlock_time",
         )
 
-    def _parse_lock_state(self, state: str, *, operation: str) -> LockState:
-        normalized = state.strip().upper()
-        if normalized == "LOCKED":
-            return LockState.LOCKED
-        if normalized == "OPEN":
-            return LockState.OPEN
-        if normalized == "UNAVAILABLE":
-            return LockState.UNAVAILABLE
-        raise HardwareFailureError(
-            f"Lock controller returned unsupported lock state: {state!r}",
-            device_type=self.device_type,
+    def _query_version(self, *, operation: str) -> None:
+        configured_board_address = self._configured_board_address
+        response = parse_packet(
+            self._send_binary_request(
+                build_packet(
+                    address=configured_board_address,
+                    lock_number=0,
+                    command=CU24_CMD_QUERY_VERSION,
+                ),
+                operation=operation,
+            )
+        )
+        self._assert_successful_response(
+            response,
+            expected_command=CU24_CMD_QUERY_VERSION,
+            expected_address=configured_board_address,
+            expected_lock_number=0,
             operation=operation,
         )
 
-    def _parse_seconds(self, value: str, *, operation: str) -> int:
-        try:
-            seconds = int(value.strip())
-        except ValueError as error:
-            raise HardwareFailureError(
-                f"Lock controller returned an invalid unlock time: {value!r}",
-                device_type=self.device_type,
+    def _probe_status(self, *, lock_number: int, operation: str) -> Cu24Packet:
+        configured_board_address = self._configured_board_address
+        protocol_number = protocol_lock_number(lock_number)
+        response = parse_packet(
+            self._send_binary_request(
+                build_packet(
+                    address=configured_board_address,
+                    lock_number=protocol_number,
+                    command=CU24_CMD_GET_STATUS,
+                ),
                 operation=operation,
-            ) from error
-        if seconds <= 0:
+            )
+        )
+        self._assert_successful_response(
+            response,
+            expected_command=CU24_CMD_GET_STATUS,
+            expected_address=configured_board_address,
+            expected_lock_number=protocol_number,
+            operation=operation,
+        )
+        return response
+
+    @property
+    def _configured_board_address(self) -> int:
+        if self._config_error:
+            raise HardwareUnavailableError(
+                self._config_error,
+                device_type=self.device_type,
+                operation="config",
+            )
+        if self._config is None:
+            raise HardwareUnavailableError(
+                "Lock controller real transport config is missing.",
+                device_type=self.device_type,
+                operation="config",
+            )
+        return self._config.protocol.board_address
+
+    def _ensure_configured_board_address(self, board_address: int, *, operation: str) -> int:
+        configured_board_address = self._configured_board_address
+        if board_address != configured_board_address:
             raise HardwareFailureError(
-                f"Lock controller returned a non-positive unlock time: {value!r}",
+                f"Lock controller is configured for board address {configured_board_address}, got {board_address}.",
                 device_type=self.device_type,
                 operation=operation,
             )
-        return seconds
+        return configured_board_address
+
+    def _assert_successful_response(
+        self,
+        response: Cu24Packet,
+        *,
+        expected_command: int,
+        expected_address: int,
+        expected_lock_number: int,
+        operation: str,
+    ) -> None:
+        if response.command != expected_command:
+            raise HardwareFailureError(
+                f"Lock controller returned unexpected command in response: {response.command:#04x}",
+                device_type=self.device_type,
+                operation=operation,
+            )
+        if response.address != expected_address:
+            raise HardwareFailureError(
+                f"Lock controller returned unexpected board address in response: {response.address:#04x}",
+                device_type=self.device_type,
+                operation=operation,
+            )
+        if response.lock_number != expected_lock_number:
+            raise HardwareFailureError(
+                f"Lock controller returned unexpected lock number in response: {response.lock_number:#04x}",
+                device_type=self.device_type,
+                operation=operation,
+            )
+        if response.ask != CU24_ACK_SUCCESS:
+            raise HardwareFailureError(
+                f"Lock controller returned unsupported acknowledgement code: {response.ask:#04x}",
+                device_type=self.device_type,
+                operation=operation,
+            )

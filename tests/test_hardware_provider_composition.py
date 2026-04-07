@@ -40,7 +40,7 @@ def test_hardware_provider_selection_defaults_to_mock_and_supports_stub_real_and
         hardware_provider=HardwareProvider.REAL,
         hardware_real_endpoints={
             "drum_controller": _serial_endpoint_config(code="drum-1", driver_name="drum-driver", port="COM1"),
-            "lock_controller": _tcp_endpoint_config(code="lock-1", driver_name="lock-driver", host="127.0.0.1", port=9001),
+            "lock_controller": _lock_serial_endpoint_config(code="lock-1", driver_name="lock-driver", port="COM2"),
             "rfid_reader": _serial_endpoint_config(code="rfid-1", driver_name="rfid-driver", port="COM2"),
         },
     )
@@ -166,21 +166,26 @@ def test_real_mode_with_invalid_or_incomplete_transport_config_fails_safely(tmp_
         drum_entry = next(entry for entry in result.hardware.entries if entry.device_type == "drum_controller")
         assert drum_entry.message is not None
         assert "invalid" in drum_entry.message
-        assert "transport.serial.port" in drum_entry.message
+        assert "transport.port" in drum_entry.message
         assert "DION_HARDWARE_REAL_ENDPOINTS" in drum_entry.message
     finally:
         container.close()
 
 
-def test_real_mode_with_obviously_invalid_tcp_host_fails_early_but_stays_degraded(tmp_path: Path) -> None:
+def test_real_mode_with_invalid_lock_board_address_fails_early_but_stays_degraded(tmp_path: Path) -> None:
     settings = AppSettings(
         data_dir=tmp_path,
-        sqlite_filename="real_invalid_host.sqlite3",
+        sqlite_filename="real_invalid_lock_protocol.sqlite3",
         alembic_config_path=Path("alembic.ini"),
         hardware_provider=HardwareProvider.REAL,
         hardware_real_endpoints={
             "drum_controller": _serial_endpoint_config(code="drum-1", driver_name="drum-driver", port="COM1"),
-            "lock_controller": _tcp_endpoint_config(code="lock-1", driver_name="lock-driver", host="0.0.0.0", port=9001),
+            "lock_controller": _lock_serial_endpoint_config(
+                code="lock-1",
+                driver_name="lock-driver",
+                port="COM2",
+                board_address=256,
+            ),
             "rfid_reader": _serial_endpoint_config(code="rfid-1", driver_name="rfid-driver", port="COM2"),
         },
     )
@@ -193,8 +198,8 @@ def test_real_mode_with_obviously_invalid_tcp_host_fails_early_but_stays_degrade
         lock_entry = next(entry for entry in result.hardware.entries if entry.device_type == "lock_controller")
         assert lock_entry.is_available is False
         assert lock_entry.message is not None
-        assert "transport.tcp.host" in lock_entry.message
-        assert "reachable remote host" in lock_entry.message
+        assert "protocol.board_address" in lock_entry.message
+        assert "less than or equal to 255" in lock_entry.message
     finally:
         container.close()
 
@@ -207,7 +212,7 @@ def test_readiness_in_real_mode_is_still_degraded_without_working_real_transport
         hardware_provider=HardwareProvider.REAL,
         hardware_real_endpoints={
             "drum_controller": _serial_endpoint_config(code="drum-1", driver_name="drum-driver", port="COM1"),
-            "lock_controller": _tcp_endpoint_config(code="lock-1", driver_name="lock-driver", host="127.0.0.1", port=9001),
+            "lock_controller": _lock_serial_endpoint_config(code="lock-1", driver_name="lock-driver", port="COM2"),
             "rfid_reader": _serial_endpoint_config(code="rfid-1", driver_name="rfid-driver", port="COM2"),
         },
     )
@@ -237,7 +242,7 @@ def test_real_endpoint_config_summary_reports_unexpected_keys_and_targets(tmp_pa
         hardware_provider=HardwareProvider.REAL,
         hardware_real_endpoints={
             "drum_controller": _serial_endpoint_config(code="drum-1", driver_name="drum-driver", port="/dev/ttyUSB0"),
-            "lock_controller": _tcp_endpoint_config(code="lock-1", driver_name="lock-driver", host="192.168.1.50", port=9001),
+            "lock_controller": _lock_serial_endpoint_config(code="lock-1", driver_name="lock-driver", port="/dev/ttyUSB1"),
             "unused_endpoint": {},
         },
     )
@@ -251,8 +256,8 @@ def test_real_endpoint_config_summary_reports_unexpected_keys_and_targets(tmp_pa
     assert drum_entry.transport == "serial"
     assert drum_entry.target == "/dev/ttyUSB0"
     lock_entry = next(entry for entry in summary.entries if entry.endpoint_name == "lock_controller")
-    assert lock_entry.transport == "tcp"
-    assert lock_entry.target == "192.168.1.50:9001"
+    assert lock_entry.transport == "serial"
+    assert lock_entry.target == "/dev/ttyUSB1"
 
 
 def _serial_endpoint_config(*, code: str, driver_name: str, port: str) -> dict[str, object]:
@@ -278,7 +283,7 @@ def _serial_endpoint_config(*, code: str, driver_name: str, port: str) -> dict[s
     }
 
 
-def _tcp_endpoint_config(*, code: str, driver_name: str, host: str, port: int) -> dict[str, object]:
+def _lock_serial_endpoint_config(*, code: str, driver_name: str, port: str, board_address: int = 0) -> dict[str, object]:
     return {
         "endpoint": {
             "code": code,
@@ -290,9 +295,15 @@ def _tcp_endpoint_config(*, code: str, driver_name: str, host: str, port: int) -
                 "write_timeout_ms": 1000,
             },
         },
+        "protocol": {
+            "board_address": board_address,
+        },
         "transport": {
-            "transport": "tcp",
-            "host": host,
+            "transport": "serial",
             "port": port,
+            "baudrate": 19200,
+            "data_bits": 8,
+            "parity": "none",
+            "stop_bits": 1,
         },
     }

@@ -6,6 +6,7 @@ from app.config import AppSettings, HardwareProvider
 from app.hardware import (
     HardwareFailureError,
     HardwareOperationStatus,
+    HardwareProtocolNotImplementedError,
     HardwareTimeoutError,
     HardwareUnavailableError,
     LockState,
@@ -15,7 +16,7 @@ from app.hardware import (
 
 
 def test_real_lock_adapter_ping_success_with_fake_transport() -> None:
-    adapter = RealLockAdapter(config=_lock_config(), transport=_FakeTransport([b"PONG\n"]))
+    adapter = RealLockAdapter(config=_lock_config(), transport=_FakeTransport([bytes.fromhex("02 00 00 8F 10 00 03 A4")]))
 
     result = adapter.ping()
 
@@ -23,70 +24,44 @@ def test_real_lock_adapter_ping_success_with_fake_transport() -> None:
     assert result.status is HardwareOperationStatus.SUCCESS
 
 
-@pytest.mark.parametrize(
-    ("response", "expected_state", "expected_ok"),
-    [
-        (b"STATUS:LOCKED\n", LockState.LOCKED, True),
-        (b"STATUS:OPEN\n", LockState.OPEN, True),
-        (b"STATUS:UNAVAILABLE\n", LockState.UNAVAILABLE, False),
-    ],
-)
-def test_real_lock_adapter_get_lock_status_success(
-    response: bytes,
-    expected_state: LockState,
-    expected_ok: bool,
-) -> None:
-    adapter = RealLockAdapter(config=_lock_config(), transport=_FakeTransport([response]))
+def test_real_lock_adapter_get_lock_status_uses_cu24_probe_but_reports_not_implemented() -> None:
+    adapter = RealLockAdapter(config=_lock_config(), transport=_FakeTransport([bytes.fromhex("02 00 00 80 10 00 03 95")]))
 
-    result = adapter.get_lock_status(2, 7)
-
-    assert result.lock_state is expected_state
-    assert result.ok is expected_ok
+    with pytest.raises(HardwareProtocolNotImplementedError, match="lock-state decoding is not implemented"):
+        adapter.get_lock_status(0, 1)
 
 
 def test_real_lock_adapter_unlock_success_path() -> None:
-    adapter = RealLockAdapter(config=_lock_config(), transport=_FakeTransport([b"UNLOCKED\n"]))
+    adapter = RealLockAdapter(config=_lock_config(), transport=_FakeTransport([bytes.fromhex("02 00 00 81 10 00 03 96")]))
 
-    result = adapter.unlock_lock(1, 3)
+    result = adapter.unlock_lock(0, 1)
 
     assert result.ok is True
     assert result.status is HardwareOperationStatus.SUCCESS
     assert result.lock_state is LockState.OPEN
 
 
-def test_real_lock_adapter_unlock_already_open_path() -> None:
-    adapter = RealLockAdapter(config=_lock_config(), transport=_FakeTransport([b"ALREADY_OPEN\n"]))
+def test_real_lock_adapter_unlock_with_non_configured_board_address_fails() -> None:
+    adapter = RealLockAdapter(config=_lock_config(), transport=_FakeTransport([]))
 
-    result = adapter.unlock_lock(1, 3)
-
-    assert result.ok is True
-    assert result.status is HardwareOperationStatus.ALREADY_OPEN
-    assert result.lock_state is LockState.OPEN
+    with pytest.raises(HardwareFailureError, match="configured for board address 0, got 1"):
+        adapter.unlock_lock(1, 1)
 
 
-def test_real_lock_adapter_get_unlock_time_success() -> None:
-    adapter = RealLockAdapter(config=_lock_config(), transport=_FakeTransport([b"UNLOCK_TIME:9\n"]))
+def test_real_lock_adapter_unlock_time_methods_report_not_implemented() -> None:
+    adapter = RealLockAdapter(config=_lock_config(), transport=_FakeTransport([]))
 
-    result = adapter.get_unlock_time(1)
-
-    assert result.ok is True
-    assert result.seconds == 9
-
-
-def test_real_lock_adapter_set_unlock_time_success() -> None:
-    adapter = RealLockAdapter(config=_lock_config(), transport=_FakeTransport([b"SET_UNLOCK_TIME:11\n"]))
-
-    result = adapter.set_unlock_time(1, 11)
-
-    assert result.ok is True
-    assert result.seconds == 11
+    with pytest.raises(HardwareProtocolNotImplementedError, match="unlock-time reads"):
+        adapter.get_unlock_time(0)
+    with pytest.raises(HardwareProtocolNotImplementedError, match="unlock-time writes"):
+        adapter.set_unlock_time(0, 11)
 
 
 def test_real_lock_adapter_malformed_response_raises_safe_failure() -> None:
     adapter = RealLockAdapter(config=_lock_config(), transport=_FakeTransport([123]))  # type: ignore[list-item]
 
     with pytest.raises(HardwareFailureError, match="malformed response"):
-        adapter.get_lock_status(1, 1)
+        adapter.get_lock_status(0, 1)
 
 
 def test_real_lock_adapter_transport_timeout_and_error_handling_stays_safe() -> None:
@@ -104,24 +79,27 @@ def test_real_provider_composition_still_works_with_operational_lock_transport()
         hardware_provider=HardwareProvider.REAL,
         hardware_real_endpoints={
             "drum_controller": _serial_endpoint_config(code="drum-1", driver_name="drum-driver", port="COM1"),
-            "lock_controller": _tcp_endpoint_config(code="lock-1", driver_name="lock-driver", host="127.0.0.1", port=9001),
+            "lock_controller": _lock_serial_endpoint_config(code="lock-1", driver_name="lock-driver", port="COM2"),
             "rfid_reader": _serial_endpoint_config(code="rfid-1", driver_name="rfid-driver", port="COM3"),
         },
     )
 
     bundle = create_hardware_bundle(
         settings,
-        transport_overrides={"lock_controller": _FakeTransport([b"PONG\n", b"STATUS:LOCKED\n", b"UNLOCK_TIME:7\n"])},
+        transport_overrides={
+            "lock_controller": _FakeTransport(
+                [bytes.fromhex("02 00 00 8F 10 00 03 A4"), bytes.fromhex("02 00 01 81 10 00 03 97")]
+            )
+        },
     )
 
     ping_result = bundle.lock_controller.ping()
-    status_result = bundle.lock_controller.get_lock_status(1, 2)
-    unlock_time = bundle.lock_controller.get_unlock_time(1)
+    unlock_result = bundle.lock_controller.unlock_lock(0, 2)
 
     assert bundle.provider is HardwareProvider.REAL
     assert ping_result.ok is True
-    assert status_result.lock_state is LockState.LOCKED
-    assert unlock_time.seconds == 7
+    assert unlock_result.lock_number == 2
+    assert unlock_result.lock_state is LockState.OPEN
 
 
 class _FakeTransport:
@@ -134,6 +112,9 @@ class _FakeTransport:
         response = self._responses.pop(0)
         return response  # type: ignore[return-value]
 
+    def send(self, payload: bytes) -> None:
+        return None
+
 
 class _RaisingTransport:
     def __init__(self, error: Exception) -> None:
@@ -142,12 +123,15 @@ class _RaisingTransport:
     def request(self, payload: bytes, *, timeout_ms: int | None = None) -> bytes:
         raise self._error
 
+    def send(self, payload: bytes) -> None:
+        raise self._error
+
 
 def _lock_config():
-    from app.hardware.transport_config import HardwareEndpointTransportConfig
+    from app.hardware.transport_config import LockHardwareEndpointTransportConfig
 
-    return HardwareEndpointTransportConfig.model_validate(
-        _tcp_endpoint_config(code="lock-1", driver_name="lock-driver", host="127.0.0.1", port=9001)
+    return LockHardwareEndpointTransportConfig.model_validate(
+        _lock_serial_endpoint_config(code="lock-1", driver_name="lock-driver", port="COM7")
     )
 
 
@@ -174,7 +158,7 @@ def _serial_endpoint_config(*, code: str, driver_name: str, port: str) -> dict[s
     }
 
 
-def _tcp_endpoint_config(*, code: str, driver_name: str, host: str, port: int) -> dict[str, object]:
+def _lock_serial_endpoint_config(*, code: str, driver_name: str, port: str, board_address: int = 0) -> dict[str, object]:
     return {
         "endpoint": {
             "code": code,
@@ -186,9 +170,15 @@ def _tcp_endpoint_config(*, code: str, driver_name: str, host: str, port: int) -
                 "write_timeout_ms": 1000,
             },
         },
+        "protocol": {
+            "board_address": board_address,
+        },
         "transport": {
-            "transport": "tcp",
-            "host": host,
+            "transport": "serial",
             "port": port,
+            "baudrate": 19200,
+            "data_bits": 8,
+            "parity": "none",
+            "stop_bits": 1,
         },
     }

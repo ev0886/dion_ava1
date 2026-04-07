@@ -18,7 +18,10 @@ from app.hardware.rfid_mock import MockRfidAdapter
 from app.hardware.rfid_real import RealRfidAdapter
 from app.hardware.rfid_stub_real import StubRealRfidAdapter
 from app.hardware.transport_config import (
+    AnyHardwareEndpointTransportConfig,
+    DrumHardwareEndpointTransportConfig,
     HardwareEndpointTransportConfig,
+    LockHardwareEndpointTransportConfig,
     REAL_HARDWARE_ENDPOINT_NAMES,
     real_hardware_endpoints_example_json,
 )
@@ -41,7 +44,7 @@ class HardwareBundle:
 
 @dataclass(frozen=True, slots=True)
 class ParsedEndpointConfig:
-    config: HardwareEndpointTransportConfig | None
+    config: AnyHardwareEndpointTransportConfig | None
     error_message: str | None = None
 
 
@@ -146,8 +149,9 @@ def _bundle_from_parts(
 def _parse_endpoint_config(raw_config: object, *, endpoint_name: str) -> ParsedEndpointConfig:
     if raw_config is None:
         return ParsedEndpointConfig(config=None, error_message=None)
+    model_class = _endpoint_config_model(endpoint_name)
     try:
-        return ParsedEndpointConfig(config=HardwareEndpointTransportConfig.model_validate(raw_config))
+        return ParsedEndpointConfig(config=model_class.model_validate(raw_config))
     except ValidationError as error:
         first_error = error.errors()[0]
         location = ".".join(str(part) for part in first_error.get("loc", ()))
@@ -161,6 +165,14 @@ def _parse_endpoint_config(raw_config: object, *, endpoint_name: str) -> ParsedE
                 f"Expected inside DION_HARDWARE_REAL_ENDPOINTS. Example JSON: {real_hardware_endpoints_example_json()}"
             ),
         )
+
+
+def _endpoint_config_model(endpoint_name: str):
+    if endpoint_name == "drum_controller":
+        return DrumHardwareEndpointTransportConfig
+    if endpoint_name == "lock_controller":
+        return LockHardwareEndpointTransportConfig
+    return HardwareEndpointTransportConfig
 
 
 def summarize_real_endpoint_configs(settings: AppSettings) -> RealEndpointConfigSummary:
@@ -216,7 +228,7 @@ def _summarize_real_endpoint_config(endpoint_name: str, raw_config: object) -> R
 
 
 def _create_transport_client(
-    config: HardwareEndpointTransportConfig | None,
+    config: AnyHardwareEndpointTransportConfig | None,
 ) -> SerialRequestResponseTransport | TcpRequestResponseTransport | None:
     if config is None:
         return None
