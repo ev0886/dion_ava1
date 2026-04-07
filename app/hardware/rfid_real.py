@@ -44,8 +44,8 @@ class RealRfidAdapter(RealHardwareAdapterBase):
             )
         return self._success_result()
 
-    def read_card(self) -> RfidReadResult:
-        response = self._send_request(self._READ_REQUEST, operation="read_card")
+    def read_card(self, *, timeout_ms: int | None = None) -> RfidReadResult:
+        response = self._send_request(self._READ_REQUEST, operation="read_card", timeout_ms=timeout_ms)
         if response == self._NO_CARD_RESPONSE:
             return RfidReadResult(
                 device_type=self.device_type,

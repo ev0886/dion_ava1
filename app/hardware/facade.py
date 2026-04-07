@@ -50,8 +50,8 @@ class HardwareFacade:
     def set_unlock_time(self, board_address: int, seconds: int) -> UnlockTimeResult:
         return self._lock_controller.set_unlock_time(board_address, seconds)
 
-    def read_rfid_card(self) -> RfidReadResult:
-        return self._rfid_reader.read_card()
+    def read_rfid_card(self, *, timeout_ms: int | None = None) -> RfidReadResult:
+        return self._rfid_reader.read_card(timeout_ms=timeout_ms)
 
     def clear_rfid_buffer(self):
         return self._rfid_reader.clear_buffer()

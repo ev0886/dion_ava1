@@ -30,6 +30,9 @@ from app.persistence.session import create_session_factory, create_sqlalchemy_en
 from app.ui.operator_page import render_operator_page
 
 
+_LIVE_RFID_READ_TIMEOUT_MS = 5000
+
+
 def create_app(settings: AppSettings | None = None) -> FastAPI:
     app_settings = bootstrap(settings or get_settings())
     engine = create_sqlalchemy_engine(app_settings)
@@ -126,7 +129,7 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
         ),
         container: ApplicationContainer = Depends(get_application_container),
     ) -> JSONResponse:
-        read_result = container.hardware.facade.read_rfid_card()
+        read_result = container.hardware.facade.read_rfid_card(timeout_ms=_LIVE_RFID_READ_TIMEOUT_MS)
         dto = container.services.auth.authorize(
             AuthRequest(
                 rfid_uid=read_result.uid,

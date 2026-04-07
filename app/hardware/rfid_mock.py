@@ -42,7 +42,7 @@ class MockRfidAdapter:
             ok=True,
         )
 
-    def read_card(self) -> RfidReadResult:
+    def read_card(self, *, timeout_ms: int | None = None) -> RfidReadResult:
         self._raise_for_mode(self._read_mode, operation="read_card")
         while self._queued_reads:
             uid = self._queued_reads.popleft()

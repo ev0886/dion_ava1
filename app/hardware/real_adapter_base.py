@@ -50,8 +50,8 @@ class RealHardwareAdapterBase:
     def _device_label(self) -> str:
         return self.device_type.value.replace("_", " ")
 
-    def _send_request(self, payload: bytes, *, operation: str) -> str:
-        raw_response = self._send_binary_request(payload, operation=operation)
+    def _send_request(self, payload: bytes, *, operation: str, timeout_ms: int | None = None) -> str:
+        raw_response = self._send_binary_request(payload, operation=operation, timeout_ms=timeout_ms)
         try:
             return raw_response.decode("ascii").strip()
         except (AttributeError, TypeError, UnicodeDecodeError) as error:
@@ -61,12 +61,14 @@ class RealHardwareAdapterBase:
                 operation=operation,
             ) from error
 
-    def _send_binary_request(self, payload: bytes, *, operation: str) -> bytes:
+    def _send_binary_request(self, payload: bytes, *, operation: str, timeout_ms: int | None = None) -> bytes:
         self._raise_if_unavailable(operation=operation)
         assert self._transport is not None
-        timeout_ms = self._config.endpoint.timeouts.read_timeout_ms if self._config is not None else None
+        effective_timeout_ms = timeout_ms
+        if effective_timeout_ms is None and self._config is not None:
+            effective_timeout_ms = self._config.endpoint.timeouts.read_timeout_ms
         try:
-            raw_response = self._transport.request(payload, timeout_ms=timeout_ms)
+            raw_response = self._transport.request(payload, timeout_ms=effective_timeout_ms)
         except TimeoutError as error:
             raise HardwareTimeoutError(
                 f"{self._device_label.capitalize()} transport request timed out: {error}",

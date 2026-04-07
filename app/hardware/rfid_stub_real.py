@@ -15,7 +15,7 @@ class StubRealRfidAdapter:
             operation="ping",
         )
 
-    def read_card(self) -> RfidReadResult:
+    def read_card(self, *, timeout_ms: int | None = None) -> RfidReadResult:
         raise HardwareUnavailableError(
             "RFID reader real adapter is not implemented for provider 'stub-real'.",
             device_type=self.device_type,

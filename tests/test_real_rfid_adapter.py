@@ -59,6 +59,48 @@ def test_real_rfid_adapter_reads_uid_from_linux_input_events() -> None:
     assert result.is_duplicate is False
 
 
+def test_real_rfid_adapter_reads_real_like_linux_input_sequence_with_separators_and_key_releases() -> None:
+    adapter = RealRfidAdapter(
+        config=_linux_input_rfid_config(),
+        transport=_linux_input_transport(
+            [
+                _event_chunk(1, 42, 1),
+                _event_chunk(1, 32, 1),
+                _event_chunk(1, 32, 0),
+                _event_chunk(0, 0, 0),
+                _event_chunk(1, 18, 1),
+                _event_chunk(1, 18, 0),
+                _event_chunk(1, 50, 1),
+                _event_chunk(1, 50, 0),
+                _event_chunk(1, 24, 1),
+                _event_chunk(1, 24, 0),
+                _event_chunk(1, 12, 1),
+                _event_chunk(1, 12, 0),
+                _event_chunk(1, 22, 1),
+                _event_chunk(1, 22, 0),
+                _event_chunk(1, 31, 1),
+                _event_chunk(1, 31, 0),
+                _event_chunk(1, 18, 1),
+                _event_chunk(1, 18, 0),
+                _event_chunk(1, 19, 1),
+                _event_chunk(1, 19, 0),
+                _event_chunk(1, 12, 1),
+                _event_chunk(1, 12, 0),
+                _event_chunk(1, 2, 1),
+                _event_chunk(1, 2, 0),
+                _event_chunk(1, 96, 1),
+            ]
+        ),
+    )
+
+    result = adapter.read_card()
+
+    assert result.ok is True
+    assert result.status is HardwareOperationStatus.SUCCESS
+    assert result.uid == "DEMOUSER1"
+    assert result.is_duplicate is False
+
+
 def test_real_rfid_adapter_no_card_when_linux_input_reader_stays_idle() -> None:
     adapter = RealRfidAdapter(
         config=_linux_input_rfid_config(),

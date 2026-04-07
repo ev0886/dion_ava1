@@ -40,6 +40,16 @@ from app.persistence.models import (
 from app.hardware import MockRfidAdapter
 
 
+class _SpyMockRfidAdapter(MockRfidAdapter):
+    def __init__(self) -> None:
+        super().__init__()
+        self.last_timeout_ms: int | None = None
+
+    def read_card(self, *, timeout_ms: int | None = None):
+        self.last_timeout_ms = timeout_ms
+        return super().read_card(timeout_ms=timeout_ms)
+
+
 def test_app_creation_smoke(tmp_path: Path) -> None:
     app = create_app(_settings(tmp_path, "api_smoke.sqlite3"))
 
@@ -186,6 +196,27 @@ def test_auth_read_and_resolve_rfid_returns_404_for_unknown_card(tmp_path: Path)
 
     assert response.status_code == 404
     assert response.json() == {"error": "not_found", "detail": "User not found"}
+
+
+def test_auth_read_and_resolve_rfid_uses_extended_live_read_timeout(tmp_path: Path) -> None:
+    app = create_app(_settings(tmp_path, "api_auth_read_rfid_timeout.sqlite3"))
+    _seed_base_domain(app, with_rfid_card=True)
+    container = _build_overridden_container(app)
+    spy_reader = _SpyMockRfidAdapter()
+    spy_reader.queue_card("demo-user-1")
+    container.hardware.facade._rfid_reader = spy_reader
+    app.dependency_overrides[get_application_container] = lambda: container
+
+    try:
+        with TestClient(app) as client:
+            response = client.post("/auth/read-and-resolve-rfid", json={})
+    finally:
+        app.dependency_overrides.clear()
+        container.session.close()
+
+    assert response.status_code == 200
+    assert response.json()["user_code"] == "user-1"
+    assert spy_reader.last_timeout_ms == 5000
 
 
 def test_inventory_lookup_returns_404_for_missing_slot_item_pair(tmp_path: Path) -> None:

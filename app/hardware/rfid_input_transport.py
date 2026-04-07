@@ -29,8 +29,9 @@ class LinuxInputEventTransport:
 
     _EV_KEY = 0x01
     _EV_SYN = 0x00
-    _KEY_ENTER = 28
+    _KEY_ENTER_CODES = frozenset({28, 96})
     _IGNORED_KEY_CODES = frozenset({29, 42, 54, 56, 97, 100, 125, 126})
+    _IGNORED_SCAN_KEY_CODES = frozenset({12})
     _KEYMAP = {
         2: "1",
         3: "2",
@@ -149,7 +150,9 @@ class LinuxInputEventTransport:
                         continue
                     if event.code in self._IGNORED_KEY_CODES:
                         continue
-                    if event.code == self._KEY_ENTER:
+                    if event.code in self._IGNORED_SCAN_KEY_CODES:
+                        continue
+                    if event.code in self._KEY_ENTER_CODES:
                         if chars:
                             return f"UID:{''.join(chars)}\n".encode("ascii")
                         continue
