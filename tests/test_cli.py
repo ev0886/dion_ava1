@@ -20,7 +20,7 @@ from app.cli import main
 from app.config import AppSettings, HardwareProvider
 from app.domain.enums import HardwareEndpointType, StartupReadinessStatus
 from app.hardware.dto import HardwareHealthEntry, HardwareHealthSnapshot, HardwareOperationStatus
-from app.persistence.models import InventoryBalance, Operation, OperationStateHistory, Role, SlotItemBinding, User, UserRfidCard
+from app.persistence.models import InventoryBalance, Operation, OperationStateHistory, Role, Slot, SlotItemBinding, User, UserRfidCard
 
 
 def test_startup_check_returns_success_for_healthy_temp_environment(tmp_path: Path) -> None:
@@ -167,7 +167,11 @@ def test_seed_demo_seeds_expected_minimal_domain_data(tmp_path: Path) -> None:
     with _session_factory(tmp_path, sqlite_filename)() as session:
         assert len(session.execute(select(Role)).scalars().all()) == 3
         assert len(session.execute(select(User)).scalars().all()) == 3
+        slot = session.execute(select(Slot)).scalar_one()
         assert len(session.execute(select(SlotItemBinding)).scalars().all()) == 1
+        assert slot.drum_position == 1
+        assert slot.board_address == 0
+        assert slot.lock_number == 1
         assert session.execute(select(InventoryBalance)).scalar_one().quantity == 5
         assert session.execute(select(UserRfidCard)).scalar_one().card_uid == "DEMO-USER-1"
         assert session.execute(select(Operation)).scalars().all() == []
