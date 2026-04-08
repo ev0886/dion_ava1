@@ -9,24 +9,31 @@ from app.cli import main
 from app.diagnostics.rusguard_sdk import (
     DiagnosticReport,
     DiagnosticSection,
+    EndpointInfo,
+    RG_ENDPOINT_TYPE_SERIAL,
+    RG_ENDPOINT_TYPE_USB_HID,
     render_report,
     run_rusguard_sdk_enumeration_command,
     run_safe_diagnostic,
 )
 
 
-def test_render_report_shows_safe_skip_sections() -> None:
+def test_render_report_shows_real_discovery_sections() -> None:
     report = render_report(
         DiagnosticReport(
             library_path=Path("/opt/rusguard/librgsec.so"),
             sections=(
                 DiagnosticSection(
                     title="USB_HID",
-                    lines=("find_endpoints skipped: vendor ABI for RG_FindEndPoints is unproven in repo",),
+                    lines=(
+                        "count: 2",
+                        "- index: 0, type: 1, address: hidraw0, friendly_name: R5 USB #0",
+                        "- index: 1, type: 1, address: hidraw1, friendly_name: R5 USB #1",
+                    ),
                 ),
                 DiagnosticSection(
                     title="SERIAL",
-                    lines=("find_endpoints skipped: vendor ABI for RG_FindEndPoints is unproven in repo",),
+                    lines=("count: 0",),
                 ),
             ),
         )
@@ -39,31 +46,45 @@ def test_render_report_shows_safe_skip_sections() -> None:
         "initialize ok\n"
         "\n"
         "[USB_HID]\n"
-        "find_endpoints skipped: vendor ABI for RG_FindEndPoints is unproven in repo\n"
+        "count: 2\n"
+        "- index: 0, type: 1, address: hidraw0, friendly_name: R5 USB #0\n"
+        "- index: 1, type: 1, address: hidraw1, friendly_name: R5 USB #1\n"
         "\n"
         "[SERIAL]\n"
-        "find_endpoints skipped: vendor ABI for RG_FindEndPoints is unproven in repo\n"
+        "count: 0\n"
         "\n"
         "uninitialize ok"
     )
 
 
-def test_run_safe_diagnostic_initializes_and_uninitializes_without_endpoint_discovery() -> None:
+def test_run_safe_diagnostic_discovers_usb_and_serial_endpoints() -> None:
     sdk = _FakeSdk()
 
     report = run_safe_diagnostic(sdk)
 
-    assert sdk.calls == ["initialize", "uninitialize"]
+    assert sdk.calls == [
+        "initialize",
+        ("find_endpoint_infos", RG_ENDPOINT_TYPE_USB_HID),
+        ("find_endpoint_infos", RG_ENDPOINT_TYPE_SERIAL),
+        "uninitialize",
+    ]
     assert report == DiagnosticReport(
         library_path=Path("/fake/librgsec.so"),
         sections=(
             DiagnosticSection(
                 title="USB_HID",
-                lines=("find_endpoints skipped: vendor ABI for RG_FindEndPoints is unproven in repo",),
+                lines=(
+                    "count: 2",
+                    "- index: 0, type: 1, address: hidraw0, friendly_name: R5 USB #0",
+                    "- index: 1, type: 1, address: hidraw1, friendly_name: R5 USB #1",
+                ),
             ),
             DiagnosticSection(
                 title="SERIAL",
-                lines=("find_endpoints skipped: vendor ABI for RG_FindEndPoints is unproven in repo",),
+                lines=(
+                    "count: 1",
+                    "- index: 0, type: 2, address: /dev/ttyUSB0, friendly_name: USB Serial Reader",
+                ),
             ),
         ),
     )
@@ -81,10 +102,10 @@ def test_cli_rusguard_sdk_enumerate_bypasses_application_container(monkeypatch) 
             "initialize ok\n"
             "\n"
             "[USB_HID]\n"
-            "find_endpoints skipped: vendor ABI for RG_FindEndPoints is unproven in repo\n"
+            "count: 0\n"
             "\n"
             "[SERIAL]\n"
-            "find_endpoints skipped: vendor ABI for RG_FindEndPoints is unproven in repo\n"
+            "count: 0\n"
             "\n"
             "uninitialize ok"
         )
@@ -109,7 +130,7 @@ def test_cli_rusguard_sdk_enumerate_bypasses_application_container(monkeypatch) 
     assert stderr == ""
 
 
-def test_command_skips_find_endpoints_and_reports_reason(monkeypatch) -> None:
+def test_command_runs_real_discovery_flow(monkeypatch) -> None:
     observed: list[object] = []
 
     class _RunnerSdk:
@@ -120,8 +141,15 @@ def test_command_skips_find_endpoints_and_reports_reason(monkeypatch) -> None:
         def initialize(self) -> None:
             observed.append("initialize")
 
-        def find_endpoints(self, endpoint_type: int) -> int:
-            raise AssertionError(f"RG_FindEndPoints must not be called: {endpoint_type}")
+        def find_endpoint_infos(self, endpoint_type_mask: int) -> tuple[EndpointInfo, ...]:
+            observed.append(("find_endpoint_infos", endpoint_type_mask))
+            if endpoint_type_mask == RG_ENDPOINT_TYPE_USB_HID:
+                return (
+                    EndpointInfo(index=0, type=1, address="hidraw0", friendly_name="R5 USB #0"),
+                )
+            if endpoint_type_mask == RG_ENDPOINT_TYPE_SERIAL:
+                return ()
+            raise AssertionError(f"unexpected endpoint type mask: {endpoint_type_mask}")
 
         def uninitialize(self) -> None:
             observed.append("uninitialize")
@@ -143,16 +171,19 @@ def test_command_skips_find_endpoints_and_reports_reason(monkeypatch) -> None:
         "initialize ok\n"
         "\n"
         "[USB_HID]\n"
-        "find_endpoints skipped: vendor ABI for RG_FindEndPoints is unproven in repo\n"
+        "count: 1\n"
+        "- index: 0, type: 1, address: hidraw0, friendly_name: R5 USB #0\n"
         "\n"
         "[SERIAL]\n"
-        "find_endpoints skipped: vendor ABI for RG_FindEndPoints is unproven in repo\n"
+        "count: 0\n"
         "\n"
         "uninitialize ok\n"
     )
     assert observed == [
         ("init_sdk", "C:/tmp/librgsec.so"),
         "initialize",
+        ("find_endpoint_infos", RG_ENDPOINT_TYPE_USB_HID),
+        ("find_endpoint_infos", RG_ENDPOINT_TYPE_SERIAL),
         "uninitialize",
     ]
 
@@ -165,8 +196,18 @@ class _FakeSdk:
     def initialize(self) -> None:
         self.calls.append("initialize")
 
-    def find_endpoints(self, endpoint_type: int) -> int:
-        raise AssertionError(f"RG_FindEndPoints must not be called: {endpoint_type}")
+    def find_endpoint_infos(self, endpoint_type_mask: int) -> tuple[EndpointInfo, ...]:
+        self.calls.append(("find_endpoint_infos", endpoint_type_mask))
+        if endpoint_type_mask == RG_ENDPOINT_TYPE_USB_HID:
+            return (
+                EndpointInfo(index=0, type=1, address="hidraw0", friendly_name="R5 USB #0"),
+                EndpointInfo(index=1, type=1, address="hidraw1", friendly_name="R5 USB #1"),
+            )
+        if endpoint_type_mask == RG_ENDPOINT_TYPE_SERIAL:
+            return (
+                EndpointInfo(index=0, type=2, address="/dev/ttyUSB0", friendly_name="USB Serial Reader"),
+            )
+        raise AssertionError(f"unexpected endpoint type mask: {endpoint_type_mask}")
 
     def uninitialize(self) -> None:
         self.calls.append("uninitialize")
