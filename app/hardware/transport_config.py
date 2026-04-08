@@ -90,8 +90,26 @@ class LinuxInputTransportSettings(BaseModel):
         return cleaned
 
 
+class RusGuardSdkTransportSettings(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    transport: Literal["sdk"]
+    library_path: str = Field(min_length=1, max_length=255)
+    endpoint_type: Literal["usb_hid"] = "usb_hid"
+    device_index: int = Field(default=0, ge=0, le=255)
+    device_address: int = Field(default=0, ge=0, le=255)
+
+    @field_validator("library_path")
+    @classmethod
+    def _validate_library_path(cls, value: str) -> str:
+        cleaned = value.strip()
+        if not cleaned:
+            raise ValueError("must not be blank")
+        return cleaned
+
+
 TransportSettings = Annotated[
-    SerialTransportSettings | TcpTransportSettings | LinuxInputTransportSettings,
+    SerialTransportSettings | TcpTransportSettings | LinuxInputTransportSettings | RusGuardSdkTransportSettings,
     Field(discriminator="transport"),
 ]
 
@@ -129,7 +147,7 @@ class RfidHardwareEndpointTransportConfig(BaseModel):
 
     endpoint: CommonEndpointSettings
     transport: Annotated[
-        SerialTransportSettings | TcpTransportSettings | LinuxInputTransportSettings,
+        SerialTransportSettings | TcpTransportSettings | LinuxInputTransportSettings | RusGuardSdkTransportSettings,
         Field(discriminator="transport"),
     ]
 

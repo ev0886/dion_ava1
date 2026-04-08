@@ -1,17 +1,21 @@
 from __future__ import annotations
 
+import ctypes
 import struct
+from pathlib import Path
 
 import pytest
 
 from app.config import AppSettings, HardwareProvider
 from app.hardware import (
+    CtypesRusGuardSdkClient,
     HardwareFailureError,
     HardwareOperationStatus,
     HardwareTimeoutError,
     HardwareUnavailableError,
     LinuxInputEventTransport,
     RealRfidAdapter,
+    RusGuardSdkRead,
     create_hardware_bundle,
 )
 from app.hardware.transport_config import (
@@ -353,6 +357,112 @@ def test_real_rfid_adapter_reads_uid_from_generic_serial_text_transport() -> Non
     assert transport.requests == [b"READ\n"]
 
 
+def test_real_rfid_adapter_reads_uid_from_rusguard_sdk_client() -> None:
+    adapter = RealRfidAdapter(
+        config=_sdk_rfid_config(),
+        transport=None,
+        sdk_client=_FakeSdkClient([RusGuardSdkRead(uid="E2 76-7C 00 45")]),
+    )
+
+    result = adapter.read_card()
+
+    assert result.ok is True
+    assert result.status is HardwareOperationStatus.SUCCESS
+    assert result.uid == "E2767C0045"
+    assert result.is_duplicate is False
+
+
+def test_real_rfid_adapter_maps_no_card_from_rusguard_sdk_client() -> None:
+    adapter = RealRfidAdapter(
+        config=_sdk_rfid_config(),
+        transport=None,
+        sdk_client=_FakeSdkClient([RusGuardSdkRead(uid=None, no_card=True)]),
+    )
+
+    result = adapter.read_card()
+
+    assert result.ok is True
+    assert result.status is HardwareOperationStatus.NO_CARD
+    assert result.uid is None
+
+
+def test_real_rfid_adapter_surfaces_sdk_failures_at_adapter_boundary() -> None:
+    adapter = RealRfidAdapter(
+        config=_sdk_rfid_config(),
+        transport=None,
+        sdk_client=_FakeSdkClient([OSError("sdk status failed")]),
+    )
+
+    with pytest.raises(HardwareFailureError, match="sdk status failed"):
+        adapter.read_card()
+
+
+def test_ctypes_rusguard_sdk_client_reads_uid_via_vendor_status_flow() -> None:
+    library = _FakeRusGuardSdkLibrary(status_sequence=[{"status": 26, "uid": bytes.fromhex("E2 76 7C 00 45 00 00")}])
+    client = CtypesRusGuardSdkClient(
+        library_path=_existing_fake_library_path(),
+        endpoint_type="usb_hid",
+        device_index=0,
+        device_address=0,
+        library_loader=lambda path: library,
+    )
+
+    result = client.read_uid()
+
+    assert result == RusGuardSdkRead(uid="E2767C00450000")
+    assert library.find_masks == [1]
+    assert library.init_device_calls == [{"address": 0, "endpoint_type": 1, "endpoint_address": "hid://reader-0"}]
+    assert library.set_cards_mask_calls == [{"address": 0, "mask": 255}]
+    assert library.close_device_calls == [{"address": 0, "endpoint_address": "hid://reader-0"}]
+    assert library.initialize_calls == 1
+    assert library.uninitialize_calls == 1
+
+
+def test_ctypes_rusguard_sdk_client_maps_no_card_from_vendor_status() -> None:
+    library = _FakeRusGuardSdkLibrary(status_sequence=[{"status": 1, "uid": bytes(7)}])
+    client = CtypesRusGuardSdkClient(
+        library_path=_existing_fake_library_path(),
+        endpoint_type="usb_hid",
+        library_loader=lambda path: library,
+    )
+
+    result = client.read_uid()
+
+    assert result == RusGuardSdkRead(uid=None, no_card=True)
+
+
+def test_ctypes_rusguard_sdk_client_raises_on_vendor_error() -> None:
+    library = _FakeRusGuardSdkLibrary(get_status_error=12)
+    client = CtypesRusGuardSdkClient(
+        library_path=_existing_fake_library_path(),
+        endpoint_type="usb_hid",
+        library_loader=lambda path: library,
+    )
+
+    with pytest.raises(OSError, match=r"RG_GetStatus failed with EC_DEVICE_COMM_FAILURE \(12\)"):
+        client.read_uid()
+
+
+def test_real_provider_composition_supports_rusguard_sdk_rfid_transport() -> None:
+    settings = AppSettings(
+        hardware_provider=HardwareProvider.REAL,
+        hardware_real_endpoints={
+            "drum_controller": _serial_endpoint_config(code="drum-1", driver_name="drum-driver", port="COM1"),
+            "lock_controller": _lock_serial_endpoint_config(code="lock-1", driver_name="lock-driver", port="COM2"),
+            "rfid_reader": _sdk_endpoint_config(
+                code="rfid-1",
+                driver_name="rusguard-sdk-usbhid",
+                library_path="/opt/dion_ava1/vendor/rusguard/linux_arm64_release/librgsec.so",
+            ),
+        },
+    )
+
+    bundle = create_hardware_bundle(settings)
+
+    assert bundle.provider is HardwareProvider.REAL
+    assert isinstance(bundle.rfid_reader, RealRfidAdapter)
+
+
 def test_real_rfid_adapter_clear_buffer_success_with_linux_input_transport() -> None:
     device = _FakeInputDevice([_event_chunk(1, 18, 1), _event_chunk(1, 28, 1)])
     transport = LinuxInputEventTransport(
@@ -433,6 +543,136 @@ class _FakeTransport:
         if isinstance(response, Exception):
             raise response
         return response  # type: ignore[return-value]
+
+
+class _FakeSdkClient:
+    def __init__(self, responses: list[object]) -> None:
+        self._responses = list(responses)
+        self.read_timeouts: list[int | None] = []
+
+    def ping(self) -> None:
+        return None
+
+    def read_uid(self, *, timeout_ms: int | None = None) -> RusGuardSdkRead:
+        self.read_timeouts.append(timeout_ms)
+        if not self._responses:
+            raise AssertionError("No fake SDK responses remain.")
+        response = self._responses.pop(0)
+        if isinstance(response, Exception):
+            raise response
+        return response  # type: ignore[return-value]
+
+
+class _FunctionStub:
+    def __init__(self, callback) -> None:
+        self._callback = callback
+        self.argtypes = None
+        self.restype = None
+
+    def __call__(self, *args):
+        return self._callback(*args)
+
+
+class _FakeRusGuardSdkLibrary:
+    def __init__(
+        self,
+        *,
+        status_sequence: list[dict[str, object]] | None = None,
+        find_endpoints_error: int = 0,
+        init_device_error: int = 0,
+        set_cards_mask_error: int = 0,
+        get_status_error: int = 0,
+    ) -> None:
+        self._status_sequence = list(status_sequence or [])
+        self._find_endpoints_error = find_endpoints_error
+        self._init_device_error = init_device_error
+        self._set_cards_mask_error = set_cards_mask_error
+        self._get_status_error = get_status_error
+        self.initialize_calls = 0
+        self.uninitialize_calls = 0
+        self.find_masks: list[int] = []
+        self.closed_resources: list[int | None] = []
+        self.init_device_calls: list[dict[str, object]] = []
+        self.set_cards_mask_calls: list[dict[str, object]] = []
+        self.close_device_calls: list[dict[str, object]] = []
+        self.endpoint_addresses = [b"hid://reader-0"]
+
+        self.RG_InitializeLib = _FunctionStub(self._rg_initialize_lib)
+        self.RG_Uninitialize = _FunctionStub(self._rg_uninitialize)
+        self.RG_CloseResource = _FunctionStub(self._rg_close_resource)
+        self.RG_FindEndPoints = _FunctionStub(self._rg_find_endpoints)
+        self.RG_GetFoundEndPointInfo = _FunctionStub(self._rg_get_found_endpoint_info)
+        self.RG_InitDevice = _FunctionStub(self._rg_init_device)
+        self.RG_SetCardsMask = _FunctionStub(self._rg_set_cards_mask)
+        self.RG_GetStatus = _FunctionStub(self._rg_get_status)
+        self.RG_CloseDevice = _FunctionStub(self._rg_close_device)
+
+    def _rg_initialize_lib(self) -> int:
+        self.initialize_calls += 1
+        return 0
+
+    def _rg_uninitialize(self) -> int:
+        self.uninitialize_calls += 1
+        return 0
+
+    def _rg_close_resource(self, handle) -> int:
+        self.closed_resources.append(getattr(handle, "value", handle))
+        return 0
+
+    def _rg_find_endpoints(self, handle_ptr, endpoint_mask: int, count_ptr) -> int:
+        self.find_masks.append(endpoint_mask)
+        if self._find_endpoints_error:
+            return self._find_endpoints_error
+        ctypes.cast(handle_ptr, ctypes.POINTER(ctypes.c_void_p))[0] = ctypes.c_void_p(1234)
+        ctypes.cast(count_ptr, ctypes.POINTER(ctypes.c_uint32))[0] = ctypes.c_uint32(len(self.endpoint_addresses))
+        return 0
+
+    def _rg_get_found_endpoint_info(self, handle, list_index: int, endpoint_info_ptr) -> int:
+        endpoint_info = ctypes.cast(endpoint_info_ptr, ctypes.POINTER(_sdk_endpoint_info_type())).contents
+        address = self.endpoint_addresses[list_index]
+        endpoint_info.type = 1
+        endpoint_info.address = address  # type: ignore[assignment]
+        endpoint_info.friendly_name = b"RusGuard R5 USB"  # type: ignore[assignment]
+        return 0
+
+    def _rg_init_device(self, endpoint_ptr, device_address: int) -> int:
+        endpoint = ctypes.cast(endpoint_ptr, ctypes.POINTER(_sdk_endpoint_type())).contents
+        self.init_device_calls.append(
+            {
+                "address": device_address,
+                "endpoint_type": endpoint.type,
+                "endpoint_address": ctypes.string_at(endpoint.address).decode("ascii"),
+            }
+        )
+        return self._init_device_error
+
+    def _rg_set_cards_mask(self, endpoint_ptr, device_address: int, cards_mask: int) -> int:
+        self.set_cards_mask_calls.append({"address": device_address, "mask": cards_mask})
+        return self._set_cards_mask_error
+
+    def _rg_get_status(self, endpoint_ptr, device_address: int, status_ptr, pin_states_ptr, card_info_ptr, memory_ptr) -> int:
+        if self._get_status_error:
+            return self._get_status_error
+        if not self._status_sequence:
+            raise AssertionError("No fake RusGuard status responses remain.")
+        status_entry = self._status_sequence.pop(0)
+        ctypes.cast(status_ptr, ctypes.POINTER(ctypes.c_uint8))[0] = ctypes.c_uint8(status_entry["status"])
+        card_info = ctypes.cast(card_info_ptr, ctypes.POINTER(_sdk_card_info_type())).contents
+        card_info.type = 9
+        uid = status_entry["uid"]
+        for index, byte in enumerate(uid):
+            card_info.uid[index] = byte
+        return 0
+
+    def _rg_close_device(self, endpoint_ptr, device_address: int) -> int:
+        endpoint = ctypes.cast(endpoint_ptr, ctypes.POINTER(_sdk_endpoint_type())).contents
+        self.close_device_calls.append(
+            {
+                "address": device_address,
+                "endpoint_address": ctypes.string_at(endpoint.address).decode("ascii"),
+            }
+        )
+        return 0
 
 
 class _FakeInputDevice:
@@ -520,6 +760,16 @@ def _generic_serial_rfid_config() -> RfidHardwareEndpointTransportConfig:
     )
 
 
+def _sdk_rfid_config() -> RfidHardwareEndpointTransportConfig:
+    return RfidHardwareEndpointTransportConfig.model_validate(
+        _sdk_endpoint_config(
+            code="rfid-1",
+            driver_name="rusguard-sdk-usbhid",
+            library_path="/opt/dion_ava1/vendor/rusguard/linux_arm64_release/librgsec.so",
+        )
+    )
+
+
 def _linux_input_endpoint_config(*, code: str, driver_name: str, device_path: str) -> dict[str, object]:
     return {
         "endpoint": {
@@ -562,6 +812,28 @@ def _serial_endpoint_config(*, code: str, driver_name: str, port: str) -> dict[s
     }
 
 
+def _sdk_endpoint_config(*, code: str, driver_name: str, library_path: str) -> dict[str, object]:
+    return {
+        "endpoint": {
+            "code": code,
+            "driver_name": driver_name,
+            "enabled": True,
+            "timeouts": {
+                "connect_timeout_ms": 1000,
+                "read_timeout_ms": 1000,
+                "write_timeout_ms": 1000,
+            },
+        },
+        "transport": {
+            "transport": "sdk",
+            "library_path": library_path,
+            "endpoint_type": "usb_hid",
+            "device_index": 0,
+            "device_address": 0,
+        },
+    }
+
+
 def _lock_serial_endpoint_config(*, code: str, driver_name: str, port: str, board_address: int = 0) -> dict[str, object]:
     return {
         "endpoint": {
@@ -590,3 +862,20 @@ def _lock_serial_endpoint_config(*, code: str, driver_name: str, port: str, boar
 
 def _event_chunk(event_type: int, code: int, value: int) -> bytes:
     return struct.pack("<qqHHi", 0, 0, event_type, code, value)
+
+
+def _existing_fake_library_path() -> str:
+    return str(Path(__file__))
+
+
+def _sdk_endpoint_info_type():
+    return CtypesRusGuardSdkClient._resolve_endpoint.__globals__["_RG_ENDPOINT_INFO"]
+
+
+def _sdk_endpoint_type():
+    return CtypesRusGuardSdkClient._resolve_endpoint.__globals__["_RG_ENDPOINT"]
+
+
+def _sdk_card_info_type():
+    return CtypesRusGuardSdkClient._resolve_endpoint.__globals__["_RG_CARD_INFO"]
+

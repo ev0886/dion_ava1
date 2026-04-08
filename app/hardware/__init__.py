@@ -31,6 +31,7 @@ from app.hardware.lock_stub_real import StubRealLockAdapter
 from app.hardware.rfid_mock import MockRfidAdapter
 from app.hardware.rfid_input_transport import LinuxInputEventTransport
 from app.hardware.rfid_real import RealRfidAdapter
+from app.hardware.rusguard_sdk import CtypesRusGuardSdkClient, RUSGUARD_SDK_DRIVER_NAMES, RusGuardSdkClient, RusGuardSdkRead
 from app.hardware.rfid_stub_real import StubRealRfidAdapter
 from app.hardware.transport_config import (
     AnyHardwareEndpointTransportConfig,
@@ -44,6 +45,7 @@ from app.hardware.transport_config import (
     REAL_HARDWARE_ENDPOINT_NAMES,
     RealHardwareSettings,
     RfidHardwareEndpointTransportConfig,
+    RusGuardSdkTransportSettings,
     SerialTransportSettings,
     TcpTransportSettings,
     real_hardware_endpoints_example,
@@ -93,6 +95,11 @@ __all__ = [
     "RfidHardwareEndpointTransportConfig",
     "RfidReadResult",
     "RfidReaderContract",
+    "RUSGUARD_SDK_DRIVER_NAMES",
+    "RusGuardSdkClient",
+    "RusGuardSdkRead",
+    "CtypesRusGuardSdkClient",
+    "RusGuardSdkTransportSettings",
     "AnyHardwareEndpointTransportConfig",
     "CommonEndpointSettings",
     "DrumHardwareEndpointTransportConfig",

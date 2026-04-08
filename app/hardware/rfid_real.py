@@ -3,9 +3,14 @@ from __future__ import annotations
 from app.domain.constants import DEFAULT_RFID_UID_FORMAT
 from app.domain.enums import HardwareEndpointType
 from app.hardware.dto import HardwareOperationResult, HardwareOperationStatus, RfidReadResult
-from app.hardware.exceptions import HardwareFailureError
+from app.hardware.exceptions import HardwareFailureError, HardwareUnavailableError
 from app.hardware.real_adapter_base import RealHardwareAdapterBase
 from app.hardware.rfid_input_transport import LinuxInputEventTransport
+from app.hardware.rusguard_sdk import (
+    CtypesRusGuardSdkClient,
+    RUSGUARD_SDK_DRIVER_NAMES,
+    RusGuardSdkClient,
+)
 from app.hardware.transport_config import RfidHardwareEndpointTransportConfig
 from app.hardware.transports import SerialRequestResponseTransport, TcpRequestResponseTransport
 
@@ -28,6 +33,7 @@ class RealRfidAdapter(RealHardwareAdapterBase):
         *,
         config: RfidHardwareEndpointTransportConfig | None,
         transport: SerialRequestResponseTransport | TcpRequestResponseTransport | LinuxInputEventTransport | None,
+        sdk_client: RusGuardSdkClient | None = None,
         config_error: str | None = None,
     ) -> None:
         super().__init__(
@@ -37,8 +43,21 @@ class RealRfidAdapter(RealHardwareAdapterBase):
             config_error=config_error,
         )
         self._last_uid: str | None = None
+        self._sdk_client = sdk_client or self._build_sdk_client(config)
 
     def ping(self) -> HardwareOperationResult:
+        if self._uses_rusguard_sdk():
+            self._raise_if_sdk_available(operation="ping")
+            assert self._sdk_client is not None
+            try:
+                self._sdk_client.ping()
+            except OSError as error:
+                raise HardwareFailureError(
+                    f"RFID reader SDK ping failed: {error}",
+                    device_type=self.device_type,
+                    operation="ping",
+                ) from error
+            return self._success_result()
         if self._uses_rusguard_acm_protocol():
             return self._ping_rusguard_acm()
         response = self._send_request(self._PING_REQUEST, operation="ping")
@@ -51,6 +70,42 @@ class RealRfidAdapter(RealHardwareAdapterBase):
         return self._success_result()
 
     def read_card(self, *, timeout_ms: int | None = None) -> RfidReadResult:
+        if self._uses_rusguard_sdk():
+            self._raise_if_sdk_available(operation="read_card")
+            assert self._sdk_client is not None
+            try:
+                response = self._sdk_client.read_uid(timeout_ms=timeout_ms)
+            except TimeoutError as error:
+                raise HardwareFailureError(
+                    f"RFID reader SDK read failed: {error}",
+                    device_type=self.device_type,
+                    operation="read_card",
+                ) from error
+            except OSError as error:
+                raise HardwareFailureError(
+                    f"RFID reader SDK read failed: {error}",
+                    device_type=self.device_type,
+                    operation="read_card",
+                ) from error
+            if response.no_card or response.uid is None:
+                return RfidReadResult(
+                    device_type=self.device_type,
+                    status=HardwareOperationStatus.NO_CARD,
+                    ok=True,
+                    uid=None,
+                    is_duplicate=False,
+                    message=f"No RFID card present ({DEFAULT_RFID_UID_FORMAT})",
+                )
+            uid = self._normalize_uid(response.uid)
+            is_duplicate = uid == self._last_uid
+            self._last_uid = uid
+            return RfidReadResult(
+                device_type=self.device_type,
+                status=HardwareOperationStatus.SUCCESS,
+                ok=True,
+                uid=uid,
+                is_duplicate=is_duplicate,
+            )
         if self._uses_rusguard_acm_protocol():
             return self._read_card_rusguard_acm(timeout_ms=timeout_ms)
         if isinstance(self._transport, LinuxInputEventTransport):
@@ -83,6 +138,9 @@ class RealRfidAdapter(RealHardwareAdapterBase):
         )
 
     def clear_buffer(self) -> HardwareOperationResult:
+        if self._uses_rusguard_sdk():
+            self._raise_if_sdk_available(operation="clear_buffer")
+            return self._success_result()
         response = self._send_request(self._CLEAR_REQUEST, operation="clear_buffer")
         if response != self._CLEARED_RESPONSE:
             raise HardwareFailureError(
@@ -154,6 +212,48 @@ class RealRfidAdapter(RealHardwareAdapterBase):
         if self._config is None:
             return False
         return self._config.endpoint.driver_name.strip().casefold() in self._RUSGUARD_ACM_DRIVER_NAMES
+
+    def _uses_rusguard_sdk(self) -> bool:
+        if self._config is None:
+            return False
+        return self._config.endpoint.driver_name.strip().casefold() in RUSGUARD_SDK_DRIVER_NAMES
+
+    @staticmethod
+    def _build_sdk_client(config: RfidHardwareEndpointTransportConfig | None) -> RusGuardSdkClient | None:
+        if config is None or config.transport.transport != "sdk":
+            return None
+        return CtypesRusGuardSdkClient(
+            library_path=config.transport.library_path,
+            endpoint_type=config.transport.endpoint_type,
+            device_index=config.transport.device_index,
+            device_address=config.transport.device_address,
+        )
+
+    def _raise_if_sdk_available(self, *, operation: str) -> None:
+        if self._config_error:
+            raise HardwareUnavailableError(
+                self._config_error,
+                device_type=self.device_type,
+                operation=operation,
+            )
+        if self._config is None:
+            raise HardwareUnavailableError(
+                f"{self._device_label.capitalize()} real transport config is missing.",
+                device_type=self.device_type,
+                operation=operation,
+            )
+        if not self._config.endpoint.enabled:
+            raise HardwareUnavailableError(
+                f"{self._device_label.capitalize()} real endpoint is disabled.",
+                device_type=self.device_type,
+                operation=operation,
+            )
+        if self._sdk_client is None:
+            raise HardwareUnavailableError(
+                "RFID reader SDK client is not configured.",
+                device_type=self.device_type,
+                operation=operation,
+            )
 
     @staticmethod
     def _normalize_uid(uid: str) -> str:

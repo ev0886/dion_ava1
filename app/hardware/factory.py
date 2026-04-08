@@ -219,6 +219,8 @@ def _summarize_real_endpoint_config(endpoint_name: str, raw_config: object) -> R
     transport = parsed.config.transport.transport
     if transport == "serial":
         target = parsed.config.transport.port
+    elif transport == "sdk":
+        target = f"{parsed.config.transport.endpoint_type}:{parsed.config.transport.library_path}"
     elif transport == "tcp":
         target = f"{parsed.config.transport.host}:{parsed.config.transport.port}"
     else:
@@ -244,4 +246,6 @@ def _create_transport_client(
         return SerialTransport(settings=config.transport, timeouts=config.endpoint.timeouts)
     if config.transport.transport == "linux_input":
         return LinuxInputEventTransport(settings=config.transport, timeouts=config.endpoint.timeouts)
+    if config.transport.transport == "sdk":
+        return None
     return TcpTransport(settings=config.transport, timeouts=config.endpoint.timeouts)

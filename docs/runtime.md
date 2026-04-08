@@ -40,7 +40,7 @@ Example shape:
 
 ```env
 DION_HARDWARE_PROVIDER=real
-DION_HARDWARE_REAL_ENDPOINTS={"drum_controller":{"endpoint":{"code":"drum-1","driver_name":"drum-driver","enabled":true,"timeouts":{"connect_timeout_ms":1000,"read_timeout_ms":1000,"write_timeout_ms":1000}},"transport":{"transport":"serial","port":"/dev/serial/by-path/platform-1000110000.pcie-pci-0001:01:00.0-usb-0:1.2:1.0-port0","baudrate":9600,"data_bits":8,"parity":"none","stop_bits":1}},"lock_controller":{"endpoint":{"code":"lock-1","driver_name":"lock-driver","enabled":true,"timeouts":{"connect_timeout_ms":1000,"read_timeout_ms":1000,"write_timeout_ms":1000}},"protocol":{"board_address":0},"transport":{"transport":"serial","port":"/dev/serial/by-path/platform-1000110000.pcie-pci-0001:01:00.0-usb-0:1.1:1.0-port0","baudrate":19200,"data_bits":8,"parity":"none","stop_bits":1}},"rfid_reader":{"endpoint":{"code":"rfid-1","driver_name":"rusguard-hid","enabled":true,"timeouts":{"connect_timeout_ms":1000,"read_timeout_ms":1000,"write_timeout_ms":1000}},"transport":{"transport":"linux_input","device_path":"/dev/input/event7"}}}
+DION_HARDWARE_REAL_ENDPOINTS={"drum_controller":{"endpoint":{"code":"drum-1","driver_name":"drum-driver","enabled":true,"timeouts":{"connect_timeout_ms":1000,"read_timeout_ms":1000,"write_timeout_ms":1000}},"transport":{"transport":"serial","port":"/dev/serial/by-path/platform-1000110000.pcie-pci-0001:01:00.0-usb-0:1.2:1.0-port0","baudrate":9600,"data_bits":8,"parity":"none","stop_bits":1}},"lock_controller":{"endpoint":{"code":"lock-1","driver_name":"lock-driver","enabled":true,"timeouts":{"connect_timeout_ms":1000,"read_timeout_ms":1000,"write_timeout_ms":1000}},"protocol":{"board_address":0},"transport":{"transport":"serial","port":"/dev/serial/by-path/platform-1000110000.pcie-pci-0001:01:00.0-usb-0:1.1:1.0-port0","baudrate":19200,"data_bits":8,"parity":"none","stop_bits":1}},"rfid_reader":{"endpoint":{"code":"rfid-1","driver_name":"rusguard-sdk-usbhid","enabled":true,"timeouts":{"connect_timeout_ms":1000,"read_timeout_ms":1000,"write_timeout_ms":1000}},"transport":{"transport":"sdk","library_path":"/opt/dion_ava1/vendor/rusguard/linux_arm64_release/librgsec.so","endpoint_type":"usb_hid","device_index":0,"device_address":0}}}
 ```
 
 Safe commands on the Pi:
@@ -55,7 +55,7 @@ If the API is running, `/readiness` exposes the same startup readiness service. 
 
 - `lock_controller`: CU24 query-version probe.
 - `drum_controller`: GETPOS probe.
-- `rfid_reader`: supported in real mode via `linux_input` transport against a backend-owned `/dev/input/event*` device path.
+- `rfid_reader`: supported in real mode via `linux_input` for legacy keyboard-emulation handling, or via `sdk` when `driver_name` is `rusguard-sdk-usbhid` and the vendor `librgsec.so` is available on Linux ARM64.
 
 ## Supported environment variables
 
@@ -65,7 +65,7 @@ If the API is running, `/readiness` exposes the same startup readiness service. 
 - `DION_SQLITE_FILENAME`: SQLite database filename inside `DION_DATA_DIR`.
 - `DION_ALEMBIC_CONFIG_PATH`: Alembic configuration file path.
 - `DION_HARDWARE_PROVIDER`: `mock`, `stub-real`, or `real`.
-- `DION_HARDWARE_REAL_ENDPOINTS`: JSON object keyed by `drum_controller`, `lock_controller`, and optional `rfid_reader`. `lock_controller` expects serial transport plus `protocol.board_address`. `rfid_reader` supports `linux_input` with `device_path`, plus the existing serial/tcp transport shape for compatibility.
+- `DION_HARDWARE_REAL_ENDPOINTS`: JSON object keyed by `drum_controller`, `lock_controller`, and optional `rfid_reader`. `lock_controller` expects serial transport plus `protocol.board_address`. `rfid_reader` supports `linux_input` with `device_path`, the existing serial/tcp transport shape for compatibility, and `sdk` with `library_path`, `endpoint_type="usb_hid"`, `device_index`, and `device_address`.
 - `DION_API_HOST`: bind address for `python -m app.api` and `dion-api`.
 - `DION_API_PORT`: bind port for `python -m app.api` and `dion-api`.
 
@@ -87,3 +87,4 @@ docker run --rm -p 8000:8000 --env-file .env dion-aba1
 ```
 
 The container helper is intentionally minimal. It does not add orchestration, secret management, or external services.
+
