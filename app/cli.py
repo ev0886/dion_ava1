@@ -4,6 +4,7 @@ import argparse
 import sys
 
 from app.application.composition import ApplicationContainer, create_bootstrapped_application_container
+from app.diagnostics import run_rusguard_sdk_enumeration_command
 from app.domain.enums import StartupReadinessStatus
 from app.runtime import add_common_settings_arguments, render_json, settings_from_args
 
@@ -16,6 +17,11 @@ def build_parser() -> argparse.ArgumentParser:
     subparsers.add_parser("startup-check", help="Run startup readiness checks")
     subparsers.add_parser("hardware-health", help="Ping hardware endpoints and print availability")
     subparsers.add_parser("recovery-scan", help="Scan unfinished operations and open recovery cases")
+    rusguard_enumerate = subparsers.add_parser(
+        "rusguard-sdk-enumerate",
+        help="Enumerate RusGuard SDK USB_HID and SERIAL endpoints",
+    )
+    rusguard_enumerate.add_argument("--library-path", type=str, default=None)
 
     export_plan = subparsers.add_parser("export-plan")
     export_plan.add_argument("--requested-by-user-id", type=int, required=True)
@@ -38,6 +44,8 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
+    if args.command == "rusguard-sdk-enumerate":
+        return run_rusguard_sdk_enumeration_command(library_path=args.library_path)
     settings = settings_from_args(args)
     container = create_bootstrapped_application_container(settings)
     try:
