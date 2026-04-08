@@ -46,18 +46,75 @@ def test_real_rfid_adapter_reads_uid_from_linux_input_events() -> None:
         config=_linux_input_rfid_config(),
         transport=_linux_input_transport(
             [
+                _event_chunk(1, 42, 1),
                 _event_chunk(1, 18, 1),
-                _event_chunk(0, 0, 0),
+                _event_chunk(1, 18, 0),
+                _event_chunk(1, 42, 0),
                 _event_chunk(1, 3, 1),
+                _event_chunk(1, 3, 0),
                 _event_chunk(1, 8, 1),
+                _event_chunk(1, 8, 0),
                 _event_chunk(1, 7, 1),
+                _event_chunk(1, 7, 0),
                 _event_chunk(1, 8, 1),
+                _event_chunk(1, 8, 0),
+                _event_chunk(1, 42, 1),
                 _event_chunk(1, 46, 1),
+                _event_chunk(1, 46, 0),
+                _event_chunk(1, 42, 0),
                 _event_chunk(1, 11, 1),
+                _event_chunk(1, 11, 0),
                 _event_chunk(1, 11, 1),
+                _event_chunk(1, 11, 0),
                 _event_chunk(1, 5, 1),
+                _event_chunk(1, 5, 0),
                 _event_chunk(1, 6, 1),
+                _event_chunk(1, 6, 0),
                 _event_chunk(1, 28, 1),
+                _event_chunk(1, 28, 0),
+            ]
+        ),
+    )
+
+    result = adapter.read_card()
+
+    assert result.ok is True
+    assert result.status is HardwareOperationStatus.SUCCESS
+    assert result.uid == "E2767C0045"
+    assert result.is_duplicate is False
+
+
+def test_real_rfid_adapter_reads_shifted_hex_linux_input_sequence_from_evtest_capture() -> None:
+    adapter = RealRfidAdapter(
+        config=_linux_input_rfid_config(),
+        transport=_linux_input_transport(
+            [
+                _event_chunk(1, 42, 1),
+                _event_chunk(1, 18, 1),
+                _event_chunk(1, 18, 0),
+                _event_chunk(1, 42, 0),
+                _event_chunk(1, 3, 1),
+                _event_chunk(1, 3, 0),
+                _event_chunk(1, 8, 1),
+                _event_chunk(1, 8, 0),
+                _event_chunk(1, 7, 1),
+                _event_chunk(1, 7, 0),
+                _event_chunk(1, 8, 1),
+                _event_chunk(1, 8, 0),
+                _event_chunk(1, 42, 1),
+                _event_chunk(1, 46, 1),
+                _event_chunk(1, 46, 0),
+                _event_chunk(1, 42, 0),
+                _event_chunk(1, 11, 1),
+                _event_chunk(1, 11, 0),
+                _event_chunk(1, 11, 1),
+                _event_chunk(1, 11, 0),
+                _event_chunk(1, 5, 1),
+                _event_chunk(1, 5, 0),
+                _event_chunk(1, 6, 1),
+                _event_chunk(1, 6, 0),
+                _event_chunk(1, 28, 1),
+                _event_chunk(1, 28, 0),
             ]
         ),
     )

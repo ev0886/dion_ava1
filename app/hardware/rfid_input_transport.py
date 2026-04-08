@@ -30,9 +30,10 @@ class LinuxInputEventTransport:
     _EV_KEY = 0x01
     _EV_SYN = 0x00
     _KEY_ENTER_CODES = frozenset({28, 96})
-    _IGNORED_KEY_CODES = frozenset({29, 42, 54, 56, 97, 100, 125, 126})
+    _SHIFT_KEY_CODES = frozenset({42, 54})
+    _IGNORED_KEY_CODES = frozenset({29, 56, 97, 100, 125, 126})
     _IGNORED_SEPARATOR_KEY_CODES = frozenset({12, 13, 39, 40, 43, 51, 52, 53, 57, 74, 83})
-    _KEYMAP = {
+    _UNSHIFTED_KEYMAP = {
         2: "1",
         3: "2",
         4: "3",
@@ -43,6 +44,44 @@ class LinuxInputEventTransport:
         9: "8",
         10: "9",
         11: "0",
+        16: "q",
+        17: "w",
+        18: "e",
+        19: "r",
+        20: "t",
+        21: "y",
+        22: "u",
+        23: "i",
+        24: "o",
+        25: "p",
+        30: "a",
+        31: "s",
+        32: "d",
+        33: "f",
+        34: "g",
+        35: "h",
+        36: "j",
+        37: "k",
+        38: "l",
+        44: "z",
+        45: "x",
+        46: "c",
+        47: "v",
+        48: "b",
+        49: "n",
+        50: "m",
+        71: "7",
+        72: "8",
+        73: "9",
+        75: "4",
+        76: "5",
+        77: "6",
+        79: "1",
+        80: "2",
+        81: "3",
+        82: "0",
+    }
+    _SHIFTED_KEYMAP = {
         16: "Q",
         17: "W",
         18: "E",
@@ -69,16 +108,6 @@ class LinuxInputEventTransport:
         48: "B",
         49: "N",
         50: "M",
-        71: "7",
-        72: "8",
-        73: "9",
-        75: "4",
-        76: "5",
-        77: "6",
-        79: "1",
-        80: "2",
-        81: "3",
-        82: "0",
     }
     _EVENT_STRUCTS = (
         struct.Struct("<qqHHi"),
@@ -116,6 +145,7 @@ class LinuxInputEventTransport:
         buffer = bytearray()
         saw_activity = False
         saw_recoverable_noise = False
+        active_shift_codes: set[int] = set()
 
         with self._device_opener(self._settings.device_path, True) as device:
             while True:
@@ -147,7 +177,15 @@ class LinuxInputEventTransport:
                     del buffer[:consumed]
                     if event.event_type == self._EV_SYN:
                         continue
-                    if event.event_type != self._EV_KEY or event.value != 1:
+                    if event.event_type != self._EV_KEY:
+                        continue
+                    if event.code in self._SHIFT_KEY_CODES:
+                        if event.value in (1, 2):
+                            active_shift_codes.add(event.code)
+                        elif event.value == 0:
+                            active_shift_codes.discard(event.code)
+                        continue
+                    if event.value != 1:
                         continue
                     if event.code in self._IGNORED_KEY_CODES:
                         continue
@@ -158,7 +196,12 @@ class LinuxInputEventTransport:
                             return f"UID:{''.join(chars)}\n".encode("ascii")
                         saw_recoverable_noise = True
                         continue
-                    character = self._KEYMAP.get(event.code)
+                    if active_shift_codes:
+                        character = self._SHIFTED_KEYMAP.get(event.code)
+                        if character is None:
+                            character = self._UNSHIFTED_KEYMAP.get(event.code)
+                    else:
+                        character = self._UNSHIFTED_KEYMAP.get(event.code)
                     if character is None:
                         if not chars:
                             saw_recoverable_noise = True
