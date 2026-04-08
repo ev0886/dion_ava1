@@ -2,9 +2,10 @@ from __future__ import annotations
 
 import argparse
 import sys
+from typing import Callable
 
 from app.application.composition import ApplicationContainer, create_bootstrapped_application_container
-from app.diagnostics import run_rusguard_sdk_enumeration_command
+from app.diagnostics import run_rusguard_sdk_enumeration_command, run_rusguard_sdk_serial_open_diagnostic_command
 from app.domain.enums import StartupReadinessStatus
 from app.runtime import add_common_settings_arguments, render_json, settings_from_args
 
@@ -22,6 +23,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="Enumerate RusGuard SDK USB_HID and SERIAL endpoints",
     )
     rusguard_enumerate.add_argument("--library-path", type=str, default=None)
+    rusguard_serial_diagnostic = subparsers.add_parser(
+        "rusguard-sdk-serial-open-diagnostic",
+        help="Probe discovered RusGuard SDK SERIAL endpoints with open/status/close",
+    )
+    rusguard_serial_diagnostic.add_argument("--library-path", type=str, default=None)
 
     export_plan = subparsers.add_parser("export-plan")
     export_plan.add_argument("--requested-by-user-id", type=int, required=True)
@@ -44,8 +50,9 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
-    if args.command == "rusguard-sdk-enumerate":
-        return run_rusguard_sdk_enumeration_command(library_path=args.library_path)
+    diagnostic_runner = _diagnostic_runner(args.command)
+    if diagnostic_runner is not None:
+        return diagnostic_runner(library_path=args.library_path)
     settings = settings_from_args(args)
     container = create_bootstrapped_application_container(settings)
     try:
@@ -112,6 +119,14 @@ def _dispatch(args: argparse.Namespace, container: ApplicationContainer) -> int:
         return 0
 
     raise ValueError(f"Unsupported command: {args.command}")
+
+
+def _diagnostic_runner(command: str) -> Callable[..., int] | None:
+    if command == "rusguard-sdk-enumerate":
+        return run_rusguard_sdk_enumeration_command
+    if command == "rusguard-sdk-serial-open-diagnostic":
+        return run_rusguard_sdk_serial_open_diagnostic_command
+    return None
 
 
 if __name__ == "__main__":

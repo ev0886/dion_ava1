@@ -8,11 +8,14 @@ from pathlib import Path
 from typing import Protocol
 
 
-_DEFAULT_LIBRARY_PATH = Path(__file__).resolve().parents[2] / "vendor" / "rusguard" / "sdk" / "librgsec.so"
+_DEFAULT_LIBRARY_PATH = (
+    Path(__file__).resolve().parents[2] / "vendor" / "rusguard" / "linux_arm64_release" / "librgsec.so"
+)
 _LIBRARY_PATH_ENV_VAR = "DION_RUSGUARD_SDK_LIBRARY_PATH"
 
 RG_ENDPOINT_TYPE_USB_HID = 0x01
 RG_ENDPOINT_TYPE_SERIAL = 0x02
+_DEFAULT_DEVICE_ADDRESS = 0
 
 
 class _RgEndpointInfo(ctypes.Structure):
@@ -21,6 +24,30 @@ class _RgEndpointInfo(ctypes.Structure):
         ("type", ctypes.c_uint8),
         ("address", ctypes.c_char * 64),
         ("friendly_name", ctypes.c_char * 128),
+    ]
+
+
+class _RgEndpoint(ctypes.Structure):
+    _pack_ = 1
+    _fields_ = [
+        ("type", ctypes.c_uint8),
+        ("address", ctypes.c_char_p),
+    ]
+
+
+class _RgCardInfo(ctypes.Structure):
+    _pack_ = 1
+    _fields_ = [
+        ("type", ctypes.c_uint8),
+        ("uid", ctypes.c_uint8 * 7),
+    ]
+
+
+class _RgCardMemory(ctypes.Structure):
+    _pack_ = 1
+    _fields_ = [
+        ("profile_block", ctypes.c_uint8),
+        ("block_data", ctypes.c_uint8 * 16),
     ]
 
 
@@ -43,6 +70,8 @@ class RusGuardSdkProtocol(Protocol):
 
     def find_endpoint_infos(self, endpoint_type_mask: int) -> tuple[EndpointInfo, ...]: ...
 
+    def diagnose_serial_endpoint(self, endpoint_info: EndpointInfo) -> "SerialEndpointDiagnosticResult": ...
+
     def uninitialize(self) -> None: ...
 
 
@@ -56,6 +85,21 @@ class DiagnosticSection:
 class DiagnosticReport:
     library_path: Path
     sections: tuple[DiagnosticSection, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class SerialEndpointDiagnosticResult:
+    endpoint_info: EndpointInfo
+    open_ok: bool
+    open_code: int
+    status_ok: bool | None
+    status_code: int | None
+
+
+@dataclass(frozen=True, slots=True)
+class SerialOpenDiagnosticReport:
+    library_path: Path
+    serial_results: tuple[SerialEndpointDiagnosticResult, ...]
 
 
 class CountOnlyRusGuardSdk:
@@ -84,6 +128,19 @@ class CountOnlyRusGuardSdk:
             ctypes.POINTER(_RgEndpointInfo),
         ]
         self._library.RG_GetFoundEndPointInfo.restype = ctypes.c_uint32
+        self._library.RG_InitDevice.argtypes = [ctypes.POINTER(_RgEndpoint), ctypes.c_uint8]
+        self._library.RG_InitDevice.restype = ctypes.c_uint32
+        self._library.RG_GetStatus.argtypes = [
+            ctypes.POINTER(_RgEndpoint),
+            ctypes.c_uint8,
+            ctypes.POINTER(ctypes.c_uint8),
+            ctypes.POINTER(ctypes.c_uint8),
+            ctypes.POINTER(_RgCardInfo),
+            ctypes.POINTER(_RgCardMemory),
+        ]
+        self._library.RG_GetStatus.restype = ctypes.c_uint32
+        self._library.RG_CloseDevice.argtypes = [ctypes.POINTER(_RgEndpoint), ctypes.c_uint8]
+        self._library.RG_CloseDevice.restype = ctypes.c_uint32
 
     def initialize(self) -> None:
         result = int(self._library.RG_InitializeLib())
@@ -138,6 +195,54 @@ class CountOnlyRusGuardSdk:
         if result != 0:
             raise RusGuardSdkError(f"RG_Uninitialize failed with code {result}")
 
+    def diagnose_serial_endpoint(self, endpoint_info: EndpointInfo) -> SerialEndpointDiagnosticResult:
+        endpoint_address = ctypes.create_string_buffer(endpoint_info.address.encode("ascii"))
+        endpoint = _RgEndpoint(type=endpoint_info.type, address=ctypes.cast(endpoint_address, ctypes.c_char_p))
+        close_error: RusGuardSdkError | None = None
+        result: SerialEndpointDiagnosticResult | None = None
+        open_code = int(self._library.RG_InitDevice(ctypes.byref(endpoint), ctypes.c_uint8(_DEFAULT_DEVICE_ADDRESS)))
+        if open_code != 0:
+            return SerialEndpointDiagnosticResult(
+                endpoint_info=endpoint_info,
+                open_ok=False,
+                open_code=open_code,
+                status_ok=None,
+                status_code=None,
+            )
+
+        try:
+            status_type = ctypes.c_uint8()
+            pin_states = ctypes.c_uint8()
+            card_info = _RgCardInfo()
+            card_memory = _RgCardMemory()
+            status_code = int(
+                self._library.RG_GetStatus(
+                    ctypes.byref(endpoint),
+                    ctypes.c_uint8(_DEFAULT_DEVICE_ADDRESS),
+                    ctypes.byref(status_type),
+                    ctypes.byref(pin_states),
+                    ctypes.byref(card_info),
+                    ctypes.byref(card_memory),
+                )
+            )
+            result = SerialEndpointDiagnosticResult(
+                endpoint_info=endpoint_info,
+                open_ok=True,
+                open_code=open_code,
+                status_ok=status_code == 0,
+                status_code=status_code,
+            )
+        finally:
+            close_code = int(self._library.RG_CloseDevice(ctypes.byref(endpoint), ctypes.c_uint8(_DEFAULT_DEVICE_ADDRESS)))
+            if close_code != 0:
+                close_error = RusGuardSdkError(
+                    f"RG_CloseDevice failed with code {close_code} for address {endpoint_info.address}"
+                )
+        if close_error is not None:
+            raise close_error
+        assert result is not None
+        return result
+
 
 def run_rusguard_sdk_enumeration_command(*, library_path: str | None = None) -> int:
     resolved_library_path = resolve_library_path(library_path)
@@ -148,6 +253,18 @@ def run_rusguard_sdk_enumeration_command(*, library_path: str | None = None) -> 
         print(f"ERROR: {error}", file=sys.stderr)
         return 1
     print(render_report(report))
+    return 0
+
+
+def run_rusguard_sdk_serial_open_diagnostic_command(*, library_path: str | None = None) -> int:
+    resolved_library_path = resolve_library_path(library_path)
+    try:
+        sdk = CountOnlyRusGuardSdk(resolved_library_path)
+        report = run_serial_open_diagnostic(sdk)
+    except RusGuardSdkError as error:
+        print(f"ERROR: {error}", file=sys.stderr)
+        return 1
+    print(render_serial_open_report(report))
     return 0
 
 
@@ -170,6 +287,18 @@ def run_safe_diagnostic(sdk: RusGuardSdkProtocol) -> DiagnosticReport:
         sdk.uninitialize()
 
 
+def run_serial_open_diagnostic(sdk: RusGuardSdkProtocol) -> SerialOpenDiagnosticReport:
+    sdk.initialize()
+    try:
+        serial_endpoints = sdk.find_endpoint_infos(RG_ENDPOINT_TYPE_SERIAL)
+        return SerialOpenDiagnosticReport(
+            library_path=sdk.library_path,
+            serial_results=tuple(sdk.diagnose_serial_endpoint(endpoint_info) for endpoint_info in serial_endpoints),
+        )
+    finally:
+        sdk.uninitialize()
+
+
 def render_report(report: DiagnosticReport) -> str:
     lines = [
         "[RusGuard SDK]",
@@ -183,6 +312,27 @@ def render_report(report: DiagnosticReport) -> str:
         lines.extend(section.lines)
         if position != len(report.sections) - 1:
             lines.append("")
+    lines.extend(("", "uninitialize ok"))
+    return "\n".join(lines)
+
+
+def render_serial_open_report(report: SerialOpenDiagnosticReport) -> str:
+    lines = [
+        "[RusGuard SDK]",
+        f"library path: {report.library_path.as_posix()}",
+        "library load ok",
+        "initialize ok",
+        "",
+        "[SERIAL]",
+        f"count: {len(report.serial_results)}",
+    ]
+    for result in report.serial_results:
+        line = f"- index: {result.endpoint_info.index}, address: {result.endpoint_info.address}, open: "
+        if not result.open_ok:
+            lines.append(f"{line}fail(code={result.open_code})")
+            continue
+        status_fragment = "ok" if result.status_ok else f"fail(code={result.status_code})"
+        lines.append(f"{line}ok, status: {status_fragment}")
     lines.extend(("", "uninitialize ok"))
     return "\n".join(lines)
 
