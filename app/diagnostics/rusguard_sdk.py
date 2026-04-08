@@ -16,6 +16,44 @@ _LIBRARY_PATH_ENV_VAR = "DION_RUSGUARD_SDK_LIBRARY_PATH"
 RG_ENDPOINT_TYPE_USB_HID = 0x01
 RG_ENDPOINT_TYPE_SERIAL = 0x02
 _DEFAULT_DEVICE_ADDRESS = 0
+_API_ERROR_DETAILS = {
+    0: ("EC_OK", "all good"),
+    1: ("EC_FAIL", "generic failure"),
+    2: ("EC_NOT_IMPLEMENTED", "functionality not implemented"),
+    3: ("EC_BAD_ARGUMENT", "invalid argument"),
+    4: ("EC_INVALID_HANDLE", "invalid or closed resource handle"),
+    5: ("EC_INVALID_RESOURCE", "resource type is incompatible"),
+    6: ("EC_INVALID_CONNECTION_TYPE", "unsupported connection type"),
+    7: ("EC_INVALID_CONNECTION_ADDRESS", "connection address does not match connection type"),
+    8: ("EC_INVALID_DEVICE_ADDRESS", "device address is invalid for this connection type"),
+    9: ("EC_DEVICE_OPERATION_UNSUPPORTED", "device does not support this operation"),
+    10: ("EC_DEVICE_NOT_CONNECTED", "device disconnected during exchange"),
+    11: ("EC_DEVICE_NO_RESPOND", "device does not respond to requests"),
+    12: ("EC_DEVICE_COMM_FAILURE", "device communication failure"),
+    13: ("EC_DEVICE_PROTOCOL_FAILURE", "device protocol processing failure"),
+    14: ("EC_POLL_NO_EVENTS", "event queue is empty"),
+    15: ("EC_POLL_QUEUE_CLOSED", "event queue is closed or destroyed"),
+    16: ("EC_CALL_INIT", "device initialization required"),
+    17: ("EC_DEVICE_INVALID_COMMAND", "device command is unsupported or missing"),
+    18: ("EC_DEVICE_INVALID_PARAM", "invalid device command parameter"),
+    19: ("EC_DEVICE_INVALID_PIN", "invalid device settings PIN"),
+    20: ("EC_DEVICE_COMMAND_TIMEOUT", "device command timed out"),
+    21: ("EC_DEVICE_NO_CARD", "no card on reader"),
+    22: ("EC_DEVICE_UOWN_CARD", "device could not recognize the card"),
+    23: ("EC_DEVICE_INCOMPATIBLE_CARD", "card is incompatible with this operation"),
+    24: ("EC_DEVICE_AUTH_FAIL", "card authorization failed"),
+    25: ("EC_DEVICE_PROFILE_FAIL", "incorrect profile in use"),
+    26: ("EC_DEVICE_RW_FAIL", "card read/write authorization failed"),
+    27: ("EC_IO_OPEN_FAIL", "connection open failed"),
+    28: ("EC_IO_CLOSE_FAIL", "connection close failed"),
+    29: ("EC_IO_READ_FAIL", "data send failed"),
+    30: ("EC_IO_WRITE_FAIL", "data read failed"),
+    31: ("EC_IO_CLOSED", "operation interrupted because the connection was closed"),
+    32: ("EC_DEVICE_IN_BOOT", "device in boot mode"),
+    33: ("EC_DEVICE_FW_INVALID_MODEL", "firmware file does not match device model"),
+    34: ("EC_FILE_NOT_FOUND", "file not found"),
+    35: ("EC_FINGERPRINT_UNFOUND", "fingerprint not found"),
+}
 
 
 class _RgEndpointInfo(ctypes.Structure):
@@ -92,6 +130,8 @@ class SerialEndpointDiagnosticResult:
     endpoint_info: EndpointInfo
     open_ok: bool
     open_code: int
+    open_code_name: str
+    open_code_message: str
     status_ok: bool | None
     status_code: int | None
 
@@ -201,11 +241,14 @@ class CountOnlyRusGuardSdk:
         close_error: RusGuardSdkError | None = None
         result: SerialEndpointDiagnosticResult | None = None
         open_code = int(self._library.RG_InitDevice(ctypes.byref(endpoint), ctypes.c_uint8(_DEFAULT_DEVICE_ADDRESS)))
+        open_code_name, open_code_message = decode_api_error(open_code)
         if open_code != 0:
             return SerialEndpointDiagnosticResult(
                 endpoint_info=endpoint_info,
                 open_ok=False,
                 open_code=open_code,
+                open_code_name=open_code_name,
+                open_code_message=open_code_message,
                 status_ok=None,
                 status_code=None,
             )
@@ -229,6 +272,8 @@ class CountOnlyRusGuardSdk:
                 endpoint_info=endpoint_info,
                 open_ok=True,
                 open_code=open_code,
+                open_code_name=open_code_name,
+                open_code_message=open_code_message,
                 status_ok=status_code == 0,
                 status_code=status_code,
             )
@@ -329,7 +374,9 @@ def render_serial_open_report(report: SerialOpenDiagnosticReport) -> str:
     for result in report.serial_results:
         line = f"- index: {result.endpoint_info.index}, address: {result.endpoint_info.address}, open: "
         if not result.open_ok:
-            lines.append(f"{line}fail(code={result.open_code})")
+            lines.append(
+                f"{line}fail(code={result.open_code}, name={result.open_code_name}, message={result.open_code_message})"
+            )
             continue
         status_fragment = "ok" if result.status_ok else f"fail(code={result.status_code})"
         lines.append(f"{line}ok, status: {status_fragment}")
@@ -351,3 +398,7 @@ def _build_section(title: str, endpoint_type_mask: int, sdk: RusGuardSdkProtocol
 def _decode_ascii(value: bytes | ctypes.Array[ctypes.c_char]) -> str:
     raw = bytes(value)
     return raw.split(b"\x00", 1)[0].decode("ascii", errors="replace")
+
+
+def decode_api_error(code: int) -> tuple[str, str]:
+    return _API_ERROR_DETAILS.get(code, ("UNKNOWN_API_ERROR", "unknown RusGuard SDK error"))

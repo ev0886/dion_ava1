@@ -12,6 +12,7 @@ from app.diagnostics.rusguard_sdk import (
     EndpointInfo,
     RG_ENDPOINT_TYPE_SERIAL,
     RG_ENDPOINT_TYPE_USB_HID,
+    decode_api_error,
     render_report,
     render_serial_open_report,
     run_rusguard_sdk_enumeration_command,
@@ -104,6 +105,8 @@ def test_render_serial_open_report_shows_endpoint_probe_results() -> None:
                     endpoint_info=EndpointInfo(index=0, type=2, address="/dev/ttyUSB0", friendly_name=""),
                     open_ok=True,
                     open_code=0,
+                    open_code_name="EC_OK",
+                    open_code_message="all good",
                     status_ok=True,
                     status_code=0,
                 ),
@@ -111,6 +114,8 @@ def test_render_serial_open_report_shows_endpoint_probe_results() -> None:
                     endpoint_info=EndpointInfo(index=1, type=2, address="/dev/ttyUSB1", friendly_name=""),
                     open_ok=False,
                     open_code=27,
+                    open_code_name="EC_IO_OPEN_FAIL",
+                    open_code_message="connection open failed",
                     status_ok=None,
                     status_code=None,
                 ),
@@ -127,7 +132,7 @@ def test_render_serial_open_report_shows_endpoint_probe_results() -> None:
         "[SERIAL]\n"
         "count: 2\n"
         "- index: 0, address: /dev/ttyUSB0, open: ok, status: ok\n"
-        "- index: 1, address: /dev/ttyUSB1, open: fail(code=27)\n"
+        "- index: 1, address: /dev/ttyUSB1, open: fail(code=27, name=EC_IO_OPEN_FAIL, message=connection open failed)\n"
         "\n"
         "uninitialize ok"
     )
@@ -151,6 +156,8 @@ def test_run_serial_open_diagnostic_probes_discovered_serial_endpoints() -> None
                 endpoint_info=EndpointInfo(index=0, type=2, address="/dev/ttyUSB0", friendly_name="USB Serial Reader"),
                 open_ok=True,
                 open_code=0,
+                open_code_name="EC_OK",
+                open_code_message="all good",
                 status_ok=True,
                 status_code=0,
             ),
@@ -319,6 +326,8 @@ def test_serial_open_command_runs_real_probe_flow(monkeypatch) -> None:
                 endpoint_info=endpoint_info,
                 open_ok=endpoint_info.index == 0,
                 open_code=0 if endpoint_info.index == 0 else 27,
+                open_code_name="EC_OK" if endpoint_info.index == 0 else "EC_IO_OPEN_FAIL",
+                open_code_message="all good" if endpoint_info.index == 0 else "connection open failed",
                 status_ok=True if endpoint_info.index == 0 else None,
                 status_code=0 if endpoint_info.index == 0 else None,
             )
@@ -345,7 +354,7 @@ def test_serial_open_command_runs_real_probe_flow(monkeypatch) -> None:
         "[SERIAL]\n"
         "count: 2\n"
         "- index: 0, address: /dev/ttyUSB0, open: ok, status: ok\n"
-        "- index: 1, address: /dev/ttyUSB1, open: fail(code=27)\n"
+        "- index: 1, address: /dev/ttyUSB1, open: fail(code=27, name=EC_IO_OPEN_FAIL, message=connection open failed)\n"
         "\n"
         "uninitialize ok\n"
     )
@@ -389,9 +398,16 @@ class _FakeSdk:
             endpoint_info=endpoint_info,
             open_ok=True,
             open_code=0,
+            open_code_name="EC_OK",
+            open_code_message="all good",
             status_ok=True,
             status_code=0,
         )
+
+
+def test_decode_api_error_returns_vendor_defined_name_and_message() -> None:
+    assert decode_api_error(11) == ("EC_DEVICE_NO_RESPOND", "device does not respond to requests")
+    assert decode_api_error(999) == ("UNKNOWN_API_ERROR", "unknown RusGuard SDK error")
 
 
 def _run_cli(argv: list[str]) -> tuple[int, str, str]:
