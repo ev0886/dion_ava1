@@ -7,6 +7,7 @@ from app.hardware import (
     HardwareFailureError,
     HardwareOperationStatus,
     HardwareTimeoutError,
+    HardwareUnavailableError,
     RealRfidAdapter,
     create_hardware_bundle,
 )
@@ -64,6 +65,13 @@ def test_real_rfid_adapter_timeout_is_reported_as_safe_timeout() -> None:
 
     with pytest.raises(HardwareTimeoutError, match="timed out"):
         adapter.read_card()
+
+
+def test_real_rfid_adapter_ping_reports_sdk_transport_not_discovered_safely() -> None:
+    adapter = RealRfidAdapter(config=_rfid_config(), transport=_RaisingTransport(OSError("not discovered")))
+
+    with pytest.raises(HardwareUnavailableError, match="not discovered"):
+        adapter.ping()
 
 
 def test_real_provider_composition_still_works_with_operational_rfid_transport() -> None:

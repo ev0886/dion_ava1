@@ -10,6 +10,7 @@ from app.domain.enums import StartupReadinessStatus
 from app.hardware import (
     HardwareTimeoutError,
     RealRfidAdapter,
+    RusGuardSdkAcmTransport,
     SerialTransport,
     TcpTransport,
     create_hardware_bundle,
@@ -85,7 +86,62 @@ def test_real_provider_composition_uses_actual_transport_implementations_by_defa
 
     assert isinstance(bundle.drum_controller._transport, SerialTransport)
     assert isinstance(bundle.lock_controller._transport, TcpTransport)
-    assert isinstance(bundle.rfid_reader._transport, SerialTransport)
+    assert isinstance(bundle.rfid_reader._transport, RusGuardSdkAcmTransport)
+
+
+def test_rusguard_sdk_acm_transport_uses_exact_ttyacm0_and_status_no_mask() -> None:
+    sdk_instances: list[_FakeRusGuardSdk] = []
+
+    def sdk_factory(library_path: Path) -> _FakeRusGuardSdk:
+        sdk = _FakeRusGuardSdk(
+            library_path=library_path,
+            endpoints=(
+                _endpoint_info(index=0, address="/dev/ttyUSB0"),
+                _endpoint_info(index=1, address="/dev/ttyACM0"),
+            ),
+        )
+        sdk_instances.append(sdk)
+        return sdk
+
+    transport = RusGuardSdkAcmTransport(
+        sdk_factory=sdk_factory,
+        library_path=Path("/opt/dion_ava1/vendor/rusguard/sdk/librgsec.so"),
+    )
+
+    response = transport.request(b"PING\n")
+
+    assert response == b"PONG\n"
+    assert sdk_instances[0].calls == [
+        ("initialize",),
+        ("find_endpoint_infos", 2),
+        ("diagnose_acm_status_no_mask_endpoint", "/dev/ttyACM0"),
+        ("uninitialize",),
+    ]
+
+
+def test_rusguard_sdk_acm_transport_fails_clearly_when_ttyacm0_is_missing() -> None:
+    transport = RusGuardSdkAcmTransport(
+        sdk_factory=lambda library_path: _FakeRusGuardSdk(
+            library_path=library_path,
+            endpoints=(_endpoint_info(index=0, address="/dev/ttyUSB0"),),
+        ),
+        library_path=Path("/opt/dion_ava1/vendor/rusguard/sdk/librgsec.so"),
+    )
+
+    with pytest.raises(OSError, match="/dev/ttyACM0"):
+        transport.request(b"PING\n")
+
+
+def test_rusguard_sdk_acm_transport_rejects_unproven_operations() -> None:
+    transport = RusGuardSdkAcmTransport(
+        sdk_factory=lambda library_path: _FakeRusGuardSdk(
+            library_path=library_path,
+            endpoints=(_endpoint_info(index=0, address="/dev/ttyACM0"),),
+        )
+    )
+
+    with pytest.raises(NotImplementedError, match="supports ping only"):
+        transport.request(b"READ\n")
 
 
 def test_real_readiness_can_become_healthy_when_rfid_lock_and_drum_transports_work(
@@ -97,13 +153,12 @@ def test_real_readiness_can_become_healthy_when_rfid_lock_and_drum_transports_wo
     def fake_create_transport_client(config):
         if config is None:
             return None
-        if config.endpoint.code == "rfid-1":
-            return _FakeTransport([b"PONG\n"])
         if config.endpoint.code == "lock-1":
             return _FakeTransport([b"PONG\n"])
         return _FakeTransport([b"PONG\n"])
 
     monkeypatch.setattr(hardware_factory, "_create_transport_client", fake_create_transport_client)
+    monkeypatch.setattr(hardware_factory, "_create_rfid_transport_client", fake_create_transport_client)
 
     settings = AppSettings(
         data_dir=tmp_path,
@@ -193,6 +248,45 @@ class _FakeSocket:
         return None
 
 
+class _FakeRusGuardSdk:
+    def __init__(
+        self,
+        *,
+        library_path: Path,
+        endpoints,
+        open_code: int = 0,
+        status_code: int = 0,
+        close_code: int = 0,
+    ) -> None:
+        self.library_path = library_path
+        self._endpoints = tuple(endpoints)
+        self._open_code = open_code
+        self._status_code = status_code
+        self._close_code = close_code
+        self.calls: list[tuple[object, ...]] = []
+
+    def initialize(self) -> None:
+        self.calls.append(("initialize",))
+
+    def find_endpoint_infos(self, endpoint_type_mask: int):
+        self.calls.append(("find_endpoint_infos", endpoint_type_mask))
+        return self._endpoints
+
+    def diagnose_acm_status_no_mask_endpoint(self, endpoint_info):
+        from app.diagnostics.rusguard_sdk import AcmStatusNoMaskDiagnosticResult, OperationResult
+
+        self.calls.append(("diagnose_acm_status_no_mask_endpoint", endpoint_info.address))
+        return AcmStatusNoMaskDiagnosticResult(
+            endpoint_info=endpoint_info,
+            open_result=_operation_result(self._open_code),
+            status_result=_operation_result(self._status_code) if self._open_code == 0 else None,
+            close_result=_operation_result(self._close_code) if self._open_code == 0 else None,
+        )
+
+    def uninitialize(self) -> None:
+        self.calls.append(("uninitialize",))
+
+
 def _rfid_config():
     from app.hardware.transport_config import HardwareEndpointTransportConfig
 
@@ -242,3 +336,16 @@ def _tcp_endpoint_config(*, code: str, driver_name: str, host: str, port: int) -
             "port": port,
         },
     }
+
+
+def _endpoint_info(*, index: int, address: str):
+    from app.diagnostics.rusguard_sdk import EndpointInfo
+
+    return EndpointInfo(index=index, type=2, address=address, friendly_name="RusGuard Reader")
+
+
+def _operation_result(code: int):
+    from app.diagnostics.rusguard_sdk import OperationResult, decode_api_error
+
+    code_name, code_message = decode_api_error(code)
+    return OperationResult(ok=code == 0, code=code, code_name=code_name, code_message=code_message)

@@ -33,6 +33,7 @@ def test_startup_readiness_smoke_with_real_provider_and_fake_transports(
     from app.hardware import factory as hardware_factory
 
     monkeypatch.setattr(hardware_factory, "_create_transport_client", _fake_transport_client)
+    monkeypatch.setattr(hardware_factory, "_create_rfid_transport_client", _fake_transport_client)
 
     container = create_bootstrapped_application_container(_real_settings(tmp_path, "smoke_real.sqlite3"))
     try:
@@ -52,6 +53,7 @@ def test_api_readiness_smoke_with_composed_real_provider(
     from app.hardware import factory as hardware_factory
 
     monkeypatch.setattr(hardware_factory, "_create_transport_client", _fake_transport_client)
+    monkeypatch.setattr(hardware_factory, "_create_rfid_transport_client", _fake_transport_client)
     app = create_app(_real_settings(tmp_path, "smoke_api_real.sqlite3"))
 
     with TestClient(app) as client:
@@ -69,6 +71,7 @@ def test_cli_hardware_health_smoke_with_composed_real_provider(
     from app.hardware import factory as hardware_factory
 
     monkeypatch.setattr(hardware_factory, "_create_transport_client", _fake_transport_client)
+    monkeypatch.setattr(hardware_factory, "_create_rfid_transport_client", _fake_transport_client)
     settings = _real_settings(tmp_path, "smoke_cli_real.sqlite3")
     monkeypatch.setattr(
         cli_module,

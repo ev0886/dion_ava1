@@ -16,6 +16,7 @@ from app.hardware.lock_real import RealLockAdapter
 from app.hardware.lock_stub_real import StubRealLockAdapter
 from app.hardware.rfid_mock import MockRfidAdapter
 from app.hardware.rfid_real import RealRfidAdapter
+from app.hardware.rusguard_sdk_transport import RusGuardSdkAcmTransport
 from app.hardware.rfid_stub_real import StubRealRfidAdapter
 from app.hardware.transport_config import HardwareEndpointTransportConfig
 from app.hardware.transports import (
@@ -95,7 +96,7 @@ def _build_real_hardware(
     )
     rfid_reader = RealRfidAdapter(
         config=rfid_config.config,
-        transport=transport_overrides.get("rfid_reader") or _create_transport_client(rfid_config.config),
+        transport=transport_overrides.get("rfid_reader") or _create_rfid_transport_client(rfid_config.config),
         config_error=rfid_config.error_message,
     )
     return _bundle_from_parts(provider, drum_controller=drum_controller, lock_controller=lock_controller, rfid_reader=rfid_reader)
@@ -146,3 +147,13 @@ def _create_transport_client(
     if config.transport.transport == "serial":
         return SerialTransport(settings=config.transport, timeouts=config.endpoint.timeouts)
     return TcpTransport(settings=config.transport, timeouts=config.endpoint.timeouts)
+
+
+def _create_rfid_transport_client(
+    config: HardwareEndpointTransportConfig | None,
+) -> SerialRequestResponseTransport | TcpRequestResponseTransport | None:
+    if config is None:
+        return None
+    if config.transport.transport == "serial":
+        return RusGuardSdkAcmTransport()
+    return _create_transport_client(config)
