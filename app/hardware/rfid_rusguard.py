@@ -11,10 +11,13 @@ from app.hardware.transport_config import EndpointTimeoutSettings, RfidSerialTra
 class RfidStatusTransport(Protocol):
     def ping(self, *, timeout_ms: int | None = None) -> None: ...
 
+    def read_card(self, *, timeout_ms: int | None = None) -> bytes | None: ...
+
 
 class RusGuardAcmStatusTransport:
     _ENDPOINT_TYPE_SERIAL: Final[int] = 0x02
     _DEVICE_ADDRESS: Final[int] = 0
+    _STATUS_NO_CARD: Final[int] = 0x01
     _LIBRARY_CANDIDATES: Final[tuple[str, ...]] = (
         "rg",
         "rusguard",
@@ -84,6 +87,59 @@ class RusGuardAcmStatusTransport:
             if initialized:
                 _check_sdk_error(sdk.RG_Uninitialize(), "RG_Uninitialize")
 
+    def read_card(self, *, timeout_ms: int | None = None) -> bytes | None:
+        del timeout_ms
+        sdk = self._sdk_loader(self._settings.sdk_library)
+        endpoint_list_handle = ctypes.c_void_p()
+        endpoint_count = ctypes.c_uint32()
+        initialized = False
+        endpoint = None
+        try:
+            _check_sdk_error(sdk.RG_InitializeLib(), "RG_InitializeLib")
+            initialized = True
+            _check_sdk_error(
+                sdk.RG_FindEndPoints(
+                    ctypes.byref(endpoint_list_handle),
+                    self._ENDPOINT_TYPE_SERIAL,
+                    ctypes.byref(endpoint_count),
+                ),
+                "RG_FindEndPoints",
+            )
+            endpoint = _select_serial_endpoint(
+                sdk=sdk,
+                endpoint_list_handle=endpoint_list_handle,
+                endpoint_count=endpoint_count.value,
+                port=self._settings.port,
+            )
+            _check_sdk_error(sdk.RG_InitDevice(ctypes.byref(endpoint), self._DEVICE_ADDRESS), "RG_InitDevice")
+            try:
+                status_type = ctypes.c_uint8()
+                card_info = _RgCardInfo()
+                _check_sdk_error(
+                    sdk.RG_GetStatus(
+                        ctypes.byref(endpoint),
+                        self._DEVICE_ADDRESS,
+                        ctypes.byref(status_type),
+                        None,
+                        ctypes.byref(card_info),
+                        None,
+                    ),
+                    "RG_GetStatus",
+                )
+                if status_type.value == self._STATUS_NO_CARD:
+                    return None
+                return bytes(card_info.uid)
+            finally:
+                _check_sdk_error(
+                    sdk.RG_CloseDevice(ctypes.byref(endpoint), self._DEVICE_ADDRESS),
+                    "RG_CloseDevice",
+                )
+        finally:
+            if endpoint_list_handle.value:
+                _check_sdk_error(sdk.RG_CloseResource(endpoint_list_handle), "RG_CloseResource")
+            if initialized:
+                _check_sdk_error(sdk.RG_Uninitialize(), "RG_Uninitialize")
+
 
 class _RgEndpoint(ctypes.Structure):
     _pack_ = 1
@@ -99,6 +155,14 @@ class _RgEndpointInfo(ctypes.Structure):
         ("type", ctypes.c_uint8),
         ("address", ctypes.c_char * 64),
         ("friendly_name", ctypes.c_char * 128),
+    ]
+
+
+class _RgCardInfo(ctypes.Structure):
+    _pack_ = 1
+    _fields_ = [
+        ("type", ctypes.c_uint8),
+        ("uid", ctypes.c_uint8 * 7),
     ]
 
 
