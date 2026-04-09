@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+from collections.abc import Sequence
+
 import pytest
 
+import app.application.auth_service as auth_service_module
 from app.application.auth_service import AuthService
 from app.application.dto.auth import AuthRequest
 from app.application.exceptions import AuthorizationError, NotFoundError
@@ -31,11 +34,28 @@ class _FakeUserRepository:
 
 
 class _FakeHardwareFacade:
-    def __init__(self, result: RfidReadResult) -> None:
-        self.result = result
+    def __init__(self, result: RfidReadResult | Sequence[RfidReadResult]) -> None:
+        if isinstance(result, Sequence):
+            self.results = list(result)
+        else:
+            self.results = [result]
+        self.read_count = 0
 
     def read_rfid_card(self) -> RfidReadResult:
-        return self.result
+        index = min(self.read_count, len(self.results) - 1)
+        self.read_count += 1
+        return self.results[index]
+
+
+class _FakeClock:
+    def __init__(self) -> None:
+        self.value = 0.0
+
+    def monotonic(self) -> float:
+        return self.value
+
+    def sleep(self, seconds: float) -> None:
+        self.value += seconds
 
 
 def _build_user(*, status: UserStatus, is_active: bool) -> User:
@@ -101,3 +121,62 @@ def test_auth_read_and_resolve_rfid_rejects_unassigned_card() -> None:
             ),
             allowed_roles=(RoleCode.USER,),
         )
+
+
+def test_auth_read_and_resolve_rfid_retries_until_full_uid_within_window(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    user = _build_user(status=UserStatus.ACTIVE, is_active=True)
+    service = AuthService(_FakeUserRepository(user))
+    hardware = _FakeHardwareFacade(
+        [
+            RfidReadResult(
+                device_type=HardwareEndpointType.RFID_READER,
+                status=HardwareOperationStatus.NO_CARD,
+                ok=True,
+                uid=None,
+                is_duplicate=False,
+                message="Ignoring transient partial RFID read (2/7 bytes).",
+            ),
+            RfidReadResult(
+                device_type=HardwareEndpointType.RFID_READER,
+                status=HardwareOperationStatus.SUCCESS,
+                ok=True,
+                uid="000FE2767C0045",
+                is_duplicate=False,
+            ),
+        ]
+    )
+    clock = _FakeClock()
+    monkeypatch.setattr(auth_service_module.time, "monotonic", clock.monotonic)
+    monkeypatch.setattr(auth_service_module.time, "sleep", clock.sleep)
+
+    result = service.read_and_resolve_rfid(hardware_facade=hardware)
+
+    assert result.rfid_uid == "000FE2767C0045"
+    assert hardware.read_count == 2
+
+
+def test_auth_read_and_resolve_rfid_returns_clean_failure_after_poll_window_expires(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    user = _build_user(status=UserStatus.ACTIVE, is_active=True)
+    service = AuthService(_FakeUserRepository(user))
+    hardware = _FakeHardwareFacade(
+        RfidReadResult(
+            device_type=HardwareEndpointType.RFID_READER,
+            status=HardwareOperationStatus.NO_CARD,
+            ok=True,
+            uid=None,
+            is_duplicate=False,
+            message="Ignoring transient partial RFID read (2/7 bytes).",
+        )
+    )
+    clock = _FakeClock()
+    monkeypatch.setattr(auth_service_module.time, "monotonic", clock.monotonic)
+    monkeypatch.setattr(auth_service_module.time, "sleep", clock.sleep)
+
+    with pytest.raises(AuthorizationError, match="authorization window"):
+        service.read_and_resolve_rfid(hardware_facade=hardware)
+
+    assert hardware.read_count == 31

@@ -7,7 +7,9 @@ from fastapi.testclient import TestClient
 
 from app.api import create_app
 from app.config import AppSettings, HardwareProvider
+from app.domain.enums import HardwareEndpointType
 from app.hardware import HardwareFacade, LockState, MockDrumAdapter, MockLockAdapter, MockRfidAdapter
+from app.hardware.dto import HardwareOperationStatus, RfidReadResult
 from app.hardware.factory import HardwareBundle
 from app.domain.enums import BindingType, ItemStatus, OperationState, RoleCode, SlotStatus, SlotType, UserStatus
 from app.persistence.models import (
@@ -94,6 +96,59 @@ def test_auth_read_and_resolve_rfid_happy_path(tmp_path: Path, monkeypatch: pyte
             "role_code": "user",
         },
     }
+
+
+def test_auth_read_and_resolve_rfid_api_retries_past_partial_read(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    app = create_app(_settings(tmp_path, "api_auth_rfid_retry.sqlite3"))
+    _seed_base_domain(app)
+
+    class _PartialThenFullRfidReader:
+        def __init__(self) -> None:
+            self.reads = [
+                (None, False, "Ignoring transient partial RFID read (2/7 bytes)."),
+                ("000FE2767C0045", False, None),
+            ]
+            self.index = 0
+
+        def ping(self):
+            raise NotImplementedError
+
+        def read_card(self):
+            uid, is_duplicate, message = self.reads[min(self.index, len(self.reads) - 1)]
+            self.index += 1
+            return RfidReadResult(
+                device_type=HardwareEndpointType.RFID_READER,
+                status=HardwareOperationStatus.NO_CARD if uid is None else HardwareOperationStatus.SUCCESS,
+                ok=True,
+                uid=uid,
+                is_duplicate=is_duplicate,
+                message=message,
+            )
+
+        def clear_buffer(self):
+            raise NotImplementedError
+
+    rfid_reader = _PartialThenFullRfidReader()
+    hardware_bundle = HardwareBundle(
+        provider=HardwareProvider.MOCK,
+        drum_controller=MockDrumAdapter(),
+        lock_controller=MockLockAdapter(lock_states={(1, 1): LockState.LOCKED}),
+        rfid_reader=rfid_reader,
+        facade=HardwareFacade(
+            drum_controller=MockDrumAdapter(),
+            lock_controller=MockLockAdapter(lock_states={(1, 1): LockState.LOCKED}),
+            rfid_reader=rfid_reader,
+        ),
+    )
+    monkeypatch.setattr("app.application.composition.create_hardware_bundle", lambda _settings: hardware_bundle)
+
+    with TestClient(app) as client:
+        response = client.post("/auth/read-and-resolve-rfid", json={})
+
+    assert response.status_code == 200
+    assert response.json()["rfid_uid"] == "000FE2767C0045"
 
 
 

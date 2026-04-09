@@ -1,14 +1,20 @@
 from __future__ import annotations
 
+import time
+
 from app.application.dto.auth import AuthRequest, AuthenticatedUserDTO, RfidResolvedUserDTO
 from app.application.exceptions import AuthorizationError, NotFoundError, ValidationError
 from app.domain.enums import RoleCode, UserStatus
 from app.hardware import HardwareFacade
+from app.hardware.dto import HardwareOperationStatus, RfidReadResult
 from app.persistence.models import Role, User
 from app.persistence.repositories.users import UserRepository
 
 
 class AuthService:
+    _RFID_AUTH_WINDOW_SECONDS = 1.5
+    _RFID_POLL_INTERVAL_SECONDS = 0.05
+
     def __init__(self, user_repository: UserRepository) -> None:
         self.user_repository = user_repository
 
@@ -42,7 +48,7 @@ class AuthService:
         hardware_facade: HardwareFacade,
         allowed_roles: tuple[RoleCode, ...] = (),
     ) -> RfidResolvedUserDTO:
-        read_result = hardware_facade.read_rfid_card()
+        read_result = self._read_rfid_for_authorization(hardware_facade)
         if read_result.uid is None:
             raise AuthorizationError(read_result.message or "No valid RFID card present")
 
@@ -60,6 +66,25 @@ class AuthService:
             is_duplicate=read_result.is_duplicate,
             user=self._to_dto(user, role_code),
         )
+
+    def _read_rfid_for_authorization(self, hardware_facade: HardwareFacade) -> RfidReadResult:
+        deadline = time.monotonic() + self._RFID_AUTH_WINDOW_SECONDS
+        while True:
+            read_result = hardware_facade.read_rfid_card()
+            if read_result.uid is not None:
+                return read_result
+
+            remaining_window_seconds = deadline - time.monotonic()
+            if remaining_window_seconds <= 0:
+                return RfidReadResult(
+                    device_type=read_result.device_type,
+                    status=HardwareOperationStatus.NO_CARD,
+                    ok=True,
+                    uid=None,
+                    is_duplicate=False,
+                    message="No valid RFID card presented within authorization window",
+                )
+            time.sleep(min(self._RFID_POLL_INTERVAL_SECONDS, remaining_window_seconds))
 
     def _load_user(self, request: AuthRequest) -> User:
         if request.user_id is None and request.user_code is None:
