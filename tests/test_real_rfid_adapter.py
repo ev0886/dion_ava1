@@ -6,14 +6,14 @@ import pytest
 
 from app.config import AppSettings, HardwareProvider
 from app.hardware import (
-    HardwareProtocolNotImplementedError,
     HardwareOperationStatus,
     HardwareTimeoutError,
+    HardwareUnavailableError,
     RealRfidAdapter,
     RusGuardAcmStatusTransport,
     create_hardware_bundle,
 )
-from app.hardware.rfid_rusguard import _RgEndpointInfo
+from app.hardware.rfid_rusguard import RusGuardCardRead, RusGuardGetCardDiagnostic, _RgEndpointInfo
 
 
 def test_real_rfid_adapter_ping_success_with_fake_status_transport() -> None:
@@ -26,18 +26,107 @@ def test_real_rfid_adapter_ping_success_with_fake_status_transport() -> None:
     assert adapter._transport.ping_calls == [1000]
 
 
-def test_real_rfid_adapter_read_card_is_intentionally_not_implemented_in_real_provider() -> None:
-    adapter = RealRfidAdapter(config=_rfid_config(), transport=_FakeStatusTransport())
+def test_real_rfid_adapter_read_card_returns_uid_and_duplicate_state() -> None:
+    adapter = RealRfidAdapter(
+        config=_rfid_config(),
+        transport=_FakeStatusTransport(
+            reads=[
+                RusGuardCardRead(status_type=9, uid="0123456789abcd", uid_size=7),
+                RusGuardCardRead(status_type=9, uid="0123456789ABCD", uid_size=7),
+            ]
+        ),
+    )
 
-    with pytest.raises(HardwareProtocolNotImplementedError, match="UID read is intentionally not implemented"):
-        adapter.read_card()
+    first = adapter.read_card()
+    second = adapter.read_card()
+
+    assert first.ok is True
+    assert first.status is HardwareOperationStatus.SUCCESS
+    assert first.uid == "0123456789ABCD"
+    assert first.is_duplicate is False
+    assert second.ok is True
+    assert second.status is HardwareOperationStatus.SUCCESS
+    assert second.uid == "0123456789ABCD"
+    assert second.is_duplicate is True
 
 
-def test_real_rfid_adapter_clear_buffer_is_intentionally_not_implemented_in_real_provider() -> None:
-    adapter = RealRfidAdapter(config=_rfid_config(), transport=_FakeStatusTransport())
+def test_real_rfid_adapter_treats_partial_uid_read_as_no_card() -> None:
+    adapter = RealRfidAdapter(
+        config=_rfid_config(),
+        transport=_FakeStatusTransport(
+            reads=[
+                RusGuardCardRead(status_type=9, uid="000F", uid_size=2),
+                RusGuardCardRead(status_type=9, uid="000FE2767C0045", uid_size=7),
+            ]
+        ),
+    )
 
-    with pytest.raises(HardwareProtocolNotImplementedError, match="buffer clear is intentionally not implemented"):
-        adapter.clear_buffer()
+    partial = adapter.read_card()
+    full = adapter.read_card()
+
+    assert partial.status is HardwareOperationStatus.NO_CARD
+    assert partial.uid is None
+    assert partial.is_duplicate is False
+    assert partial.message == "Ignoring transient partial RFID read (2/7 bytes)."
+    assert full.status is HardwareOperationStatus.SUCCESS
+    assert full.uid == "000FE2767C0045"
+    assert full.is_duplicate is False
+
+
+def test_real_rfid_adapter_zero_length_uid_read_reports_no_card() -> None:
+    adapter = RealRfidAdapter(
+        config=_rfid_config(),
+        transport=_FakeStatusTransport(reads=[RusGuardCardRead(status_type=9, uid=None, uid_size=0)]),
+    )
+
+    result = adapter.read_card()
+
+    assert result.status is HardwareOperationStatus.NO_CARD
+    assert result.uid is None
+    assert result.is_duplicate is False
+    assert result.message == "No valid RFID card present (HEX_UPPERCASE)"
+
+
+def test_real_rfid_adapter_no_card_resets_duplicate_state() -> None:
+    adapter = RealRfidAdapter(
+        config=_rfid_config(),
+        transport=_FakeStatusTransport(
+            reads=[
+                RusGuardCardRead(status_type=9, uid="0123456789ABCD", uid_size=7),
+                RusGuardCardRead(status_type=1, uid=None, uid_size=0),
+                RusGuardCardRead(status_type=9, uid="0123456789ABCD", uid_size=7),
+            ]
+        ),
+    )
+
+    first = adapter.read_card()
+    empty = adapter.read_card()
+    third = adapter.read_card()
+
+    assert first.is_duplicate is False
+    assert empty.status is HardwareOperationStatus.NO_CARD
+    assert empty.uid is None
+    assert empty.is_duplicate is False
+    assert third.status is HardwareOperationStatus.SUCCESS
+    assert third.uid == "0123456789ABCD"
+    assert third.is_duplicate is False
+
+
+def test_real_rfid_adapter_clear_buffer_resets_duplicate_state() -> None:
+    transport = _FakeStatusTransport(
+        reads=[
+            RusGuardCardRead(status_type=9, uid="0123456789ABCD", uid_size=7),
+            RusGuardCardRead(status_type=9, uid="0123456789ABCD", uid_size=7),
+        ]
+    )
+    adapter = RealRfidAdapter(config=_rfid_config(), transport=transport)
+
+    adapter.read_card()
+    cleared = adapter.clear_buffer()
+    reread = adapter.read_card()
+
+    assert cleared.ok is True
+    assert reread.is_duplicate is False
 
 
 def test_real_rfid_adapter_timeout_is_reported_as_safe_timeout() -> None:
@@ -45,6 +134,13 @@ def test_real_rfid_adapter_timeout_is_reported_as_safe_timeout() -> None:
 
     with pytest.raises(HardwareTimeoutError, match="timed out"):
         adapter.ping()
+
+
+def test_real_rfid_adapter_rfid_os_error_is_reported_as_safe_unavailable() -> None:
+    adapter = RealRfidAdapter(config=_rfid_config(), transport=_RaisingTransport(OSError("sdk error 12")))
+
+    with pytest.raises(HardwareUnavailableError, match="sdk error 12"):
+        adapter.read_card()
 
 
 def test_real_provider_composition_accepts_minimal_rfid_config_and_operational_status_transport() -> None:
@@ -92,12 +188,74 @@ def test_rusguard_acm_status_transport_uses_proven_status_sequence_on_selected_s
     ]
 
 
+def test_rusguard_acm_status_transport_uses_getcard_for_main_read_flow() -> None:
+    sdk = _FakeRusGuardSdk(
+        endpoints=["/dev/ttyUSB0", "/dev/ttyACM0"],
+        status_type=9,
+        uid=b"\x00\x0F\xE2\x76\x7C\x00\x45",
+    )
+    transport = RusGuardAcmStatusTransport(
+        settings=_rfid_config().transport,
+        timeouts=_rfid_config().endpoint.timeouts,
+        sdk_loader=lambda _override: sdk,
+    )
+
+    result = transport.read_card()
+
+    assert result == RusGuardCardRead(status_type=9, uid="000FE2767C0045", uid_size=7)
+    assert sdk.calls == [
+        "RG_InitializeLib",
+        ("RG_FindEndPoints", 2),
+        ("RG_GetFoundEndPointInfo", 0),
+        ("RG_GetFoundEndPointInfo", 1),
+        ("RG_InitDevice", "/dev/ttyACM0", 0),
+        ("RG_GetCard", "/dev/ttyACM0", 0, 64),
+        ("RG_CloseDevice", "/dev/ttyACM0", 0),
+        ("RG_CloseResource", 1234),
+        "RG_Uninitialize",
+    ]
+
+
+def test_rusguard_acm_status_transport_exposes_partial_getcard_read_without_promoting_it() -> None:
+    sdk = _FakeRusGuardSdk(endpoints=["/dev/ttyACM0"], status_type=9, uid=b"\x00\x0F")
+    transport = RusGuardAcmStatusTransport(
+        settings=_rfid_config().transport,
+        timeouts=_rfid_config().endpoint.timeouts,
+        sdk_loader=lambda _override: sdk,
+    )
+
+    result = transport.read_card()
+
+    assert result == RusGuardCardRead(status_type=9, uid="000F", uid_size=2)
+
+
+def test_rusguard_acm_status_transport_diagnostic_get_card_reports_no_card_when_uid_size_is_zero() -> None:
+    sdk = _FakeRusGuardSdk(endpoints=["/dev/ttyACM0"], status_type=1, uid=b"")
+    transport = RusGuardAcmStatusTransport(
+        settings=_rfid_config().transport,
+        timeouts=_rfid_config().endpoint.timeouts,
+        sdk_loader=lambda _override: sdk,
+    )
+
+    result = transport.diagnostic_get_card()
+
+    assert result == RusGuardGetCardDiagnostic(status_type=1, uid=None, uid_size=0)
+
+
 class _FakeStatusTransport:
-    def __init__(self) -> None:
+    def __init__(self, *, reads: list[RusGuardCardRead] | None = None) -> None:
         self.ping_calls: list[int | None] = []
+        self.read_calls: list[int | None] = []
+        self._reads = list(reads or [])
 
     def ping(self, *, timeout_ms: int | None = None) -> None:
         self.ping_calls.append(timeout_ms)
+
+    def read_card(self, *, timeout_ms: int | None = None) -> RusGuardCardRead:
+        self.read_calls.append(timeout_ms)
+        if not self._reads:
+            return RusGuardCardRead(status_type=1, uid=None, uid_size=0)
+        return self._reads.pop(0)
 
 
 class _RaisingTransport:
@@ -107,10 +265,15 @@ class _RaisingTransport:
     def ping(self, *, timeout_ms: int | None = None) -> None:
         raise self._error
 
+    def read_card(self, *, timeout_ms: int | None = None) -> RusGuardCardRead:
+        raise self._error
+
 
 class _FakeRusGuardSdk:
-    def __init__(self, *, endpoints: list[str]) -> None:
+    def __init__(self, *, endpoints: list[str], status_type: int = 1, uid: bytes = b"") -> None:
         self._endpoints = endpoints
+        self._status_type = status_type
+        self._uid = uid
         self.calls: list[object] = []
 
     def RG_InitializeLib(self) -> int:
@@ -136,7 +299,17 @@ class _FakeRusGuardSdk:
         return 0
 
     def RG_GetStatus(self, endpoint_ptr, address: int, *_args) -> int:
+        status_type_ptr = _args[0]
         self.calls.append(("RG_GetStatus", _endpoint_address(endpoint_ptr), address))
+        _set_pointer_value(status_type_ptr, ctypes.c_uint8, self._status_type)
+        return 0
+
+    def RG_GetCard(self, endpoint_ptr, address: int, status_type_ptr, uid_buffer, uid_buffer_size: int, uid_size_ptr) -> int:
+        self.calls.append(("RG_GetCard", _endpoint_address(endpoint_ptr), address, uid_buffer_size))
+        _set_pointer_value(status_type_ptr, ctypes.c_uint8, self._status_type)
+        _set_pointer_value(uid_size_ptr, ctypes.c_int32, len(self._uid))
+        for index, value in enumerate(self._uid):
+            uid_buffer[index] = value
         return 0
 
     def RG_CloseDevice(self, endpoint_ptr, address: int) -> int:
