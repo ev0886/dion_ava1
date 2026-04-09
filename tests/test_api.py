@@ -54,9 +54,6 @@ def test_ui_mvp_page_serves_configured_dispense_flow(tmp_path: Path) -> None:
             data_dir=tmp_path,
             sqlite_filename="api_ui_mvp.sqlite3",
             alembic_config_path=Path("alembic.ini"),
-            ui_mvp_dispense_slot_id=7,
-            ui_mvp_dispense_item_id=9,
-            ui_mvp_dispense_quantity=2,
         )
     )
 
@@ -65,10 +62,8 @@ def test_ui_mvp_page_serves_configured_dispense_flow(tmp_path: Path) -> None:
 
     assert response.status_code == 200
     assert "Start RFID Scan" in response.text
-    assert '"slot_id": 7' in response.text
-    assert '"item_id": 9' in response.text
-    assert '"quantity": 2' in response.text
-    assert '"/inventory/7/9"' in response.text
+    assert '"/inventory/available-dispense-options"' in response.text
+    assert '"dispenseQuantity": 1' in response.text
     assert '"autoResetTimeoutMs": 15000' in response.text
 
 
@@ -95,6 +90,34 @@ def test_auth_and_inventory_happy_path(tmp_path: Path) -> None:
     assert auth_response.json()["user_code"] == "user-1"
     assert inventory_response.status_code == 200
     assert inventory_response.json()["balance"]["quantity"] == 5
+
+
+def test_available_dispense_options_endpoint_returns_stocked_active_options(tmp_path: Path) -> None:
+    app = create_app(_settings(tmp_path, "api_available_dispense.sqlite3"))
+    _seed_base_domain(app)
+
+    with TestClient(app) as client:
+        response = client.get("/inventory/available-dispense-options")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload == {
+        "options": [
+            {
+                "slot_id": 1,
+                "item_id": 1,
+                "quantity": 5,
+                "updated_at": payload["options"][0]["updated_at"],
+                "slot_code": "slot-1",
+                "drum_position": 3,
+                "board_address": 1,
+                "lock_number": 1,
+                "item_sku": "item-1",
+                "item_name": "Item One",
+                "item_unit": "pcs",
+            }
+        ]
+    }
 
 
 def test_auth_read_and_resolve_rfid_happy_path(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -200,6 +223,25 @@ def test_dispense_operation_happy_path(tmp_path: Path) -> None:
     assert response.status_code == 200
     assert response.json()["operation_state"] == "completed"
     assert response.json()["qty_confirmed"] == 1
+
+
+def test_dispense_operation_rejects_inactive_slot_item_path(tmp_path: Path) -> None:
+    app = create_app(_settings(tmp_path, "api_dispense_inactive_path.sqlite3"))
+    _seed_base_domain(app)
+    with app.state.session_factory() as session:
+        binding = session.query(SlotItemBinding).filter_by(slot_id=1, item_id=1).one()
+        assert binding is not None
+        binding.is_active = False
+        session.commit()
+
+    with TestClient(app) as client:
+        response = client.post(
+            "/operations/dispense",
+            json={"user_id": 1, "item_id": 1, "slot_id": 1, "quantity": 1},
+        )
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "Slot/item path is not active for dispense"
 
 
 def test_real_dispense_realigns_stale_slot_board_address_before_unlock(

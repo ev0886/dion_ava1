@@ -30,3 +30,23 @@ class InventoryLookupResult:
     item_id: int
     balance: InventoryBalanceDTO | None
     bindings: tuple[SlotBindingDTO, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class AvailableDispenseOptionDTO:
+    slot_id: int
+    item_id: int
+    quantity: int
+    updated_at: datetime | None
+    slot_code: str
+    drum_position: int
+    board_address: int
+    lock_number: int
+    item_sku: str
+    item_name: str
+    item_unit: str
+
+
+@dataclass(frozen=True, slots=True)
+class AvailableDispenseOptionsResult:
+    options: tuple[AvailableDispenseOptionDTO, ...]

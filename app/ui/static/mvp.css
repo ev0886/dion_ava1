@@ -218,6 +218,11 @@ body {
   gap: 0.75rem;
 }
 
+.option-section {
+  display: grid;
+  gap: 0.55rem;
+}
+
 .user-card {
   min-height: 0;
   padding: 0.85rem;
@@ -231,7 +236,8 @@ body {
   align-items: center;
 }
 
-.user-placeholder {
+.user-placeholder,
+.options-empty-state {
   margin: 0;
   font-size: 1rem;
   color: var(--muted);
@@ -255,6 +261,49 @@ body {
   font-size: 1rem;
   font-weight: 700;
   overflow-wrap: anywhere;
+}
+
+.dispense-options {
+  min-height: 0;
+  max-height: 16rem;
+  display: grid;
+  gap: 0.55rem;
+  overflow-y: auto;
+  padding-right: 0.2rem;
+}
+
+.option-button {
+  width: 100%;
+  padding: 0.8rem 0.85rem;
+  border: 1px solid var(--border);
+  border-radius: 0.95rem;
+  background: #fffdf8;
+  text-align: left;
+  cursor: pointer;
+  display: grid;
+  gap: 0.14rem;
+}
+
+.option-button:hover,
+.option-button:focus-visible {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px rgba(15, 106, 89, 0.12);
+  outline: none;
+}
+
+.option-selected {
+  border-color: var(--accent);
+  background: #e7f2ee;
+}
+
+.option-title {
+  font-size: 1.02rem;
+  font-weight: 800;
+}
+
+.option-meta {
+  font-size: 0.82rem;
+  color: var(--muted);
 }
 
 #dispense-button {

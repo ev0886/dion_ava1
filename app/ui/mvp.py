@@ -16,13 +16,9 @@ def render_mvp_page(settings: AppSettings) -> HTMLResponse:
     ui_config = {
         "authEndpoint": "/auth/read-and-resolve-rfid",
         "dispenseEndpoint": "/operations/dispense",
-        "inventoryEndpoint": f"/inventory/{settings.ui_mvp_dispense_slot_id}/{settings.ui_mvp_dispense_item_id}",
+        "optionsEndpoint": "/inventory/available-dispense-options",
         "autoResetTimeoutMs": 15000,
-        "dispenseRequest": {
-            "slot_id": settings.ui_mvp_dispense_slot_id,
-            "item_id": settings.ui_mvp_dispense_item_id,
-            "quantity": settings.ui_mvp_dispense_quantity,
-        },
+        "dispenseQuantity": 1,
     }
     return HTMLResponse(
         template.replace(

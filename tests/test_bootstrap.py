@@ -86,8 +86,12 @@ def test_bootstrap_realigns_real_slot_board_address_to_lock_controller_config(tm
     try:
         with Session(verify_engine) as session:
             slot = session.execute(select(Slot).where(Slot.code == "slot-1")).scalar_one()
+            slots = session.execute(select(Slot)).scalars().all()
             assert slot.board_address == 0
             assert slot.lock_number == 1
+            assert len(slots) == 32 * 15
+            assert any(candidate.drum_position == 0 and candidate.lock_number == 1 for candidate in slots)
+            assert any(candidate.drum_position == 31 and candidate.lock_number == 15 for candidate in slots)
     finally:
         verify_engine.dispose()
 

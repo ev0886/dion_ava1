@@ -15,11 +15,11 @@
       </div>
       <div class="topbar-meta">
         <div class="meta-chip">
-          <span class="meta-label">Target</span>
-          <strong id="dispense-target">Loading...</strong>
+          <span class="meta-label">Selected</span>
+          <strong id="dispense-target">Pick an item</strong>
         </div>
         <div class="meta-chip">
-          <span class="meta-label">Stock</span>
+          <span class="meta-label">Options</span>
           <strong id="inventory-quantity">Loading...</strong>
         </div>
       </div>
@@ -52,7 +52,7 @@
 
       <section class="card user-section">
         <div class="section-heading">
-          <h2>Authorized User</h2>
+          <h2>Dispense Session</h2>
           <span id="user-state-pill" class="state-pill">Waiting</span>
         </div>
         <div id="user-card" class="user-card user-card-empty">
@@ -80,8 +80,16 @@
             </div>
           </dl>
         </div>
+        <div class="option-section">
+          <div class="section-heading">
+            <h2>In-Stock Items</h2>
+            <span id="option-count-pill" class="state-pill">0 ready</span>
+          </div>
+          <p id="options-empty-state" class="options-empty-state">Loading available inventory.</p>
+          <div id="dispense-options" class="dispense-options" aria-label="Available dispense options"></div>
+        </div>
         <button id="dispense-button" class="action-button action-button-primary" type="button" disabled>
-          Dispense Item
+          Dispense Selected Item
         </button>
       </section>
 

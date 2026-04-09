@@ -1,5 +1,11 @@
 from app.application.dto.auth import AuthRequest, AuthenticatedUserDTO
-from app.application.dto.inventory import InventoryBalanceDTO, InventoryLookupResult, SlotBindingDTO
+from app.application.dto.inventory import (
+    AvailableDispenseOptionDTO,
+    AvailableDispenseOptionsResult,
+    InventoryBalanceDTO,
+    InventoryLookupResult,
+    SlotBindingDTO,
+)
 from app.application.dto.operations import (
     CreateOperationCommand,
     CreateOperationSessionCommand,
@@ -56,6 +62,8 @@ __all__ = [
     "ExportPreparationResultDTO",
     "HardwareReadinessDTO",
     "HardwareReadinessEntryDTO",
+    "AvailableDispenseOptionDTO",
+    "AvailableDispenseOptionsResult",
     "InventoryBalanceDTO",
     "InventoryLookupResult",
     "OperationContextDTO",

@@ -2,7 +2,13 @@ from __future__ import annotations
 
 from sqlalchemy import select
 
-from app.application.dto.inventory import InventoryBalanceDTO, InventoryLookupResult, SlotBindingDTO
+from app.application.dto.inventory import (
+    AvailableDispenseOptionDTO,
+    AvailableDispenseOptionsResult,
+    InventoryBalanceDTO,
+    InventoryLookupResult,
+    SlotBindingDTO,
+)
 from app.application.exceptions import ValidationError
 from app.persistence.models import InventoryBalance, SlotItemBinding
 from app.persistence.repositories.inventory import InventoryRepository
@@ -28,6 +34,26 @@ class InventoryService:
             item_id=item_id,
             balance=self._to_balance_dto(balance) if balance is not None else None,
             bindings=bindings,
+        )
+
+    def list_available_dispense_options(self) -> AvailableDispenseOptionsResult:
+        return AvailableDispenseOptionsResult(
+            options=tuple(
+                AvailableDispenseOptionDTO(
+                    slot_id=option.slot_id,
+                    item_id=option.item_id,
+                    quantity=option.quantity,
+                    updated_at=option.updated_at,
+                    slot_code=option.slot_code,
+                    drum_position=option.drum_position,
+                    board_address=option.board_address,
+                    lock_number=option.lock_number,
+                    item_sku=option.item_sku,
+                    item_name=option.item_name,
+                    item_unit=option.item_unit,
+                )
+                for option in self.inventory_repository.list_available_dispense_options()
+            )
         )
 
     def list_bindings(self, slot_id: int | None = None, item_id: int | None = None) -> tuple[SlotBindingDTO, ...]:

@@ -8,6 +8,9 @@
     idleReturnChip: document.getElementById("idle-return-chip"),
     dispenseTarget: document.getElementById("dispense-target"),
     inventoryQuantity: document.getElementById("inventory-quantity"),
+    optionCountPill: document.getElementById("option-count-pill"),
+    optionsEmptyState: document.getElementById("options-empty-state"),
+    dispenseOptions: document.getElementById("dispense-options"),
     startAuthButton: document.getElementById("start-auth-button"),
     resetButton: document.getElementById("reset-button"),
     userCard: document.getElementById("user-card"),
@@ -32,6 +35,8 @@
   const state = {
     currentUser: null,
     currentRfidUid: null,
+    selectedOption: null,
+    availableOptions: [],
     isBusy: false,
     autoResetTimerId: null,
     countdownTimerId: null,
@@ -44,7 +49,11 @@
     state.isBusy = isBusy;
     elements.startAuthButton.disabled = isBusy;
     elements.resetButton.disabled = isBusy;
-    elements.dispenseButton.disabled = isBusy || !state.currentUser;
+    syncDispenseButton();
+  }
+
+  function syncDispenseButton() {
+    elements.dispenseButton.disabled = state.isBusy || !state.currentUser || !state.selectedOption;
   }
 
   function updateStatusTone(tone) {
@@ -134,7 +143,7 @@
     elements.userId.textContent = "";
     elements.userRole.textContent = "";
     elements.rfidUid.textContent = "";
-    elements.dispenseButton.disabled = true;
+    syncDispenseButton();
   }
 
   function showUser(payload) {
@@ -149,7 +158,7 @@
     elements.userId.textContent = String(payload.user.user_id);
     elements.userRole.textContent = payload.user.role_code || "n/a";
     elements.rfidUid.textContent = payload.rfid_uid;
-    elements.dispenseButton.disabled = state.isBusy;
+    syncDispenseButton();
   }
 
   function resetToIdle() {
@@ -171,15 +180,123 @@
     return { response, payload };
   }
 
-  async function refreshInventory() {
-    const { response, payload } = await readJson(config.inventoryEndpoint, { method: "GET" });
-    if (!response.ok) {
-      elements.inventoryQuantity.textContent = "Unavailable";
+  function describeOption(option) {
+    return (
+      option.item_name +
+      " | qty " +
+      option.quantity +
+      " | P" +
+      String(option.drum_position).padStart(2, "0") +
+      " L" +
+      String(option.lock_number).padStart(2, "0")
+    );
+  }
+
+  function renderSelectedOption() {
+    if (!state.selectedOption) {
+      elements.dispenseTarget.textContent = "Pick an item";
+      syncDispenseButton();
       return;
     }
 
-    const quantity = payload.balance ? payload.balance.quantity : "Unknown";
-    elements.inventoryQuantity.textContent = String(quantity);
+    elements.dispenseTarget.textContent = describeOption(state.selectedOption);
+    syncDispenseButton();
+  }
+
+  function selectOption(optionKey) {
+    state.selectedOption = null;
+    for (let index = 0; index < state.availableOptions.length; index += 1) {
+      const option = state.availableOptions[index];
+      const currentKey = String(option.slot_id) + ":" + String(option.item_id);
+      if (currentKey === optionKey) {
+        state.selectedOption = option;
+        break;
+      }
+    }
+
+    if (!state.selectedOption && state.availableOptions.length) {
+      state.selectedOption = state.availableOptions[0];
+      optionKey = String(state.selectedOption.slot_id) + ":" + String(state.selectedOption.item_id);
+    }
+
+    const buttons = elements.dispenseOptions.querySelectorAll(".option-button");
+    buttons.forEach(function (button) {
+      button.classList.toggle("option-selected", button.dataset.optionKey === optionKey);
+    });
+    renderSelectedOption();
+  }
+
+  function renderOptions(options) {
+    state.availableOptions = Array.isArray(options) ? options : [];
+    const selectedKey = state.selectedOption
+      ? String(state.selectedOption.slot_id) + ":" + String(state.selectedOption.item_id)
+      : null;
+
+    elements.dispenseOptions.innerHTML = "";
+    elements.inventoryQuantity.textContent = String(state.availableOptions.length);
+    elements.optionCountPill.textContent = String(state.availableOptions.length) + " ready";
+
+    if (!state.availableOptions.length) {
+      state.selectedOption = null;
+      elements.optionsEmptyState.textContent = "No active stocked items are available.";
+      elements.optionsEmptyState.classList.remove("hidden");
+      renderSelectedOption();
+      return;
+    }
+
+    elements.optionsEmptyState.classList.add("hidden");
+    let nextSelectionKey = selectedKey;
+    if (!nextSelectionKey) {
+      nextSelectionKey = String(state.availableOptions[0].slot_id) + ":" + String(state.availableOptions[0].item_id);
+    }
+
+    state.availableOptions.forEach(function (option) {
+      const button = document.createElement("button");
+      const optionKey = String(option.slot_id) + ":" + String(option.item_id);
+      button.type = "button";
+      button.className = "option-button";
+      button.dataset.optionKey = optionKey;
+      button.innerHTML =
+        '<span class="option-title">' +
+        option.item_name +
+        "</span>" +
+        '<span class="option-meta">SKU ' +
+        option.item_sku +
+        " | qty " +
+        option.quantity +
+        "</span>" +
+        '<span class="option-meta">Position ' +
+        option.drum_position +
+        " | lock " +
+        option.lock_number +
+        "</span>";
+      button.addEventListener("click", function () {
+        selectOption(optionKey);
+      });
+      elements.dispenseOptions.appendChild(button);
+    });
+
+    selectOption(nextSelectionKey);
+  }
+
+  async function refreshOptions() {
+    try {
+      const { response, payload } = await readJson(config.optionsEndpoint, { method: "GET" });
+      if (!response.ok) {
+        throw new Error(payload.detail || "Options endpoint returned an error.");
+      }
+      renderOptions(payload.options || []);
+    } catch (error) {
+      state.availableOptions = [];
+      state.selectedOption = null;
+      elements.inventoryQuantity.textContent = "Unavailable";
+      elements.optionCountPill.textContent = "Unavailable";
+      elements.optionsEmptyState.textContent = "Available inventory could not be loaded.";
+      elements.optionsEmptyState.classList.remove("hidden");
+      elements.dispenseOptions.innerHTML = "";
+      renderSelectedOption();
+      setResult("failure", "Inventory load error", String(error));
+    }
   }
 
   async function startAuth() {
@@ -204,7 +321,7 @@
       }
 
       showUser(payload);
-      setMachineState("Authenticated", "User verified. Dispense is enabled.", "success");
+      setMachineState("Authenticated", "User verified. Choose an item and dispense.", "success");
       setResult("success", "User authenticated", payload.user.full_name + " is ready to dispense.");
     } catch (error) {
       setMachineState("Authorization Error", "The UI could not reach the backend authorization path.", "danger");
@@ -248,7 +365,7 @@
   }
 
   async function startDispense() {
-    if (!state.currentUser) {
+    if (!state.currentUser || !state.selectedOption) {
       return;
     }
 
@@ -260,9 +377,9 @@
     try {
       const requestPayload = {
         user_id: state.currentUser.user_id,
-        item_id: config.dispenseRequest.item_id,
-        slot_id: config.dispenseRequest.slot_id,
-        quantity: config.dispenseRequest.quantity,
+        item_id: state.selectedOption.item_id,
+        slot_id: state.selectedOption.slot_id,
+        quantity: config.dispenseQuantity || 1,
       };
 
       const { response, payload } = await readJson(config.dispenseEndpoint, {
@@ -282,7 +399,7 @@
       const tone = result.kind === "success" ? "success" : result.kind === "warning" ? "warning" : "danger";
       setMachineState("Result", result.detail, tone);
       setResult(result.kind, result.title, result.detail, payload);
-      await refreshInventory();
+      await refreshOptions();
       scheduleAutoReset("Ready for the next user.");
     } catch (error) {
       setMachineState("Dispense Error", "The UI could not reach the backend dispense path.", "danger");
@@ -297,14 +414,6 @@
   elements.dispenseButton.addEventListener("click", startDispense);
   elements.resetButton.addEventListener("click", resetToIdle);
 
-  elements.dispenseTarget.textContent =
-    "slot " +
-    config.dispenseRequest.slot_id +
-    ", item " +
-    config.dispenseRequest.item_id +
-    ", qty " +
-    config.dispenseRequest.quantity;
-
   resetToIdle();
-  refreshInventory();
+  refreshOptions();
 })();

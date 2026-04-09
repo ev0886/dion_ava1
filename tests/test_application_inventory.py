@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+from datetime import datetime
+
 from app.application.inventory_service import InventoryService
 from app.domain.enums import BindingType
+from app.persistence.repositories.inventory import AvailableDispenseOptionRecord
 from app.persistence.models import InventoryBalance, SlotItemBinding
 
 
@@ -32,6 +35,23 @@ class _FakeInventoryRepository:
     def get_balance(self, _slot_id: int, _item_id: int) -> InventoryBalance | None:
         return self._balance
 
+    def list_available_dispense_options(self) -> tuple[AvailableDispenseOptionRecord, ...]:
+        return (
+            AvailableDispenseOptionRecord(
+                slot_id=10,
+                item_id=20,
+                quantity=7,
+                updated_at=datetime(2026, 4, 9, 12, 0, 0),
+                slot_code="slot-p03-l01",
+                drum_position=3,
+                board_address=0,
+                lock_number=1,
+                item_sku="item-20",
+                item_name="Item Twenty",
+                item_unit="pcs",
+            ),
+        )
+
 
 def test_inventory_lookup_result_shape() -> None:
     balance = InventoryBalance(slot_id=10, item_id=20, quantity=7)
@@ -53,3 +73,15 @@ def test_inventory_lookup_result_shape() -> None:
     assert result.balance.quantity == 7
     assert len(result.bindings) == 1
     assert result.bindings[0].binding_type is BindingType.PRIMARY
+
+
+def test_inventory_service_lists_available_dispense_options() -> None:
+    service = InventoryService(_FakeInventoryRepository(balance=None, bindings=[]))
+
+    result = service.list_available_dispense_options()
+
+    assert len(result.options) == 1
+    assert result.options[0].slot_id == 10
+    assert result.options[0].item_id == 20
+    assert result.options[0].quantity == 7
+    assert result.options[0].board_address == 0

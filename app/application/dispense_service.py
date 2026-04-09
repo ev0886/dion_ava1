@@ -44,6 +44,8 @@ class DispenseOperationService:
             messages.append("No inventory balance found for slot/item")
         elif balance.quantity < request.quantity:
             messages.append("Requested quantity exceeds current balance")
+        if not self.inventory_repository.has_active_dispense_path(request.slot_id, request.item_id):
+            messages.append("Slot/item path is not active for dispense")
 
         return OperationValidationResult(
             operation_type=OperationType.DISPENSE,
