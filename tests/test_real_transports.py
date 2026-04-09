@@ -63,6 +63,31 @@ def test_serial_transport_request_sequence_flushes_each_write_before_reading() -
     assert serial_module.last_connection.events.count("flush") == 2
 
 
+def test_serial_transport_request_sequence_can_apply_per_response_timeouts() -> None:
+    serial_module = _FakeSerialModule([bytes.fromhex("21 AA AA C4"), bytes.fromhex("25 C0")], require_flush=True)
+    transport = SerialTransport(
+        settings=SerialTransportSettings(
+            transport="serial",
+            port="COM7",
+            baudrate=9600,
+            data_bits=8,
+            parity="none",
+            stop_bits=1,
+        ),
+        timeouts=EndpointTimeoutSettings(connect_timeout_ms=1000, read_timeout_ms=1000, write_timeout_ms=1000),
+        serial_module_loader=lambda: serial_module,
+    )
+
+    responses = transport.request_sequence(
+        [bytes.fromhex("11 00 01 F5"), bytes.fromhex("30 D5")],
+        response_timeouts_ms=[1000, 5000],
+    )
+
+    assert responses == [bytes.fromhex("21 AA AA C4"), bytes.fromhex("25 C0")]
+    assert serial_module.last_connection is not None
+    assert serial_module.last_connection.timeout_history == [1.0, 5.0]
+
+
 def test_tcp_transport_request_response_happy_path() -> None:
     fake_socket = _FakeSocket(response=b"UID:ABC123\n")
     transport = TcpTransport(
@@ -195,6 +220,8 @@ class _FakeSerialConnection:
         self.in_waiting = 0
         self._flushed_since_write = not require_flush
         self._response_ready = False
+        self.timeout_history: list[float] = []
+        self._timeout = 0.0
 
     def reset_input_buffer(self) -> None:
         return None
@@ -241,6 +268,15 @@ class _FakeSerialConnection:
 
     def close(self) -> None:
         return None
+
+    @property
+    def timeout(self) -> float:
+        return self._timeout
+
+    @timeout.setter
+    def timeout(self, value: float) -> None:
+        self._timeout = value
+        self.timeout_history.append(value)
 
 
 class _FakeSocket:

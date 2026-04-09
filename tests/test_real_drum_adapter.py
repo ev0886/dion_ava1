@@ -46,6 +46,7 @@ def test_real_drum_adapter_move_to_position_success() -> None:
     assert result.ok is True
     assert result.position == 7
     assert transport.sequence_payloads == [[bytes.fromhex("11 00 07 F3"), bytes.fromhex("30 D5")]]
+    assert transport.sequence_timeout_calls == [(1000, [1000, 5000])]
     assert transport.request_payloads == []
 
 
@@ -57,6 +58,16 @@ def test_real_drum_adapter_move_to_position_busy_maps_to_busy_error() -> None:
 
     with pytest.raises(HardwareBusyError, match="busy"):
         adapter.move_to_position(7)
+
+
+def test_real_drum_adapter_move_to_position_extends_only_completion_timeout_budget() -> None:
+    transport = _FakeTransport([], sequence_responses=[bytes.fromhex("21 AA AA C4"), bytes.fromhex("25 C0")])
+    adapter = RealDrumAdapter(config=_drum_config(read_timeout_ms=2500), transport=transport)
+
+    result = adapter.move_to_position(3)
+
+    assert result.ok is True
+    assert transport.sequence_timeout_calls == [(2500, [2500, 12500])]
 
 
 def test_real_drum_adapter_malformed_response_returns_safe_failure() -> None:
@@ -113,6 +124,7 @@ class _FakeTransport:
         self.request_payloads: list[bytes] = []
         self.sent_payloads: list[bytes] = []
         self.sequence_payloads: list[list[bytes]] = []
+        self.sequence_timeout_calls: list[tuple[int | None, list[int] | None]] = []
 
     def request(self, payload: bytes, *, timeout_ms: int | None = None) -> bytes:
         self.request_payloads.append(payload)
@@ -124,8 +136,15 @@ class _FakeTransport:
     def send(self, payload: bytes) -> None:
         self.sent_payloads.append(payload)
 
-    def request_sequence(self, payloads: list[bytes], *, timeout_ms: int | None = None) -> list[bytes]:
+    def request_sequence(
+        self,
+        payloads: list[bytes],
+        *,
+        timeout_ms: int | None = None,
+        response_timeouts_ms: list[int] | None = None,
+    ) -> list[bytes]:
         self.sequence_payloads.append(list(payloads))
+        self.sequence_timeout_calls.append((timeout_ms, None if response_timeouts_ms is None else list(response_timeouts_ms)))
         if len(self._sequence_responses) < len(payloads):
             raise AssertionError("Not enough fake sequence responses remain.")
         responses = self._sequence_responses[: len(payloads)]
@@ -143,19 +162,25 @@ class _RaisingTransport:
     def send(self, payload: bytes) -> None:
         raise self._error
 
-    def request_sequence(self, payloads: list[bytes], *, timeout_ms: int | None = None) -> list[bytes]:
+    def request_sequence(
+        self,
+        payloads: list[bytes],
+        *,
+        timeout_ms: int | None = None,
+        response_timeouts_ms: list[int] | None = None,
+    ) -> list[bytes]:
         raise self._error
 
 
-def _drum_config():
+def _drum_config(*, read_timeout_ms: int = 1000):
     from app.hardware.transport_config import DrumHardwareEndpointTransportConfig
 
     return DrumHardwareEndpointTransportConfig.model_validate(
-        _serial_endpoint_config(code="drum-1", driver_name="drum-driver", port="COM7")
+        _serial_endpoint_config(code="drum-1", driver_name="drum-driver", port="COM7", read_timeout_ms=read_timeout_ms)
     )
 
 
-def _serial_endpoint_config(*, code: str, driver_name: str, port: str) -> dict[str, object]:
+def _serial_endpoint_config(*, code: str, driver_name: str, port: str, read_timeout_ms: int = 1000) -> dict[str, object]:
     return {
         "endpoint": {
             "code": code,
@@ -163,7 +188,7 @@ def _serial_endpoint_config(*, code: str, driver_name: str, port: str) -> dict[s
             "enabled": True,
             "timeouts": {
                 "connect_timeout_ms": 1000,
-                "read_timeout_ms": 1000,
+                "read_timeout_ms": read_timeout_ms,
                 "write_timeout_ms": 1000,
             },
         },

@@ -25,6 +25,10 @@ from app.hardware.transports import SerialRequestResponseTransport
 
 
 class RealDrumAdapter(RealHardwareAdapterBase):
+    _MOVE_COMPLETION_TIMEOUT_MULTIPLIER = 5
+    _MOVE_COMPLETION_TIMEOUT_MIN_MS = 5000
+    _MOVE_COMPLETION_TIMEOUT_MAX_MS = 60000
+
     def __init__(
         self,
         *,
@@ -142,9 +146,13 @@ class RealDrumAdapter(RealHardwareAdapterBase):
         assert self._transport is not None
         request_sequence = getattr(self._transport, "request_sequence", None)
         if callable(request_sequence):
-            timeout_ms = self._config.endpoint.timeouts.read_timeout_ms if self._config is not None else None
+            ack_timeout_ms, completion_timeout_ms = self._move_response_timeouts_ms()
             try:
-                raw_first_response, raw_second_response = request_sequence(payloads, timeout_ms=timeout_ms)
+                raw_first_response, raw_second_response = request_sequence(
+                    payloads,
+                    timeout_ms=ack_timeout_ms,
+                    response_timeouts_ms=[ack_timeout_ms, completion_timeout_ms],
+                )
             except TimeoutError as error:
                 raise HardwareTimeoutError(
                     f"{self._device_label.capitalize()} transport request timed out: {error}",
@@ -164,3 +172,11 @@ class RealDrumAdapter(RealHardwareAdapterBase):
             raw_first_response = self._send_binary_request(payloads[0], operation="move_to_position")
             raw_second_response = self._send_binary_request(payloads[1], operation="move_to_position")
         return parse_packet(raw_first_response), parse_packet(raw_second_response)
+
+    def _move_response_timeouts_ms(self) -> tuple[int | None, int]:
+        base_timeout_ms = self._config.endpoint.timeouts.read_timeout_ms if self._config is not None else 1000
+        completion_timeout_ms = min(
+            max(base_timeout_ms * self._MOVE_COMPLETION_TIMEOUT_MULTIPLIER, self._MOVE_COMPLETION_TIMEOUT_MIN_MS),
+            self._MOVE_COMPLETION_TIMEOUT_MAX_MS,
+        )
+        return base_timeout_ms, completion_timeout_ms

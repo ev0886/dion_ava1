@@ -14,7 +14,13 @@ class SerialRequestResponseTransport(Protocol):
 
     def send(self, payload: bytes) -> None: ...
 
-    def request_sequence(self, payloads: list[bytes], *, timeout_ms: int | None = None) -> list[bytes]: ...
+    def request_sequence(
+        self,
+        payloads: list[bytes],
+        *,
+        timeout_ms: int | None = None,
+        response_timeouts_ms: list[int] | None = None,
+    ) -> list[bytes]: ...
 
 
 @runtime_checkable
@@ -105,10 +111,19 @@ class SerialTransport:
             if connection is not None and hasattr(connection, "close"):
                 connection.close()
 
-    def request_sequence(self, payloads: list[bytes], *, timeout_ms: int | None = None) -> list[bytes]:
+    def request_sequence(
+        self,
+        payloads: list[bytes],
+        *,
+        timeout_ms: int | None = None,
+        response_timeouts_ms: list[int] | None = None,
+    ) -> list[bytes]:
         if not payloads:
             return []
         effective_read_timeout_ms = timeout_ms if timeout_ms is not None else self._timeouts.read_timeout_ms
+        per_response_timeouts_ms = response_timeouts_ms or [effective_read_timeout_ms] * len(payloads)
+        if len(per_response_timeouts_ms) != len(payloads):
+            raise ValueError("response_timeouts_ms length must match payload count")
         connection = None
         start = time.monotonic()
         responses: list[bytes] = []
@@ -129,10 +144,12 @@ class SerialTransport:
                 connection.reset_input_buffer()
             if hasattr(connection, "reset_output_buffer"):
                 connection.reset_output_buffer()
-            for payload in payloads:
+            for payload, response_timeout_ms in zip(payloads, per_response_timeouts_ms, strict=True):
                 connection.write(payload)
                 if hasattr(connection, "flush"):
                     connection.flush()
+                if hasattr(connection, "timeout"):
+                    connection.timeout = response_timeout_ms / 1000
                 response = _read_serial_response(connection)
                 if not response:
                     raise TimeoutError("Serial transport read timed out.")
@@ -193,7 +210,13 @@ class SerialTransportSkeleton:
     def send(self, payload: bytes) -> None:
         raise NotImplementedError("Serial transport I/O is not implemented yet.")
 
-    def request_sequence(self, payloads: list[bytes], *, timeout_ms: int | None = None) -> list[bytes]:
+    def request_sequence(
+        self,
+        payloads: list[bytes],
+        *,
+        timeout_ms: int | None = None,
+        response_timeouts_ms: list[int] | None = None,
+    ) -> list[bytes]:
         raise NotImplementedError("Serial transport I/O is not implemented yet.")
 
 
