@@ -58,11 +58,54 @@ class RealRfidAdapter(RealHardwareAdapterBase):
         return self._success_result()
 
     def read_card(self) -> RfidReadResult:
-        self._require_config(operation="read_card")
-        raise HardwareProtocolNotImplementedError(
-            f"RFID UID read is intentionally not implemented in the real provider yet ({DEFAULT_RFID_UID_FORMAT}).",
+        config = self._require_config(operation="read_card")
+        status_transport = self._transport
+        if status_transport is None:
+            raise HardwareUnavailableError(
+                "RFID reader transport client is not configured.",
+                device_type=self.device_type,
+                operation="read_card",
+            )
+        try:
+            raw_uid = status_transport.read_card(timeout_ms=config.endpoint.timeouts.read_timeout_ms)
+        except TimeoutError as error:
+            raise HardwareTimeoutError(
+                f"RFID reader card read timed out: {error}",
+                device_type=self.device_type,
+                operation="read_card",
+            ) from error
+        except OSError as error:
+            raise HardwareUnavailableError(
+                f"RFID reader card read failed: {error}",
+                device_type=self.device_type,
+                operation="read_card",
+            ) from error
+        except Exception as error:
+            raise HardwareFailureError(
+                f"RFID reader returned an unexpected card-read failure: {error}",
+                device_type=self.device_type,
+                operation="read_card",
+            ) from error
+
+        if raw_uid is None:
+            return RfidReadResult(
+                device_type=self.device_type,
+                status=HardwareOperationStatus.NO_CARD,
+                ok=True,
+                uid=None,
+                is_duplicate=False,
+                message=f"No RFID card present ({DEFAULT_RFID_UID_FORMAT})",
+            )
+
+        normalized_uid = self._normalize_uid(raw_uid)
+        is_duplicate = normalized_uid == self._last_uid
+        self._last_uid = normalized_uid
+        return RfidReadResult(
             device_type=self.device_type,
-            operation="read_card",
+            status=HardwareOperationStatus.SUCCESS,
+            ok=True,
+            uid=normalized_uid,
+            is_duplicate=is_duplicate,
         )
 
     def clear_buffer(self) -> HardwareOperationResult:
@@ -72,6 +115,13 @@ class RealRfidAdapter(RealHardwareAdapterBase):
             device_type=self.device_type,
             operation="clear_buffer",
         )
+
+    @staticmethod
+    def _normalize_uid(raw_uid: bytes) -> str:
+        normalized = bytes(raw_uid).hex().upper()
+        if not normalized:
+            raise ValueError("RFID UID buffer is empty.")
+        return normalized
 
     def _require_config(self, *, operation: str) -> RfidHardwareEndpointTransportConfig:
         if self._config_error:
