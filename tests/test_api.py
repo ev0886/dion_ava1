@@ -167,6 +167,34 @@ def test_dispense_operation_happy_path(tmp_path: Path) -> None:
     assert response.json()["qty_confirmed"] == 1
 
 
+def test_real_dispense_realigns_stale_slot_board_address_before_unlock(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.hardware import factory as hardware_factory
+
+    sqlite_filename = "api_real_dispense.sqlite3"
+    setup_app = create_app(_settings(tmp_path, sqlite_filename))
+    _seed_base_domain(setup_app)
+
+    monkeypatch.setattr(hardware_factory, "_create_transport_client", _fake_real_dispense_transport_client)
+    real_app = create_app(_real_settings(tmp_path, sqlite_filename))
+
+    with TestClient(real_app) as client:
+        response = client.post(
+            "/operations/dispense",
+            json={"user_id": 1, "item_id": 1, "slot_id": 1, "quantity": 1},
+        )
+        inventory_response = client.get("/inventory/1/1")
+
+    assert response.status_code == 200
+    assert response.json()["operation_state"] == "completed"
+    assert response.json()["hardware_context"]["slot"]["board_address"] == 0
+    assert response.json()["hardware_context"]["slot"]["lock_number"] == 1
+    assert inventory_response.status_code == 200
+    assert inventory_response.json()["balance"]["quantity"] == 4
+
+
 def test_recovery_endpoints_happy_path(tmp_path: Path) -> None:
     app = create_app(_settings(tmp_path, "api_recovery.sqlite3"))
     _seed_base_domain(app)
@@ -203,6 +231,20 @@ def _settings(tmp_path: Path, sqlite_filename: str) -> AppSettings:
         data_dir=tmp_path,
         sqlite_filename=sqlite_filename,
         alembic_config_path=Path("alembic.ini"),
+    )
+
+
+def _real_settings(tmp_path: Path, sqlite_filename: str) -> AppSettings:
+    return AppSettings(
+        data_dir=tmp_path,
+        sqlite_filename=sqlite_filename,
+        alembic_config_path=Path("alembic.ini"),
+        hardware_provider=HardwareProvider.REAL,
+        hardware_real_endpoints={
+            "drum_controller": _serial_endpoint_config(code="drum-1", driver_name="drum-driver", port="COM1"),
+            "lock_controller": _lock_serial_endpoint_config(code="lock-1", driver_name="lock-driver", port="COM2"),
+            "rfid_reader": _serial_endpoint_config(code="rfid-1", driver_name="rfid-driver", port="COM3"),
+        },
     )
 
 
@@ -261,6 +303,92 @@ def _seed_base_domain(app) -> None:
             )
         )
         session.commit()
+
+
+class _FakeRealDispenseTransport:
+    def __init__(self, responses: list[bytes], *, sequence_responses: list[bytes] | None = None) -> None:
+        self._responses = list(responses)
+        self._sequence_responses = list(sequence_responses or [])
+
+    def request(self, payload: bytes, *, timeout_ms: int | None = None) -> bytes:
+        if not self._responses:
+            raise AssertionError("No fake transport responses remain.")
+        return self._responses.pop(0)
+
+    def send(self, payload: bytes) -> None:
+        return None
+
+    def request_sequence(
+        self,
+        payloads: list[bytes],
+        *,
+        timeout_ms: int | None = None,
+        response_timeouts_ms: list[int] | None = None,
+    ) -> list[bytes]:
+        if len(self._sequence_responses) < len(payloads):
+            raise AssertionError("Not enough fake sequence responses remain.")
+        responses = self._sequence_responses[: len(payloads)]
+        del self._sequence_responses[: len(payloads)]
+        return responses
+
+
+def _fake_real_dispense_transport_client(config):
+    if config is None:
+        return None
+    if config.endpoint.code == "lock-1":
+        return _FakeRealDispenseTransport([bytes.fromhex("02 00 00 81 10 00 03 96")])
+    if config.endpoint.code == "rfid-1":
+        return _FakeRealDispenseTransport([b"PONG\n"])
+    return _FakeRealDispenseTransport([], sequence_responses=[bytes.fromhex("21 AA AA C4"), bytes.fromhex("25 C0")])
+
+
+def _serial_endpoint_config(*, code: str, driver_name: str, port: str) -> dict[str, object]:
+    return {
+        "endpoint": {
+            "code": code,
+            "driver_name": driver_name,
+            "enabled": True,
+            "timeouts": {
+                "connect_timeout_ms": 1000,
+                "read_timeout_ms": 1000,
+                "write_timeout_ms": 1000,
+            },
+        },
+        "transport": {
+            "transport": "serial",
+            "port": port,
+            "baudrate": 9600,
+            "data_bits": 8,
+            "parity": "none",
+            "stop_bits": 1,
+        },
+    }
+
+
+def _lock_serial_endpoint_config(*, code: str, driver_name: str, port: str, board_address: int = 0) -> dict[str, object]:
+    return {
+        "endpoint": {
+            "code": code,
+            "driver_name": driver_name,
+            "enabled": True,
+            "timeouts": {
+                "connect_timeout_ms": 1000,
+                "read_timeout_ms": 1000,
+                "write_timeout_ms": 1000,
+            },
+        },
+        "protocol": {
+            "board_address": board_address,
+        },
+        "transport": {
+            "transport": "serial",
+            "port": port,
+            "baudrate": 19200,
+            "data_bits": 8,
+            "parity": "none",
+            "stop_bits": 1,
+        },
+    }
 
 
 def _seed_recovery_operation(app) -> None:
