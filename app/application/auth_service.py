@@ -1,8 +1,9 @@
 from __future__ import annotations
 
-from app.application.dto.auth import AuthRequest, AuthenticatedUserDTO
+from app.application.dto.auth import AuthRequest, AuthenticatedUserDTO, RfidResolvedUserDTO
 from app.application.exceptions import AuthorizationError, NotFoundError, ValidationError
 from app.domain.enums import RoleCode, UserStatus
+from app.hardware import HardwareFacade
 from app.persistence.models import Role, User
 from app.persistence.repositories.users import UserRepository
 
@@ -35,6 +36,31 @@ class AuthService:
             raise NotFoundError(f"User not found: {user_code}")
         return self._to_dto(user, self._resolve_role_code(user))
 
+    def read_and_resolve_rfid(
+        self,
+        *,
+        hardware_facade: HardwareFacade,
+        allowed_roles: tuple[RoleCode, ...] = (),
+    ) -> RfidResolvedUserDTO:
+        read_result = hardware_facade.read_rfid_card()
+        if read_result.uid is None:
+            raise AuthorizationError(read_result.message or "No valid RFID card present")
+
+        normalized_uid = self._normalize_rfid_uid(read_result.uid)
+        user = self.user_repository.get_by_rfid_card_uid(normalized_uid)
+        if user is None:
+            raise NotFoundError(f"RFID card is not assigned to an active user: {normalized_uid}")
+
+        self._ensure_user_allowed(user)
+        role_code = self._resolve_role_code(user)
+        if allowed_roles and role_code not in allowed_roles:
+            raise AuthorizationError(f"User role is not allowed: {role_code}")
+        return RfidResolvedUserDTO(
+            rfid_uid=normalized_uid,
+            is_duplicate=read_result.is_duplicate,
+            user=self._to_dto(user, role_code),
+        )
+
     def _load_user(self, request: AuthRequest) -> User:
         if request.user_id is None and request.user_code is None:
             raise ValidationError("user_id or user_code is required")
@@ -59,6 +85,13 @@ class AuthService:
         if role is None:
             return None
         return role.code
+
+    @staticmethod
+    def _normalize_rfid_uid(uid: str) -> str:
+        normalized = "".join(character for character in uid if character.isalnum()).upper()
+        if not normalized:
+            raise ValidationError("RFID uid must contain at least one hexadecimal character")
+        return normalized
 
     @staticmethod
     def _to_dto(user: User, role_code: RoleCode | None) -> AuthenticatedUserDTO:

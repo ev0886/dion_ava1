@@ -2,12 +2,26 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
 from fastapi.testclient import TestClient
 
 from app.api import create_app
-from app.config import AppSettings
+from app.config import AppSettings, HardwareProvider
+from app.hardware import HardwareFacade, LockState, MockDrumAdapter, MockLockAdapter, MockRfidAdapter
+from app.hardware.factory import HardwareBundle
 from app.domain.enums import BindingType, ItemStatus, OperationState, RoleCode, SlotStatus, SlotType, UserStatus
-from app.persistence.models import InventoryBalance, Item, Operation, OperationStateHistory, RecoveryCase, Role, Slot, SlotItemBinding, User
+from app.persistence.models import (
+    InventoryBalance,
+    Item,
+    Operation,
+    OperationStateHistory,
+    RecoveryCase,
+    Role,
+    Slot,
+    SlotItemBinding,
+    User,
+    UserRfidCard,
+)
 
 
 def test_app_creation_smoke(tmp_path: Path) -> None:
@@ -44,6 +58,43 @@ def test_auth_and_inventory_happy_path(tmp_path: Path) -> None:
     assert auth_response.json()["user_code"] == "user-1"
     assert inventory_response.status_code == 200
     assert inventory_response.json()["balance"]["quantity"] == 5
+
+
+def test_auth_read_and_resolve_rfid_happy_path(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    app = create_app(_settings(tmp_path, "api_auth_rfid.sqlite3"))
+    _seed_base_domain(app)
+    rfid_reader = MockRfidAdapter()
+    rfid_reader.queue_card("00 0f-e2 76 7c 00 45")
+    hardware_bundle = HardwareBundle(
+        provider=HardwareProvider.MOCK,
+        drum_controller=MockDrumAdapter(),
+        lock_controller=MockLockAdapter(lock_states={(1, 1): LockState.LOCKED}),
+        rfid_reader=rfid_reader,
+        facade=HardwareFacade(
+            drum_controller=MockDrumAdapter(),
+            lock_controller=MockLockAdapter(lock_states={(1, 1): LockState.LOCKED}),
+            rfid_reader=rfid_reader,
+        ),
+    )
+    monkeypatch.setattr("app.application.composition.create_hardware_bundle", lambda _settings: hardware_bundle)
+
+    with TestClient(app) as client:
+        response = client.post("/auth/read-and-resolve-rfid", json={})
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "rfid_uid": "000FE2767C0045",
+        "is_duplicate": False,
+        "user": {
+            "user_id": 1,
+            "user_code": "user-1",
+            "full_name": "User One",
+            "status": "active",
+            "is_active": True,
+            "role_code": "user",
+        },
+    }
+
 
 
 def test_dispense_operation_happy_path(tmp_path: Path) -> None:
@@ -145,6 +196,15 @@ def _seed_base_domain(app) -> None:
             )
         )
         session.add(InventoryBalance(slot_id=slot.id, item_id=item.id, quantity=5))
+        session.add(
+            UserRfidCard(
+                user_id=user.id,
+                card_uid="000FE2767C0045",
+                is_active=True,
+                issued_at=user.created_at,
+                revoked_at=None,
+            )
+        )
         session.commit()
 
 

@@ -144,6 +144,39 @@ def test_dispense_hardware_failure_does_not_mutate_inventory_incorrectly(
         assert transactions == []
 
 
+def test_refill_hardware_failure_marks_session_failed_without_inventory_mutation(
+    session_factory: sessionmaker[Session],
+) -> None:
+    with session_factory() as session:
+        ids = _seed_catalog(session, starting_quantity=5)
+        service = RefillOperationService(
+            OperationRepository(session),
+            InventoryRepository(session),
+            OperationSessionRepository(session),
+        )
+
+        result = service.execute(
+            RefillRequest(
+                operator_user_id=ids.operator_user_id,
+                item_id=ids.item_id,
+                slot_id=ids.slot_id,
+                quantity=3,
+                mode="add",
+            ),
+            _hardware_facade(drum_mode=MockHardwareMode.TIMEOUT),
+        )
+
+        balance = session.execute(select(InventoryBalance)).scalar_one()
+        refill_session = session.get(OperationSession, result.session_id)
+        transactions = session.execute(select(InventoryTransaction)).scalars().all()
+        assert result.operation_state is OperationState.FAILED
+        assert balance.quantity == 5
+        assert refill_session is not None
+        assert refill_session.status is SessionStatus.FAILED
+        assert refill_session.finished_at is not None
+        assert transactions == []
+
+
 def test_operation_history_entries_are_written(session_factory: sessionmaker[Session]) -> None:
     with session_factory() as session:
         ids = _seed_catalog(session, starting_quantity=5)

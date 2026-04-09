@@ -8,6 +8,7 @@ from fastapi.responses import JSONResponse
 from app.api.dependencies import get_application_container
 from app.api.errors import register_exception_handlers
 from app.api.schemas import (
+    AuthReadAndResolveRfidRequest,
     AuthResolveRequest,
     DispenseOperationRequest,
     ExportCreateRequest,
@@ -62,6 +63,17 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
                 user_code=payload.user_code,
                 allowed_roles=payload.allowed_roles,
             )
+        )
+        return JSONResponse(to_api_payload(dto))
+
+    @app.post("/auth/read-and-resolve-rfid")
+    def auth_read_and_resolve_rfid(
+        payload: AuthReadAndResolveRfidRequest,
+        container: ApplicationContainer = Depends(get_application_container),
+    ) -> JSONResponse:
+        dto = container.services.auth.read_and_resolve_rfid(
+            hardware_facade=container.hardware.facade,
+            allowed_roles=payload.allowed_roles,
         )
         return JSONResponse(to_api_payload(dto))
 

@@ -13,6 +13,13 @@ class AuthRequest:
 
 
 @dataclass(frozen=True, slots=True)
+class RfidResolvedUserDTO:
+    rfid_uid: str
+    is_duplicate: bool
+    user: "AuthenticatedUserDTO"
+
+
+@dataclass(frozen=True, slots=True)
 class AuthenticatedUserDTO:
     user_id: int
     user_code: str

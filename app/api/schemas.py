@@ -17,6 +17,10 @@ class AuthResolveRequest(ApiModel):
     allowed_roles: tuple[RoleCode, ...] = ()
 
 
+class AuthReadAndResolveRfidRequest(ApiModel):
+    allowed_roles: tuple[RoleCode, ...] = ()
+
+
 class DispenseOperationRequest(ApiModel):
     user_id: int
     item_id: int
