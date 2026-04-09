@@ -2,8 +2,11 @@ from __future__ import annotations
 
 from contextlib import asynccontextmanager
 
+from pathlib import Path
+
 from fastapi import Depends, FastAPI
 from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
 
 from app.api.dependencies import get_application_container
 from app.api.errors import register_exception_handlers
@@ -24,6 +27,7 @@ from app.application.dto.operations import DispenseRequest, RefillRequest, Retur
 from app.bootstrap import bootstrap
 from app.config import AppSettings, get_settings
 from app.persistence.session import create_session_factory, create_sqlalchemy_engine
+from app.ui.mvp import render_mvp_page
 
 
 def create_app(settings: AppSettings | None = None) -> FastAPI:
@@ -43,10 +47,15 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
     app.state.engine = engine
     app.state.session_factory = session_factory
     register_exception_handlers(app)
+    app.mount("/ui-assets", StaticFiles(directory=Path(__file__).resolve().parent.parent / "ui" / "static"), name="ui-assets")
 
     @app.get("/health")
     def health() -> JSONResponse:
         return JSONResponse({"status": "ok"})
+
+    @app.get("/ui/mvp")
+    def ui_mvp():
+        return render_mvp_page(app.state.settings)
 
     @app.get("/readiness")
     def readiness(container: ApplicationContainer = Depends(get_application_container)) -> JSONResponse:

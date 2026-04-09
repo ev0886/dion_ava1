@@ -48,6 +48,39 @@ def test_health_and_readiness(tmp_path: Path) -> None:
     assert readiness.json()["readiness_status"] == "ready"
 
 
+def test_ui_mvp_page_serves_configured_dispense_flow(tmp_path: Path) -> None:
+    app = create_app(
+        AppSettings(
+            data_dir=tmp_path,
+            sqlite_filename="api_ui_mvp.sqlite3",
+            alembic_config_path=Path("alembic.ini"),
+            ui_mvp_dispense_slot_id=7,
+            ui_mvp_dispense_item_id=9,
+            ui_mvp_dispense_quantity=2,
+        )
+    )
+
+    with TestClient(app) as client:
+        response = client.get("/ui/mvp")
+
+    assert response.status_code == 200
+    assert "Start RFID Authorization" in response.text
+    assert '"slot_id": 7' in response.text
+    assert '"item_id": 9' in response.text
+    assert '"quantity": 2' in response.text
+    assert '"/inventory/7/9"' in response.text
+
+
+def test_ui_mvp_static_assets_are_served(tmp_path: Path) -> None:
+    app = create_app(_settings(tmp_path, "api_ui_assets.sqlite3"))
+
+    with TestClient(app) as client:
+        response = client.get("/ui-assets/mvp.js")
+
+    assert response.status_code == 200
+    assert "resetToIdle" in response.text
+
+
 def test_auth_and_inventory_happy_path(tmp_path: Path) -> None:
     app = create_app(_settings(tmp_path, "api_auth_inventory.sqlite3"))
     _seed_base_domain(app)

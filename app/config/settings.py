@@ -29,6 +29,9 @@ class AppSettings(BaseSettings):
     hardware_real_endpoints: dict[str, object] = Field(default_factory=dict)
     api_host: str = "127.0.0.1"
     api_port: int = 8000
+    ui_mvp_dispense_slot_id: int = 1
+    ui_mvp_dispense_item_id: int = 1
+    ui_mvp_dispense_quantity: int = 1
 
     @property
     def sqlite_path(self) -> Path:

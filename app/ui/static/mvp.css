@@ -1,0 +1,249 @@
+:root {
+  color-scheme: light;
+  font-family: "Segoe UI", "Helvetica Neue", sans-serif;
+  --bg: #f3efe6;
+  --panel: #fffaf1;
+  --panel-strong: #f6ead2;
+  --text: #1d1a17;
+  --muted: #5c544d;
+  --accent: #0d6b5c;
+  --accent-strong: #084d42;
+  --danger: #9d2a1a;
+  --warning: #8b5b00;
+  --border: #d7c7ac;
+  --shadow: 0 18px 48px rgba(47, 35, 18, 0.12);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background:
+    radial-gradient(circle at top right, rgba(13, 107, 92, 0.15), transparent 22rem),
+    linear-gradient(180deg, #f7f2e8 0%, var(--bg) 100%);
+  color: var(--text);
+}
+
+.app-shell {
+  width: min(1120px, calc(100vw - 2rem));
+  margin: 0 auto;
+  padding: 2rem 0 3rem;
+}
+
+.hero,
+.card,
+.status-panel {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 1.5rem;
+  box-shadow: var(--shadow);
+}
+
+.hero {
+  padding: 1.75rem;
+  margin-bottom: 1rem;
+}
+
+.eyebrow {
+  margin: 0 0 0.4rem;
+  font-size: 0.9rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.hero h1,
+.card h2 {
+  margin: 0 0 0.5rem;
+}
+
+.lead {
+  margin: 0;
+  max-width: 48rem;
+  font-size: 1.1rem;
+  color: var(--muted);
+}
+
+.status-panel {
+  padding: 1rem 1.25rem;
+  margin-bottom: 1rem;
+  border-left: 0.5rem solid var(--accent);
+}
+
+.status-header {
+  display: flex;
+  gap: 0.75rem;
+  align-items: baseline;
+}
+
+.status-label {
+  font-size: 0.9rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.card {
+  padding: 1.5rem;
+}
+
+.card-primary {
+  background: linear-gradient(180deg, #fff7ea 0%, #f9eed8 100%);
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  margin: 1.25rem 0;
+}
+
+.action-button {
+  min-height: 4.25rem;
+  padding: 0.95rem 1.4rem;
+  border: none;
+  border-radius: 1rem;
+  font-size: 1.1rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.action-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.action-button-primary {
+  background: var(--accent);
+  color: #fff;
+}
+
+.action-button-primary:hover:enabled,
+.action-button-primary:focus-visible:enabled {
+  background: var(--accent-strong);
+}
+
+.action-button-secondary {
+  background: var(--panel-strong);
+  color: var(--text);
+}
+
+.key-values {
+  margin: 0;
+}
+
+.key-values div {
+  display: grid;
+  grid-template-columns: minmax(8rem, 11rem) 1fr;
+  gap: 0.5rem 1rem;
+  padding: 0.45rem 0;
+  border-bottom: 1px solid rgba(215, 199, 172, 0.55);
+}
+
+.key-values div:last-child {
+  border-bottom: none;
+}
+
+.key-values dt {
+  color: var(--muted);
+}
+
+.key-values dd {
+  margin: 0;
+  font-weight: 600;
+}
+
+.user-card {
+  min-height: 14rem;
+  padding: 1rem;
+  border-radius: 1rem;
+  border: 2px dashed var(--border);
+  background: #fffdf8;
+  margin-bottom: 1rem;
+}
+
+.user-card-empty {
+  display: flex;
+  align-items: center;
+}
+
+.user-placeholder {
+  margin: 0;
+  color: var(--muted);
+  font-size: 1.05rem;
+}
+
+.hidden {
+  display: none;
+}
+
+.result-panel {
+  padding: 1rem 1.15rem;
+  border-radius: 1rem;
+  margin-bottom: 1rem;
+  border: 1px solid transparent;
+}
+
+.result-panel p {
+  margin: 0;
+}
+
+.result-panel p + p {
+  margin-top: 0.35rem;
+}
+
+.result-neutral {
+  background: #f1ede6;
+  border-color: #dbcfbe;
+}
+
+.result-success {
+  background: #ddf4e7;
+  border-color: #7fc59b;
+}
+
+.result-failure {
+  background: #f9e0dd;
+  border-color: #d68f85;
+}
+
+.result-warning {
+  background: #f7ead2;
+  border-color: #d8b46b;
+}
+
+@media (max-width: 820px) {
+  .app-shell {
+    width: min(100vw - 1rem, 42rem);
+    padding-top: 1rem;
+  }
+
+  .grid {
+    grid-template-columns: 1fr;
+  }
+
+  .card,
+  .hero,
+  .status-panel {
+    border-radius: 1.1rem;
+  }
+
+  .key-values div {
+    grid-template-columns: 1fr;
+    gap: 0.25rem;
+  }
+
+  .action-button {
+    width: 100%;
+  }
+}

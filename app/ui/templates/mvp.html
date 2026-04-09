@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>DION ABA1 MVP</title>
+  <link rel="stylesheet" href="/ui-assets/mvp.css">
+</head>
+<body>
+  <main class="app-shell">
+    <header class="hero">
+      <p class="eyebrow">DION ABA1</p>
+      <h1>Dispense MVP</h1>
+      <p class="lead">Touch-friendly machine flow for RFID auth and one known smoke-path dispense.</p>
+    </header>
+
+    <section class="status-panel" aria-live="polite">
+      <div class="status-header">
+        <span class="status-label">State</span>
+        <strong id="machine-state">Idle</strong>
+      </div>
+      <p id="status-message">Ready for the next user. Present a card and start authorization.</p>
+    </section>
+
+    <section class="grid">
+      <section class="card card-primary">
+        <h2>Machine</h2>
+        <div class="actions">
+          <button id="start-auth-button" class="action-button action-button-primary" type="button">
+            Start RFID Authorization
+          </button>
+          <button id="reset-button" class="action-button action-button-secondary" type="button">
+            Return to Idle
+          </button>
+        </div>
+        <dl class="key-values">
+          <div>
+            <dt>Flow</dt>
+            <dd>Idle -> Auth -> User -> Dispense -> Result</dd>
+          </div>
+          <div>
+            <dt>Dispense target</dt>
+            <dd id="dispense-target">Loading...</dd>
+          </div>
+          <div>
+            <dt>Current inventory</dt>
+            <dd id="inventory-quantity">Loading...</dd>
+          </div>
+        </dl>
+      </section>
+
+      <section class="card">
+        <h2>Authorized User</h2>
+        <div id="user-card" class="user-card user-card-empty">
+          <p class="user-placeholder">No active user session.</p>
+          <dl class="key-values hidden" id="user-details">
+            <div>
+              <dt>Name</dt>
+              <dd id="user-name"></dd>
+            </div>
+            <div>
+              <dt>User Code</dt>
+              <dd id="user-code"></dd>
+            </div>
+            <div>
+              <dt>User ID</dt>
+              <dd id="user-id"></dd>
+            </div>
+            <div>
+              <dt>Role</dt>
+              <dd id="user-role"></dd>
+            </div>
+            <div>
+              <dt>RFID UID</dt>
+              <dd id="rfid-uid"></dd>
+            </div>
+          </dl>
+        </div>
+        <button id="dispense-button" class="action-button action-button-primary" type="button" disabled>
+          Dispense Item
+        </button>
+      </section>
+    </section>
+
+    <section class="card">
+      <h2>Last Operation</h2>
+      <div id="result-panel" class="result-panel result-neutral">
+        <p id="result-title">No operation yet.</p>
+        <p id="result-detail">The result for the last dispense will appear here.</p>
+      </div>
+      <dl class="key-values">
+        <div>
+          <dt>Operation State</dt>
+          <dd id="operation-state">n/a</dd>
+        </div>
+        <div>
+          <dt>Confirmed Qty</dt>
+          <dd id="confirmed-qty">n/a</dd>
+        </div>
+        <div>
+          <dt>Error Code</dt>
+          <dd id="error-code">n/a</dd>
+        </div>
+      </dl>
+    </section>
+  </main>
+
+  <script>
+    window.DION_UI_CONFIG = __DION_UI_CONFIG__;
+  </script>
+  <script src="/ui-assets/mvp.js"></script>
+</body>
+</html>
