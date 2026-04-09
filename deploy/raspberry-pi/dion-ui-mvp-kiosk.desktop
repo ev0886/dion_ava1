@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Version=1.0
+Name=DION UI MVP Kiosk
+Comment=Launch the DION UI MVP in Chromium kiosk mode
+Exec=/opt/dion_ava1/deploy/raspberry-pi/launch_ui_mvp_kiosk.sh
+TryExec=/opt/dion_ava1/deploy/raspberry-pi/launch_ui_mvp_kiosk.sh
+Terminal=false
+StartupNotify=false
+X-GNOME-Autostart-enabled=true
+Categories=Utility;

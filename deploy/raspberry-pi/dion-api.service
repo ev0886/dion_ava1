@@ -1,0 +1,18 @@
+[Unit]
+Description=DION ABA1 API
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/dion_ava1
+Environment=PYTHONUNBUFFERED=1
+EnvironmentFile=-/etc/default/dion_ava1
+ExecStart=/bin/sh -lc 'exec "${DION_PYTHON_BIN:-/opt/dion_ava1/.venv/bin/python}" -m app.api'
+Restart=on-failure
+RestartSec=3
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

@@ -104,6 +104,23 @@ def test_pyproject_declares_runtime_entry_points() -> None:
     assert pyproject["project"]["scripts"]["dion-api"] == "app.api.__main__:main"
 
 
+def test_raspberry_pi_kiosk_assets_target_local_ui_mvp() -> None:
+    deploy_dir = Path("deploy/raspberry-pi")
+
+    launcher = (deploy_dir / "launch_ui_mvp_kiosk.sh").read_text(encoding="utf-8")
+    desktop_entry = (deploy_dir / "dion-ui-mvp-kiosk.desktop").read_text(encoding="utf-8")
+    api_service = (deploy_dir / "dion-api.service").read_text(encoding="utf-8")
+    kiosk_doc = Path("docs/raspberry-pi-kiosk.md").read_text(encoding="utf-8")
+
+    assert 'http://127.0.0.1:8000/ui/mvp' in launcher
+    assert 'http://127.0.0.1:8000/health' in launcher
+    assert "--kiosk" in launcher
+    assert "Exec=/opt/dion_ava1/deploy/raspberry-pi/launch_ui_mvp_kiosk.sh" in desktop_entry
+    assert "DION_PYTHON_BIN" in api_service
+    assert "-m app.api" in api_service
+    assert "dion-api.service" in kiosk_doc
+
+
 @dataclass(slots=True)
 class _FakeStartupService:
     result: StartupReadinessDTO

@@ -58,3 +58,7 @@ docker run --rm -p 8000:8000 --env-file .env dion-aba1
 ```
 
 The container helper is intentionally minimal. It does not add orchestration, secret management, or external services.
+
+## Raspberry Pi desktop kiosk
+
+For Raspberry Pi OS desktop kiosk/autostart setup that targets the existing `/ui/mvp` page, see `docs/raspberry-pi-kiosk.md` and the repo-managed assets in `deploy/raspberry-pi/`.
