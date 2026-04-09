@@ -103,11 +103,18 @@ class _FakeTransport:
             raise AssertionError("No fake transport responses remain.")
         return self._responses.pop(0)
 
+    def send(self, payload: bytes) -> None:
+        return None
+
 
 def _fake_transport_client(config):
     if config is None:
         return None
-    return _FakeTransport([b"PONG\n"])
+    if config.endpoint.code == "rfid-1":
+        return _FakeTransport([b"PONG\n"])
+    if config.endpoint.code == "lock-1":
+        return _FakeTransport([bytes.fromhex("02 00 00 8F 10 02 03 BA 13 01")])
+    return _FakeTransport([bytes.fromhex("24 00 00 C1")])
 
 
 def _mock_settings(tmp_path: Path, sqlite_filename: str) -> AppSettings:
@@ -127,7 +134,7 @@ def _real_settings(tmp_path: Path, sqlite_filename: str) -> AppSettings:
         hardware_provider=HardwareProvider.REAL,
         hardware_real_endpoints={
             "drum_controller": _serial_endpoint_config(code="drum-1", driver_name="drum-driver", port="COM1"),
-            "lock_controller": _tcp_endpoint_config(code="lock-1", driver_name="lock-driver", host="127.0.0.1", port=9001),
+            "lock_controller": _lock_serial_endpoint_config(code="lock-1", driver_name="lock-driver", port="COM2"),
             "rfid_reader": _serial_endpoint_config(code="rfid-1", driver_name="rfid-driver", port="COM2"),
         },
     )
@@ -156,7 +163,7 @@ def _serial_endpoint_config(*, code: str, driver_name: str, port: str) -> dict[s
     }
 
 
-def _tcp_endpoint_config(*, code: str, driver_name: str, host: str, port: int) -> dict[str, object]:
+def _lock_serial_endpoint_config(*, code: str, driver_name: str, port: str, board_address: int = 0) -> dict[str, object]:
     return {
         "endpoint": {
             "code": code,
@@ -168,9 +175,15 @@ def _tcp_endpoint_config(*, code: str, driver_name: str, host: str, port: int) -
                 "write_timeout_ms": 1000,
             },
         },
+        "protocol": {
+            "board_address": board_address,
+        },
         "transport": {
-            "transport": "tcp",
-            "host": host,
+            "transport": "serial",
             "port": port,
+            "baudrate": 19200,
+            "data_bits": 8,
+            "parity": "none",
+            "stop_bits": 1,
         },
     }

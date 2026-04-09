@@ -32,12 +32,19 @@ from app.hardware.rfid_mock import MockRfidAdapter
 from app.hardware.rfid_real import RealRfidAdapter
 from app.hardware.rfid_stub_real import StubRealRfidAdapter
 from app.hardware.transport_config import (
+    AnyHardwareEndpointTransportConfig,
     CommonEndpointSettings,
+    DrumHardwareEndpointTransportConfig,
     EndpointTimeoutSettings,
     HardwareEndpointTransportConfig,
+    LockControllerProtocolSettings,
+    LockHardwareEndpointTransportConfig,
+    REAL_HARDWARE_ENDPOINT_NAMES,
     RealHardwareSettings,
     SerialTransportSettings,
     TcpTransportSettings,
+    real_hardware_endpoints_example,
+    real_hardware_endpoints_example_json,
 )
 from app.hardware.transports import (
     SerialRequestResponseTransport,
@@ -63,14 +70,18 @@ __all__ = [
     "HardwareProtocolNotImplementedError",
     "HardwareTimeoutError",
     "HardwareUnavailableError",
+    "AnyHardwareEndpointTransportConfig",
     "HardwareEndpointTransportConfig",
     "LockControllerContract",
+    "LockControllerProtocolSettings",
+    "LockHardwareEndpointTransportConfig",
     "LockState",
     "LockStatusResult",
     "MockDrumAdapter",
     "MockHardwareMode",
     "MockLockAdapter",
     "MockRfidAdapter",
+    "REAL_HARDWARE_ENDPOINT_NAMES",
     "RealDrumAdapter",
     "RealHardwareSettings",
     "RealLockAdapter",
@@ -78,6 +89,7 @@ __all__ = [
     "RfidReadResult",
     "RfidReaderContract",
     "CommonEndpointSettings",
+    "DrumHardwareEndpointTransportConfig",
     "EndpointTimeoutSettings",
     "SerialRequestResponseTransport",
     "SerialTransport",
@@ -93,4 +105,6 @@ __all__ = [
     "UnlockResult",
     "UnlockTimeResult",
     "create_hardware_bundle",
+    "real_hardware_endpoints_example",
+    "real_hardware_endpoints_example_json",
 ]

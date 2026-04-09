@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -70,6 +71,13 @@ class TcpTransportSettings(BaseModel):
 TransportSettings = Annotated[SerialTransportSettings | TcpTransportSettings, Field(discriminator="transport")]
 
 
+REAL_HARDWARE_ENDPOINT_NAMES: tuple[str, ...] = (
+    "drum_controller",
+    "lock_controller",
+    "rfid_reader",
+)
+
+
 class HardwareEndpointTransportConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -77,9 +85,109 @@ class HardwareEndpointTransportConfig(BaseModel):
     transport: TransportSettings
 
 
+class LockControllerProtocolSettings(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    board_address: int = Field(default=0, ge=0, le=255)
+
+
+class DrumHardwareEndpointTransportConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    endpoint: CommonEndpointSettings
+    transport: SerialTransportSettings
+
+
+class LockHardwareEndpointTransportConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    endpoint: CommonEndpointSettings
+    transport: SerialTransportSettings
+    protocol: LockControllerProtocolSettings = Field(default_factory=LockControllerProtocolSettings)
+
+
+AnyHardwareEndpointTransportConfig = (
+    HardwareEndpointTransportConfig
+    | DrumHardwareEndpointTransportConfig
+    | LockHardwareEndpointTransportConfig
+)
+
+
 class RealHardwareSettings(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    drum_controller: HardwareEndpointTransportConfig | None = None
-    lock_controller: HardwareEndpointTransportConfig | None = None
+    drum_controller: DrumHardwareEndpointTransportConfig | None = None
+    lock_controller: LockHardwareEndpointTransportConfig | None = None
     rfid_reader: HardwareEndpointTransportConfig | None = None
+
+
+def real_hardware_endpoints_example() -> dict[str, object]:
+    return {
+        "drum_controller": {
+            "endpoint": {
+                "code": "drum-1",
+                "driver_name": "drum-driver",
+                "enabled": True,
+                "timeouts": {
+                    "connect_timeout_ms": 1000,
+                    "read_timeout_ms": 1000,
+                    "write_timeout_ms": 1000,
+                },
+            },
+            "transport": {
+                "transport": "serial",
+                "port": "/dev/serial/by-path/platform-1000110000.pcie-pci-0001:01:00.0-usb-0:1.2:1.0-port0",
+                "baudrate": 9600,
+                "data_bits": 8,
+                "parity": "none",
+                "stop_bits": 1,
+            },
+        },
+        "lock_controller": {
+            "endpoint": {
+                "code": "lock-1",
+                "driver_name": "lock-driver",
+                "enabled": True,
+                "timeouts": {
+                    "connect_timeout_ms": 1000,
+                    "read_timeout_ms": 1000,
+                    "write_timeout_ms": 1000,
+                },
+            },
+            "protocol": {
+                "board_address": 0,
+            },
+            "transport": {
+                "transport": "serial",
+                "port": "/dev/serial/by-path/platform-1000110000.pcie-pci-0001:01:00.0-usb-0:1.1:1.0-port0",
+                "baudrate": 19200,
+                "data_bits": 8,
+                "parity": "none",
+                "stop_bits": 1,
+            },
+        },
+        "rfid_reader": {
+            "endpoint": {
+                "code": "rfid-1",
+                "driver_name": "rfid-driver",
+                "enabled": True,
+                "timeouts": {
+                    "connect_timeout_ms": 1000,
+                    "read_timeout_ms": 1000,
+                    "write_timeout_ms": 1000,
+                },
+            },
+            "transport": {
+                "transport": "serial",
+                "port": "/dev/input/event0",
+                "baudrate": 9600,
+                "data_bits": 8,
+                "parity": "none",
+                "stop_bits": 1,
+            },
+        },
+    }
+
+
+def real_hardware_endpoints_example_json() -> str:
+    return json.dumps(real_hardware_endpoints_example(), separators=(",", ":"))

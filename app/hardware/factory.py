@@ -17,7 +17,14 @@ from app.hardware.lock_stub_real import StubRealLockAdapter
 from app.hardware.rfid_mock import MockRfidAdapter
 from app.hardware.rfid_real import RealRfidAdapter
 from app.hardware.rfid_stub_real import StubRealRfidAdapter
-from app.hardware.transport_config import HardwareEndpointTransportConfig
+from app.hardware.transport_config import (
+    AnyHardwareEndpointTransportConfig,
+    DrumHardwareEndpointTransportConfig,
+    HardwareEndpointTransportConfig,
+    LockHardwareEndpointTransportConfig,
+    REAL_HARDWARE_ENDPOINT_NAMES,
+    real_hardware_endpoints_example_json,
+)
 from app.hardware.transports import (
     SerialRequestResponseTransport,
     SerialTransport,
@@ -37,8 +44,26 @@ class HardwareBundle:
 
 @dataclass(frozen=True, slots=True)
 class ParsedEndpointConfig:
-    config: HardwareEndpointTransportConfig | None
+    config: AnyHardwareEndpointTransportConfig | None
     error_message: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class RealEndpointConfigSummaryEntry:
+    endpoint_name: str
+    configured: bool
+    enabled: bool | None
+    transport: str | None
+    target: str | None
+    code: str | None
+    driver_name: str | None
+    validation_error: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class RealEndpointConfigSummary:
+    entries: tuple[RealEndpointConfigSummaryEntry, ...]
+    warnings: tuple[str, ...]
 
 
 def create_hardware_bundle(
@@ -124,8 +149,9 @@ def _bundle_from_parts(
 def _parse_endpoint_config(raw_config: object, *, endpoint_name: str) -> ParsedEndpointConfig:
     if raw_config is None:
         return ParsedEndpointConfig(config=None, error_message=None)
+    model_class = _endpoint_config_model(endpoint_name)
     try:
-        return ParsedEndpointConfig(config=HardwareEndpointTransportConfig.model_validate(raw_config))
+        return ParsedEndpointConfig(config=model_class.model_validate(raw_config))
     except ValidationError as error:
         first_error = error.errors()[0]
         location = ".".join(str(part) for part in first_error.get("loc", ()))
@@ -134,12 +160,75 @@ def _parse_endpoint_config(raw_config: object, *, endpoint_name: str) -> ParsedE
             detail = f"{location}: {detail}"
         return ParsedEndpointConfig(
             config=None,
-            error_message=f"{endpoint_name} real transport config is invalid: {detail}",
+            error_message=(
+                f"{endpoint_name} real transport config is invalid: {detail}. "
+                f"Expected inside DION_HARDWARE_REAL_ENDPOINTS. Example JSON: {real_hardware_endpoints_example_json()}"
+            ),
         )
 
 
+def _endpoint_config_model(endpoint_name: str):
+    if endpoint_name == "drum_controller":
+        return DrumHardwareEndpointTransportConfig
+    if endpoint_name == "lock_controller":
+        return LockHardwareEndpointTransportConfig
+    return HardwareEndpointTransportConfig
+
+
+def summarize_real_endpoint_configs(settings: AppSettings) -> RealEndpointConfigSummary:
+    raw_configs = settings.hardware_real_endpoints
+    warnings = _collect_real_endpoint_warnings(raw_configs)
+    entries = tuple(
+        _summarize_real_endpoint_config(endpoint_name, raw_configs.get(endpoint_name))
+        for endpoint_name in REAL_HARDWARE_ENDPOINT_NAMES
+    )
+    return RealEndpointConfigSummary(entries=entries, warnings=warnings)
+
+
+def _collect_real_endpoint_warnings(raw_configs: dict[str, object]) -> tuple[str, ...]:
+    unexpected_keys = sorted(set(raw_configs) - set(REAL_HARDWARE_ENDPOINT_NAMES))
+    if not unexpected_keys:
+        return ()
+    expected = ", ".join(REAL_HARDWARE_ENDPOINT_NAMES)
+    return (
+        f"Unexpected real endpoint keys: {', '.join(unexpected_keys)}. Expected keys: {expected}.",
+    )
+
+
+def _summarize_real_endpoint_config(endpoint_name: str, raw_config: object) -> RealEndpointConfigSummaryEntry:
+    parsed = _parse_endpoint_config(raw_config, endpoint_name=endpoint_name)
+    if parsed.config is None:
+        return RealEndpointConfigSummaryEntry(
+            endpoint_name=endpoint_name,
+            configured=raw_config is not None,
+            enabled=None,
+            transport=None,
+            target=None,
+            code=None,
+            driver_name=None,
+            validation_error=parsed.error_message,
+        )
+
+    transport = parsed.config.transport.transport
+    target = (
+        parsed.config.transport.port
+        if transport == "serial"
+        else f"{parsed.config.transport.host}:{parsed.config.transport.port}"
+    )
+    return RealEndpointConfigSummaryEntry(
+        endpoint_name=endpoint_name,
+        configured=True,
+        enabled=parsed.config.endpoint.enabled,
+        transport=transport,
+        target=target,
+        code=parsed.config.endpoint.code,
+        driver_name=parsed.config.endpoint.driver_name,
+        validation_error=None,
+    )
+
+
 def _create_transport_client(
-    config: HardwareEndpointTransportConfig | None,
+    config: AnyHardwareEndpointTransportConfig | None,
 ) -> SerialRequestResponseTransport | TcpRequestResponseTransport | None:
     if config is None:
         return None
