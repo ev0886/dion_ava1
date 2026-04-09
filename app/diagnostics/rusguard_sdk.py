@@ -114,6 +114,8 @@ class RusGuardSdkProtocol(Protocol):
 
     def diagnose_acm_endpoint(self, endpoint_info: EndpointInfo) -> "AcmProbeDiagnosticResult": ...
 
+    def diagnose_acm_status_no_mask_endpoint(self, endpoint_info: EndpointInfo) -> "AcmStatusNoMaskDiagnosticResult": ...
+
     def uninitialize(self) -> None: ...
 
 
@@ -169,6 +171,22 @@ class AcmProbeDiagnosticReport:
     target_endpoint: str
     found: bool
     result: AcmProbeDiagnosticResult | None
+
+
+@dataclass(frozen=True, slots=True)
+class AcmStatusNoMaskDiagnosticResult:
+    endpoint_info: EndpointInfo
+    open_result: OperationResult
+    status_result: OperationResult | None
+    close_result: OperationResult | None
+
+
+@dataclass(frozen=True, slots=True)
+class AcmStatusNoMaskDiagnosticReport:
+    library_path: Path
+    target_endpoint: str
+    found: bool
+    result: AcmStatusNoMaskDiagnosticResult | None
 
 
 class CountOnlyRusGuardSdk:
@@ -377,6 +395,54 @@ class CountOnlyRusGuardSdk:
             close_result=close_result,
         )
 
+    def diagnose_acm_status_no_mask_endpoint(self, endpoint_info: EndpointInfo) -> AcmStatusNoMaskDiagnosticResult:
+        endpoint_address = ctypes.create_string_buffer(endpoint_info.address.encode("ascii"))
+        endpoint = _RgEndpoint(type=endpoint_info.type, address=ctypes.cast(endpoint_address, ctypes.c_char_p))
+
+        open_result = self._call_operation(
+            self._library.RG_InitDevice,
+            ctypes.byref(endpoint),
+            ctypes.c_uint8(_DEFAULT_DEVICE_ADDRESS),
+        )
+        if not open_result.ok:
+            return AcmStatusNoMaskDiagnosticResult(
+                endpoint_info=endpoint_info,
+                open_result=open_result,
+                status_result=None,
+                close_result=None,
+            )
+
+        status_result: OperationResult | None = None
+        close_result: OperationResult | None = None
+
+        try:
+            status_type = ctypes.c_uint8()
+            pin_states = ctypes.c_uint8()
+            card_info = _RgCardInfo()
+            card_memory = _RgCardMemory()
+            status_result = self._call_operation(
+                self._library.RG_GetStatus,
+                ctypes.byref(endpoint),
+                ctypes.c_uint8(_DEFAULT_DEVICE_ADDRESS),
+                ctypes.byref(status_type),
+                ctypes.byref(pin_states),
+                ctypes.byref(card_info),
+                ctypes.byref(card_memory),
+            )
+        finally:
+            close_result = self._call_operation(
+                self._library.RG_CloseDevice,
+                ctypes.byref(endpoint),
+                ctypes.c_uint8(_DEFAULT_DEVICE_ADDRESS),
+            )
+
+        return AcmStatusNoMaskDiagnosticResult(
+            endpoint_info=endpoint_info,
+            open_result=open_result,
+            status_result=status_result,
+            close_result=close_result,
+        )
+
     def _call_operation(self, func: ctypes._CFuncPtr, *args: object) -> OperationResult:
         code = int(func(*args))
         code_name, code_message = decode_api_error(code)
@@ -421,6 +487,18 @@ def run_rusguard_sdk_acm_probe_command(*, library_path: str | None = None) -> in
         print(f"ERROR: {error}", file=sys.stderr)
         return 1
     print(render_acm_probe_report(report))
+    return 0
+
+
+def run_rusguard_sdk_acm_status_no_mask_command(*, library_path: str | None = None) -> int:
+    resolved_library_path = resolve_library_path(library_path)
+    try:
+        sdk = CountOnlyRusGuardSdk(resolved_library_path)
+        report = run_acm_status_no_mask_diagnostic(sdk)
+    except RusGuardSdkError as error:
+        print(f"ERROR: {error}", file=sys.stderr)
+        return 1
+    print(render_acm_status_no_mask_report(report))
     return 0
 
 
@@ -472,6 +550,28 @@ def run_acm_probe_diagnostic(sdk: RusGuardSdkProtocol) -> AcmProbeDiagnosticRepo
             target_endpoint=_TARGET_ACM_ADDRESS,
             found=True,
             result=sdk.diagnose_acm_endpoint(target_endpoint),
+        )
+    finally:
+        sdk.uninitialize()
+
+
+def run_acm_status_no_mask_diagnostic(sdk: RusGuardSdkProtocol) -> AcmStatusNoMaskDiagnosticReport:
+    sdk.initialize()
+    try:
+        serial_endpoints = sdk.find_endpoint_infos(RG_ENDPOINT_TYPE_SERIAL)
+        target_endpoint = next((item for item in serial_endpoints if item.address == _TARGET_ACM_ADDRESS), None)
+        if target_endpoint is None:
+            return AcmStatusNoMaskDiagnosticReport(
+                library_path=sdk.library_path,
+                target_endpoint=_TARGET_ACM_ADDRESS,
+                found=False,
+                result=None,
+            )
+        return AcmStatusNoMaskDiagnosticReport(
+            library_path=sdk.library_path,
+            target_endpoint=_TARGET_ACM_ADDRESS,
+            found=True,
+            result=sdk.diagnose_acm_status_no_mask_endpoint(target_endpoint),
         )
     finally:
         sdk.uninitialize()
@@ -535,6 +635,29 @@ def render_acm_probe_report(report: AcmProbeDiagnosticReport) -> str:
     assert report.result is not None
     lines.append(f"open: {_format_operation_result(report.result.open_result)}")
     lines.append(f"set_cards_mask: {_format_optional_operation_result(report.result.set_cards_mask_result, skipped_on_fail=True)}")
+    lines.append(f"status: {_format_optional_operation_result(report.result.status_result, skipped_on_fail=True)}")
+    lines.append(f"close: {_format_optional_operation_result(report.result.close_result, skipped_on_fail=False)}")
+    lines.extend(("", "uninitialize ok"))
+    return "\n".join(lines)
+
+
+def render_acm_status_no_mask_report(report: AcmStatusNoMaskDiagnosticReport) -> str:
+    lines = [
+        "[RusGuard SDK]",
+        f"library path: {report.library_path.as_posix()}",
+        "library load ok",
+        "initialize ok",
+        "",
+        "[ACM]",
+        f"target: {report.target_endpoint}",
+    ]
+    if not report.found:
+        lines.append("discovery: not found")
+        lines.extend(("", "uninitialize ok"))
+        return "\n".join(lines)
+
+    assert report.result is not None
+    lines.append(f"open: {_format_operation_result(report.result.open_result)}")
     lines.append(f"status: {_format_optional_operation_result(report.result.status_result, skipped_on_fail=True)}")
     lines.append(f"close: {_format_optional_operation_result(report.result.close_result, skipped_on_fail=False)}")
     lines.extend(("", "uninitialize ok"))

@@ -7,6 +7,7 @@ from typing import Callable
 from app.application.composition import ApplicationContainer, create_bootstrapped_application_container
 from app.diagnostics import (
     run_rusguard_sdk_acm_probe_command,
+    run_rusguard_sdk_acm_status_no_mask_command,
     run_rusguard_sdk_enumeration_command,
     run_rusguard_sdk_serial_open_diagnostic_command,
 )
@@ -37,6 +38,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="Probe only the discovered RusGuard SDK SERIAL endpoint at /dev/ttyACM0 using the vendor setup sequence",
     )
     rusguard_acm_probe.add_argument("--library-path", type=str, default=None)
+    rusguard_acm_status_no_mask = subparsers.add_parser(
+        "rusguard-sdk-acm-status-no-mask",
+        help="Probe only the discovered RusGuard SDK SERIAL endpoint at /dev/ttyACM0 with init/status/close and no RG_SetCardsMask",
+    )
+    rusguard_acm_status_no_mask.add_argument("--library-path", type=str, default=None)
 
     export_plan = subparsers.add_parser("export-plan")
     export_plan.add_argument("--requested-by-user-id", type=int, required=True)
@@ -137,6 +143,8 @@ def _diagnostic_runner(command: str) -> Callable[..., int] | None:
         return run_rusguard_sdk_serial_open_diagnostic_command
     if command == "rusguard-sdk-acm-probe":
         return run_rusguard_sdk_acm_probe_command
+    if command == "rusguard-sdk-acm-status-no-mask":
+        return run_rusguard_sdk_acm_status_no_mask_command
     return None
 
 
