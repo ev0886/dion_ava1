@@ -2,13 +2,16 @@
   const config = window.DION_UI_CONFIG;
 
   const elements = {
+    statusPanel: document.getElementById("status-panel"),
     machineState: document.getElementById("machine-state"),
     statusMessage: document.getElementById("status-message"),
+    idleReturnChip: document.getElementById("idle-return-chip"),
     dispenseTarget: document.getElementById("dispense-target"),
     inventoryQuantity: document.getElementById("inventory-quantity"),
     startAuthButton: document.getElementById("start-auth-button"),
     resetButton: document.getElementById("reset-button"),
     userCard: document.getElementById("user-card"),
+    userStatePill: document.getElementById("user-state-pill"),
     userPlaceholder: document.querySelector(".user-placeholder"),
     userDetails: document.getElementById("user-details"),
     userName: document.getElementById("user-name"),
@@ -18,6 +21,7 @@
     rfidUid: document.getElementById("rfid-uid"),
     dispenseButton: document.getElementById("dispense-button"),
     resultPanel: document.getElementById("result-panel"),
+    resultStatePill: document.getElementById("result-state-pill"),
     resultTitle: document.getElementById("result-title"),
     resultDetail: document.getElementById("result-detail"),
     operationState: document.getElementById("operation-state"),
@@ -29,7 +33,12 @@
     currentUser: null,
     currentRfidUid: null,
     isBusy: false,
+    autoResetTimerId: null,
+    countdownTimerId: null,
+    autoResetDeadline: null,
   };
+
+  const terminalResetDelayMs = config.autoResetTimeoutMs || 15000;
 
   function setBusy(isBusy) {
     state.isBusy = isBusy;
@@ -38,21 +47,69 @@
     elements.dispenseButton.disabled = isBusy || !state.currentUser;
   }
 
-  function setMachineState(title, message) {
+  function updateStatusTone(tone) {
+    elements.statusPanel.className = "status-panel";
+    elements.statusPanel.classList.add("status-" + tone);
+  }
+
+  function setMachineState(title, message, tone) {
     elements.machineState.textContent = title;
     elements.statusMessage.textContent = message;
+    updateStatusTone(tone || "neutral");
+  }
+
+  function stopAutoReset() {
+    if (state.autoResetTimerId) {
+      window.clearTimeout(state.autoResetTimerId);
+      state.autoResetTimerId = null;
+    }
+    if (state.countdownTimerId) {
+      window.clearInterval(state.countdownTimerId);
+      state.countdownTimerId = null;
+    }
+    state.autoResetDeadline = null;
+    elements.idleReturnChip.classList.add("hidden");
+    elements.idleReturnChip.textContent = "Resetting soon";
+  }
+
+  function renderCountdown() {
+    if (!state.autoResetDeadline) {
+      return;
+    }
+
+    const remainingMs = Math.max(0, state.autoResetDeadline - Date.now());
+    const remainingSeconds = Math.ceil(remainingMs / 1000);
+    elements.idleReturnChip.textContent = "Idle in " + remainingSeconds + "s";
+  }
+
+  function scheduleAutoReset(reason) {
+    stopAutoReset();
+    state.autoResetDeadline = Date.now() + terminalResetDelayMs;
+    elements.idleReturnChip.classList.remove("hidden");
+    renderCountdown();
+    state.countdownTimerId = window.setInterval(renderCountdown, 250);
+    state.autoResetTimerId = window.setTimeout(function () {
+      resetToIdle();
+      if (reason) {
+        setMachineState("Idle", "Ready for the next user. " + reason, "neutral");
+      }
+    }, terminalResetDelayMs);
   }
 
   function setResult(kind, title, detail, operation) {
     elements.resultPanel.className = "result-panel";
     if (kind === "success") {
       elements.resultPanel.classList.add("result-success");
+      elements.resultStatePill.textContent = "Success";
     } else if (kind === "warning") {
       elements.resultPanel.classList.add("result-warning");
+      elements.resultStatePill.textContent = "Recovery";
     } else if (kind === "failure") {
       elements.resultPanel.classList.add("result-failure");
+      elements.resultStatePill.textContent = "Attention";
     } else {
       elements.resultPanel.classList.add("result-neutral");
+      elements.resultStatePill.textContent = "Idle";
     }
 
     elements.resultTitle.textContent = title;
@@ -69,6 +126,7 @@
     state.currentUser = null;
     state.currentRfidUid = null;
     elements.userCard.classList.add("user-card-empty");
+    elements.userStatePill.textContent = "Waiting";
     elements.userPlaceholder.classList.remove("hidden");
     elements.userDetails.classList.add("hidden");
     elements.userName.textContent = "";
@@ -83,6 +141,7 @@
     state.currentUser = payload.user;
     state.currentRfidUid = payload.rfid_uid;
     elements.userCard.classList.remove("user-card-empty");
+    elements.userStatePill.textContent = "Ready";
     elements.userPlaceholder.classList.add("hidden");
     elements.userDetails.classList.remove("hidden");
     elements.userName.textContent = payload.user.full_name;
@@ -94,9 +153,10 @@
   }
 
   function resetToIdle() {
+    stopAutoReset();
     clearUser();
     setBusy(false);
-    setMachineState("Idle", "Ready for the next user. Present a card and start authorization.");
+    setMachineState("Idle", "Ready for the next user. Present card and tap start.", "neutral");
     setResult("neutral", "No operation yet.", "The result for the last dispense will appear here.");
   }
 
@@ -123,10 +183,11 @@
   }
 
   async function startAuth() {
+    stopAutoReset();
     clearUser();
     setBusy(true);
-    setMachineState("Authorizing", "Waiting for RFID card on the real backend authorization endpoint.");
-    setResult("neutral", "Authorization in progress", "Present card now.");
+    setMachineState("Authorizing", "Present RFID card to begin.", "neutral");
+    setResult("neutral", "Authorization in progress", "Waiting for card read.");
 
     try {
       const { response, payload } = await readJson(config.authEndpoint, {
@@ -135,17 +196,20 @@
       });
 
       if (!response.ok) {
-        setMachineState("Authorization Failed", payload.detail || "RFID authorization failed.");
-        setResult("failure", "Authorization failed", payload.detail || "RFID card was not accepted.");
+        const detail = payload.detail || "RFID card was not accepted.";
+        setMachineState("Authorization Failed", detail, "danger");
+        setResult("failure", "Authorization failed", detail);
+        scheduleAutoReset("Screen reset after failed authorization.");
         return;
       }
 
       showUser(payload);
-      setMachineState("Authenticated", "User resolved. Dispense is enabled for the configured smoke-path item.");
+      setMachineState("Authenticated", "User verified. Dispense is enabled.", "success");
       setResult("success", "User authenticated", payload.user.full_name + " is ready to dispense.");
     } catch (error) {
-      setMachineState("Authorization Error", "The UI could not reach the backend authorization path.");
+      setMachineState("Authorization Error", "The UI could not reach the backend authorization path.", "danger");
       setResult("failure", "Authorization error", String(error));
+      scheduleAutoReset("Screen reset after authorization error.");
     } finally {
       setBusy(false);
     }
@@ -188,9 +252,10 @@
       return;
     }
 
+    stopAutoReset();
     setBusy(true);
-    setMachineState("Dispensing", "Real dispense is running through the backend operation endpoint.");
-    setResult("neutral", "Dispense in progress", "Wait for the backend and hardware flow to finish.");
+    setMachineState("Dispensing", "Dispense in progress. Keep clear of the machine.", "neutral");
+    setResult("neutral", "Dispense in progress", "Waiting for hardware confirmation.");
 
     try {
       const requestPayload = {
@@ -206,18 +271,23 @@
       });
 
       if (!response.ok) {
-        setMachineState("Dispense Error", payload.detail || "Dispense request failed.");
-        setResult("failure", "Dispense request failed", payload.detail || "Backend rejected the request.");
+        const detail = payload.detail || "Backend rejected the request.";
+        setMachineState("Dispense Error", detail, "danger");
+        setResult("failure", "Dispense request failed", detail);
+        scheduleAutoReset("Screen reset after failed dispense request.");
         return;
       }
 
       const result = classifyOperation(payload);
-      setMachineState("Result", result.detail);
+      const tone = result.kind === "success" ? "success" : result.kind === "warning" ? "warning" : "danger";
+      setMachineState("Result", result.detail, tone);
       setResult(result.kind, result.title, result.detail, payload);
       await refreshInventory();
+      scheduleAutoReset("Ready for the next user.");
     } catch (error) {
-      setMachineState("Dispense Error", "The UI could not reach the backend dispense path.");
+      setMachineState("Dispense Error", "The UI could not reach the backend dispense path.", "danger");
       setResult("failure", "Dispense error", String(error));
+      scheduleAutoReset("Screen reset after dispense error.");
     } finally {
       setBusy(false);
     }

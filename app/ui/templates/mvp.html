@@ -8,52 +8,56 @@
 </head>
 <body>
   <main class="app-shell">
-    <header class="hero">
-      <p class="eyebrow">DION ABA1</p>
-      <h1>Dispense MVP</h1>
-      <p class="lead">Touch-friendly machine flow for RFID auth and one known smoke-path dispense.</p>
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">DION ABA1</p>
+        <h1>Ready To Dispense</h1>
+      </div>
+      <div class="topbar-meta">
+        <div class="meta-chip">
+          <span class="meta-label">Target</span>
+          <strong id="dispense-target">Loading...</strong>
+        </div>
+        <div class="meta-chip">
+          <span class="meta-label">Stock</span>
+          <strong id="inventory-quantity">Loading...</strong>
+        </div>
+      </div>
     </header>
 
-    <section class="status-panel" aria-live="polite">
+    <section class="status-panel status-neutral" id="status-panel" aria-live="polite">
       <div class="status-header">
-        <span class="status-label">State</span>
-        <strong id="machine-state">Idle</strong>
+        <div>
+          <span class="status-label">Machine State</span>
+          <strong id="machine-state">Idle</strong>
+        </div>
+        <span id="idle-return-chip" class="idle-return-chip hidden">Resetting soon</span>
       </div>
       <p id="status-message">Ready for the next user. Present a card and start authorization.</p>
     </section>
 
-    <section class="grid">
-      <section class="card card-primary">
-        <h2>Machine</h2>
-        <div class="actions">
+    <section class="main-layout">
+      <section class="card action-card">
+        <h2>User Flow</h2>
+        <div class="actions primary-actions">
           <button id="start-auth-button" class="action-button action-button-primary" type="button">
-            Start RFID Authorization
+            Start RFID Scan
           </button>
           <button id="reset-button" class="action-button action-button-secondary" type="button">
-            Return to Idle
+            Reset
           </button>
         </div>
-        <dl class="key-values">
-          <div>
-            <dt>Flow</dt>
-            <dd>Idle -> Auth -> User -> Dispense -> Result</dd>
-          </div>
-          <div>
-            <dt>Dispense target</dt>
-            <dd id="dispense-target">Loading...</dd>
-          </div>
-          <div>
-            <dt>Current inventory</dt>
-            <dd id="inventory-quantity">Loading...</dd>
-          </div>
-        </dl>
+        <p class="hint">Tap start, present card, then dispense.</p>
       </section>
 
-      <section class="card">
-        <h2>Authorized User</h2>
+      <section class="card user-section">
+        <div class="section-heading">
+          <h2>Authorized User</h2>
+          <span id="user-state-pill" class="state-pill">Waiting</span>
+        </div>
         <div id="user-card" class="user-card user-card-empty">
           <p class="user-placeholder">No active user session.</p>
-          <dl class="key-values hidden" id="user-details">
+          <dl class="user-details hidden" id="user-details">
             <div>
               <dt>Name</dt>
               <dd id="user-name"></dd>
@@ -80,28 +84,31 @@
           Dispense Item
         </button>
       </section>
-    </section>
 
-    <section class="card">
-      <h2>Last Operation</h2>
-      <div id="result-panel" class="result-panel result-neutral">
+      <section class="card result-card">
+        <div class="section-heading">
+          <h2>Operation Result</h2>
+          <span id="result-state-pill" class="state-pill">Idle</span>
+        </div>
+        <div id="result-panel" class="result-panel result-neutral">
         <p id="result-title">No operation yet.</p>
         <p id="result-detail">The result for the last dispense will appear here.</p>
-      </div>
-      <dl class="key-values">
-        <div>
-          <dt>Operation State</dt>
-          <dd id="operation-state">n/a</dd>
         </div>
-        <div>
-          <dt>Confirmed Qty</dt>
-          <dd id="confirmed-qty">n/a</dd>
-        </div>
-        <div>
-          <dt>Error Code</dt>
-          <dd id="error-code">n/a</dd>
-        </div>
-      </dl>
+        <dl class="result-metrics">
+          <div>
+            <dt>State</dt>
+            <dd id="operation-state">n/a</dd>
+          </div>
+          <div>
+            <dt>Qty</dt>
+            <dd id="confirmed-qty">n/a</dd>
+          </div>
+          <div>
+            <dt>Error</dt>
+            <dd id="error-code">n/a</dd>
+          </div>
+        </dl>
+      </section>
     </section>
   </main>
 

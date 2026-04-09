@@ -64,11 +64,12 @@ def test_ui_mvp_page_serves_configured_dispense_flow(tmp_path: Path) -> None:
         response = client.get("/ui/mvp")
 
     assert response.status_code == 200
-    assert "Start RFID Authorization" in response.text
+    assert "Start RFID Scan" in response.text
     assert '"slot_id": 7' in response.text
     assert '"item_id": 9' in response.text
     assert '"quantity": 2' in response.text
     assert '"/inventory/7/9"' in response.text
+    assert '"autoResetTimeoutMs": 15000' in response.text
 
 
 def test_ui_mvp_static_assets_are_served(tmp_path: Path) -> None:
@@ -79,6 +80,7 @@ def test_ui_mvp_static_assets_are_served(tmp_path: Path) -> None:
 
     assert response.status_code == 200
     assert "resetToIdle" in response.text
+    assert "scheduleAutoReset" in response.text
 
 
 def test_auth_and_inventory_happy_path(tmp_path: Path) -> None:
