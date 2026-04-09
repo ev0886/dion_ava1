@@ -5,6 +5,8 @@ import sys
 
 from app.application.composition import ApplicationContainer, create_bootstrapped_application_container
 from app.domain.enums import StartupReadinessStatus
+from app.hardware.rfid_real import RealRfidAdapter
+from app.hardware.rfid_rusguard import RusGuardAcmStatusTransport
 from app.runtime import add_common_settings_arguments, render_json, settings_from_args
 
 
@@ -16,6 +18,7 @@ def build_parser() -> argparse.ArgumentParser:
     subparsers.add_parser("startup-check", help="Run startup readiness checks")
     subparsers.add_parser("hardware-health", help="Ping hardware endpoints and print availability")
     subparsers.add_parser("recovery-scan", help="Scan unfinished operations and open recovery cases")
+    subparsers.add_parser("rfid-rg-get-card", help="Run narrow RusGuard RG_GetCard diagnostic")
 
     export_plan = subparsers.add_parser("export-plan")
     export_plan.add_argument("--requested-by-user-id", type=int, required=True)
@@ -71,6 +74,18 @@ def _dispatch(args: argparse.Namespace, container: ApplicationContainer) -> int:
             ),
         }
         print(render_json(summary))
+        return 0
+
+    if args.command == "rfid-rg-get-card":
+        reader = container.hardware.rfid_reader
+        if not isinstance(reader, RealRfidAdapter):
+            raise ValueError("rfid-rg-get-card requires the real RFID adapter.")
+        config = reader._require_config(operation="rfid-rg-get-card")
+        transport = reader._transport
+        if not isinstance(transport, RusGuardAcmStatusTransport):
+            raise ValueError("rfid-rg-get-card requires the RusGuard ACM transport.")
+        result = transport.diagnostic_get_card(timeout_ms=config.endpoint.timeouts.read_timeout_ms)
+        print(render_json(result))
         return 0
 
     if args.command == "export-plan":

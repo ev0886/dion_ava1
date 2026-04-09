@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import ctypes
 import ctypes.util
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Final, Protocol
 
@@ -11,10 +12,29 @@ from app.hardware.transport_config import EndpointTimeoutSettings, RfidSerialTra
 class RfidStatusTransport(Protocol):
     def ping(self, *, timeout_ms: int | None = None) -> None: ...
 
+    def read_card(self, *, timeout_ms: int | None = None) -> "RusGuardCardRead": ...
+
+
+@dataclass(frozen=True, slots=True)
+class RusGuardCardRead:
+    status_type: int
+    uid: str | None
+
+
+@dataclass(frozen=True, slots=True)
+class RusGuardGetCardDiagnostic:
+    status_type: int
+    uid: str | None
+    uid_size: int
+
 
 class RusGuardAcmStatusTransport:
     _ENDPOINT_TYPE_SERIAL: Final[int] = 0x02
     _DEVICE_ADDRESS: Final[int] = 0
+    _STATUS_NO_CARD: Final[int] = 0x01
+    _CARDS_MASK_ALL: Final[int] = 0xFF
+    _UID_SIZE: Final[int] = 7
+    _GET_CARD_UID_BUFFER_SIZE: Final[int] = 64
     _LIBRARY_CANDIDATES: Final[tuple[str, ...]] = (
         "rg",
         "rusguard",
@@ -38,51 +58,142 @@ class RusGuardAcmStatusTransport:
     def ping(self, *, timeout_ms: int | None = None) -> None:
         del timeout_ms
         sdk = self._sdk_loader(self._settings.sdk_library)
-        endpoint_list_handle = ctypes.c_void_p()
-        endpoint_count = ctypes.c_uint32()
-        initialized = False
-        endpoint = None
-        try:
-            _check_sdk_error(sdk.RG_InitializeLib(), "RG_InitializeLib")
-            initialized = True
+        with _open_selected_device(sdk=sdk, port=self._settings.port) as endpoint:
+            status_type = ctypes.c_uint8()
             _check_sdk_error(
-                sdk.RG_FindEndPoints(
-                    ctypes.byref(endpoint_list_handle),
-                    self._ENDPOINT_TYPE_SERIAL,
+                sdk.RG_GetStatus(
+                    ctypes.byref(endpoint),
+                    self._DEVICE_ADDRESS,
+                    ctypes.byref(status_type),
+                    None,
+                    None,
+                    None,
+                ),
+                "RG_GetStatus",
+            )
+
+    def read_card(self, *, timeout_ms: int | None = None) -> RusGuardCardRead:
+        del timeout_ms
+        sdk = self._sdk_loader(self._settings.sdk_library)
+        with _open_selected_device(sdk=sdk, port=self._settings.port) as endpoint:
+            _check_sdk_error(
+                sdk.RG_SetCardsMask(
+                    ctypes.byref(endpoint),
+                    self._DEVICE_ADDRESS,
+                    self._CARDS_MASK_ALL,
+                ),
+                "RG_SetCardsMask",
+            )
+            status_type = ctypes.c_uint8()
+            card_info = _RgCardInfo()
+            _check_sdk_error(
+                sdk.RG_GetStatus(
+                    ctypes.byref(endpoint),
+                    self._DEVICE_ADDRESS,
+                    ctypes.byref(status_type),
+                    None,
+                    ctypes.byref(card_info),
+                    None,
+                ),
+                "RG_GetStatus",
+            )
+            if status_type.value == self._STATUS_NO_CARD:
+                return RusGuardCardRead(status_type=status_type.value, uid=None)
+            uid = _bytes_to_hex(card_info.uid, self._UID_SIZE)
+            return RusGuardCardRead(status_type=status_type.value, uid=uid)
+
+    def diagnostic_get_card(self, *, timeout_ms: int | None = None) -> RusGuardGetCardDiagnostic:
+        del timeout_ms
+        sdk = self._sdk_loader(self._settings.sdk_library)
+        with _open_selected_device(sdk=sdk, port=self._settings.port) as endpoint:
+            status_type = ctypes.c_uint8()
+            uid_size = ctypes.c_int32()
+            uid_buffer = (ctypes.c_uint8 * self._GET_CARD_UID_BUFFER_SIZE)()
+            _check_sdk_error(
+                sdk.RG_GetCard(
+                    ctypes.byref(endpoint),
+                    self._DEVICE_ADDRESS,
+                    ctypes.byref(status_type),
+                    uid_buffer,
+                    self._GET_CARD_UID_BUFFER_SIZE,
+                    ctypes.byref(uid_size),
+                ),
+                "RG_GetCard",
+            )
+            resolved_uid_size = uid_size.value
+            if resolved_uid_size < 0 or resolved_uid_size > self._GET_CARD_UID_BUFFER_SIZE:
+                raise OSError(
+                    f"RG_GetCard returned invalid UID size {resolved_uid_size} "
+                    f"for buffer size {self._GET_CARD_UID_BUFFER_SIZE}."
+                )
+            if status_type.value == self._STATUS_NO_CARD or resolved_uid_size == 0:
+                return RusGuardGetCardDiagnostic(status_type=status_type.value, uid=None, uid_size=resolved_uid_size)
+            uid = _bytes_to_hex(uid_buffer, resolved_uid_size)
+            return RusGuardGetCardDiagnostic(status_type=status_type.value, uid=uid, uid_size=resolved_uid_size)
+
+
+class _RusGuardSession:
+    def __init__(self, *, sdk: object, port: str) -> None:
+        self._sdk = sdk
+        self._port = port
+        self._endpoint_list_handle = ctypes.c_void_p()
+        self._initialized = False
+        self.endpoint: _RgEndpoint | None = None
+
+    def __enter__(self) -> _RgEndpoint:
+        endpoint_count = ctypes.c_uint32()
+        _check_sdk_error(self._sdk.RG_InitializeLib(), "RG_InitializeLib")
+        self._initialized = True
+        try:
+            _check_sdk_error(
+                self._sdk.RG_FindEndPoints(
+                    ctypes.byref(self._endpoint_list_handle),
+                    RusGuardAcmStatusTransport._ENDPOINT_TYPE_SERIAL,
                     ctypes.byref(endpoint_count),
                 ),
                 "RG_FindEndPoints",
             )
-            endpoint = _select_serial_endpoint(
-                sdk=sdk,
-                endpoint_list_handle=endpoint_list_handle,
+            self.endpoint = _select_serial_endpoint(
+                sdk=self._sdk,
+                endpoint_list_handle=self._endpoint_list_handle,
                 endpoint_count=endpoint_count.value,
-                port=self._settings.port,
+                port=self._port,
             )
-            _check_sdk_error(sdk.RG_InitDevice(ctypes.byref(endpoint), self._DEVICE_ADDRESS), "RG_InitDevice")
-            try:
-                status_type = ctypes.c_uint8()
-                _check_sdk_error(
-                    sdk.RG_GetStatus(
-                        ctypes.byref(endpoint),
-                        self._DEVICE_ADDRESS,
-                        ctypes.byref(status_type),
-                        None,
-                        None,
-                        None,
-                    ),
-                    "RG_GetStatus",
-                )
-            finally:
-                _check_sdk_error(
-                    sdk.RG_CloseDevice(ctypes.byref(endpoint), self._DEVICE_ADDRESS),
-                    "RG_CloseDevice",
-                )
-        finally:
-            if endpoint_list_handle.value:
-                _check_sdk_error(sdk.RG_CloseResource(endpoint_list_handle), "RG_CloseResource")
-            if initialized:
-                _check_sdk_error(sdk.RG_Uninitialize(), "RG_Uninitialize")
+            _check_sdk_error(
+                self._sdk.RG_InitDevice(ctypes.byref(self.endpoint), RusGuardAcmStatusTransport._DEVICE_ADDRESS),
+                "RG_InitDevice",
+            )
+        except Exception:
+            self.__exit__(None, None, None)
+            raise
+        return self.endpoint
+
+    def __exit__(self, exc_type, exc, tb) -> None:
+        if self.endpoint is not None:
+            _check_sdk_error(
+                self._sdk.RG_CloseDevice(ctypes.byref(self.endpoint), RusGuardAcmStatusTransport._DEVICE_ADDRESS),
+                "RG_CloseDevice",
+            )
+        if self._endpoint_list_handle.value:
+            _check_sdk_error(self._sdk.RG_CloseResource(self._endpoint_list_handle), "RG_CloseResource")
+        if self._initialized:
+            _check_sdk_error(self._sdk.RG_Uninitialize(), "RG_Uninitialize")
+
+
+def _open_selected_device(*, sdk: object, port: str) -> _RusGuardSession:
+    return _RusGuardSession(sdk=sdk, port=port)
+
+
+class _RgCardInfo(ctypes.Structure):
+    _pack_ = 1
+    _fields_ = [
+        ("type", ctypes.c_uint8),
+        ("uid", ctypes.c_uint8 * 7),
+    ]
+
+
+def _bytes_to_hex(data: ctypes.Array[ctypes.c_uint8], size: int) -> str:
+    return bytes(data[:size]).hex().upper()
 
 
 class _RgEndpoint(ctypes.Structure):
