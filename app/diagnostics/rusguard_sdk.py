@@ -16,6 +16,8 @@ _LIBRARY_PATH_ENV_VAR = "DION_RUSGUARD_SDK_LIBRARY_PATH"
 RG_ENDPOINT_TYPE_USB_HID = 0x01
 RG_ENDPOINT_TYPE_SERIAL = 0x02
 _DEFAULT_DEVICE_ADDRESS = 0
+_TARGET_ACM_ADDRESS = "/dev/ttyACM0"
+_RG_CARD_FAMILY_CF_ALL = 0xFF
 _API_ERROR_DETAILS = {
     0: ("EC_OK", "all good"),
     1: ("EC_FAIL", "generic failure"),
@@ -110,6 +112,8 @@ class RusGuardSdkProtocol(Protocol):
 
     def diagnose_serial_endpoint(self, endpoint_info: EndpointInfo) -> "SerialEndpointDiagnosticResult": ...
 
+    def diagnose_acm_endpoint(self, endpoint_info: EndpointInfo) -> "AcmProbeDiagnosticResult": ...
+
     def uninitialize(self) -> None: ...
 
 
@@ -142,6 +146,31 @@ class SerialOpenDiagnosticReport:
     serial_results: tuple[SerialEndpointDiagnosticResult, ...]
 
 
+@dataclass(frozen=True, slots=True)
+class OperationResult:
+    ok: bool
+    code: int
+    code_name: str
+    code_message: str
+
+
+@dataclass(frozen=True, slots=True)
+class AcmProbeDiagnosticResult:
+    endpoint_info: EndpointInfo
+    open_result: OperationResult
+    set_cards_mask_result: OperationResult | None
+    status_result: OperationResult | None
+    close_result: OperationResult | None
+
+
+@dataclass(frozen=True, slots=True)
+class AcmProbeDiagnosticReport:
+    library_path: Path
+    target_endpoint: str
+    found: bool
+    result: AcmProbeDiagnosticResult | None
+
+
 class CountOnlyRusGuardSdk:
     def __init__(self, library_path: Path) -> None:
         self.library_path = library_path
@@ -170,6 +199,8 @@ class CountOnlyRusGuardSdk:
         self._library.RG_GetFoundEndPointInfo.restype = ctypes.c_uint32
         self._library.RG_InitDevice.argtypes = [ctypes.POINTER(_RgEndpoint), ctypes.c_uint8]
         self._library.RG_InitDevice.restype = ctypes.c_uint32
+        self._library.RG_SetCardsMask.argtypes = [ctypes.POINTER(_RgEndpoint), ctypes.c_uint8, ctypes.c_uint8]
+        self._library.RG_SetCardsMask.restype = ctypes.c_uint32
         self._library.RG_GetStatus.argtypes = [
             ctypes.POINTER(_RgEndpoint),
             ctypes.c_uint8,
@@ -288,6 +319,74 @@ class CountOnlyRusGuardSdk:
         assert result is not None
         return result
 
+    def diagnose_acm_endpoint(self, endpoint_info: EndpointInfo) -> AcmProbeDiagnosticResult:
+        endpoint_address = ctypes.create_string_buffer(endpoint_info.address.encode("ascii"))
+        endpoint = _RgEndpoint(type=endpoint_info.type, address=ctypes.cast(endpoint_address, ctypes.c_char_p))
+
+        open_result = self._call_operation(
+            self._library.RG_InitDevice,
+            ctypes.byref(endpoint),
+            ctypes.c_uint8(_DEFAULT_DEVICE_ADDRESS),
+        )
+        if not open_result.ok:
+            return AcmProbeDiagnosticResult(
+                endpoint_info=endpoint_info,
+                open_result=open_result,
+                set_cards_mask_result=None,
+                status_result=None,
+                close_result=None,
+            )
+
+        set_cards_mask_result: OperationResult | None = None
+        status_result: OperationResult | None = None
+        close_result: OperationResult | None = None
+
+        try:
+            set_cards_mask_result = self._call_operation(
+                self._library.RG_SetCardsMask,
+                ctypes.byref(endpoint),
+                ctypes.c_uint8(_DEFAULT_DEVICE_ADDRESS),
+                ctypes.c_uint8(_RG_CARD_FAMILY_CF_ALL),
+            )
+            if set_cards_mask_result.ok:
+                status_type = ctypes.c_uint8()
+                pin_states = ctypes.c_uint8()
+                card_info = _RgCardInfo()
+                card_memory = _RgCardMemory()
+                status_result = self._call_operation(
+                    self._library.RG_GetStatus,
+                    ctypes.byref(endpoint),
+                    ctypes.c_uint8(_DEFAULT_DEVICE_ADDRESS),
+                    ctypes.byref(status_type),
+                    ctypes.byref(pin_states),
+                    ctypes.byref(card_info),
+                    ctypes.byref(card_memory),
+                )
+        finally:
+            close_result = self._call_operation(
+                self._library.RG_CloseDevice,
+                ctypes.byref(endpoint),
+                ctypes.c_uint8(_DEFAULT_DEVICE_ADDRESS),
+            )
+
+        return AcmProbeDiagnosticResult(
+            endpoint_info=endpoint_info,
+            open_result=open_result,
+            set_cards_mask_result=set_cards_mask_result,
+            status_result=status_result,
+            close_result=close_result,
+        )
+
+    def _call_operation(self, func: ctypes._CFuncPtr, *args: object) -> OperationResult:
+        code = int(func(*args))
+        code_name, code_message = decode_api_error(code)
+        return OperationResult(
+            ok=code == 0,
+            code=code,
+            code_name=code_name,
+            code_message=code_message,
+        )
+
 
 def run_rusguard_sdk_enumeration_command(*, library_path: str | None = None) -> int:
     resolved_library_path = resolve_library_path(library_path)
@@ -310,6 +409,18 @@ def run_rusguard_sdk_serial_open_diagnostic_command(*, library_path: str | None 
         print(f"ERROR: {error}", file=sys.stderr)
         return 1
     print(render_serial_open_report(report))
+    return 0
+
+
+def run_rusguard_sdk_acm_probe_command(*, library_path: str | None = None) -> int:
+    resolved_library_path = resolve_library_path(library_path)
+    try:
+        sdk = CountOnlyRusGuardSdk(resolved_library_path)
+        report = run_acm_probe_diagnostic(sdk)
+    except RusGuardSdkError as error:
+        print(f"ERROR: {error}", file=sys.stderr)
+        return 1
+    print(render_acm_probe_report(report))
     return 0
 
 
@@ -339,6 +450,28 @@ def run_serial_open_diagnostic(sdk: RusGuardSdkProtocol) -> SerialOpenDiagnostic
         return SerialOpenDiagnosticReport(
             library_path=sdk.library_path,
             serial_results=tuple(sdk.diagnose_serial_endpoint(endpoint_info) for endpoint_info in serial_endpoints),
+        )
+    finally:
+        sdk.uninitialize()
+
+
+def run_acm_probe_diagnostic(sdk: RusGuardSdkProtocol) -> AcmProbeDiagnosticReport:
+    sdk.initialize()
+    try:
+        serial_endpoints = sdk.find_endpoint_infos(RG_ENDPOINT_TYPE_SERIAL)
+        target_endpoint = next((item for item in serial_endpoints if item.address == _TARGET_ACM_ADDRESS), None)
+        if target_endpoint is None:
+            return AcmProbeDiagnosticReport(
+                library_path=sdk.library_path,
+                target_endpoint=_TARGET_ACM_ADDRESS,
+                found=False,
+                result=None,
+            )
+        return AcmProbeDiagnosticReport(
+            library_path=sdk.library_path,
+            target_endpoint=_TARGET_ACM_ADDRESS,
+            found=True,
+            result=sdk.diagnose_acm_endpoint(target_endpoint),
         )
     finally:
         sdk.uninitialize()
@@ -384,6 +517,30 @@ def render_serial_open_report(report: SerialOpenDiagnosticReport) -> str:
     return "\n".join(lines)
 
 
+def render_acm_probe_report(report: AcmProbeDiagnosticReport) -> str:
+    lines = [
+        "[RusGuard SDK]",
+        f"library path: {report.library_path.as_posix()}",
+        "library load ok",
+        "initialize ok",
+        "",
+        "[ACM]",
+        f"target: {report.target_endpoint}",
+    ]
+    if not report.found:
+        lines.append("discovery: not found")
+        lines.extend(("", "uninitialize ok"))
+        return "\n".join(lines)
+
+    assert report.result is not None
+    lines.append(f"open: {_format_operation_result(report.result.open_result)}")
+    lines.append(f"set_cards_mask: {_format_optional_operation_result(report.result.set_cards_mask_result, skipped_on_fail=True)}")
+    lines.append(f"status: {_format_optional_operation_result(report.result.status_result, skipped_on_fail=True)}")
+    lines.append(f"close: {_format_optional_operation_result(report.result.close_result, skipped_on_fail=False)}")
+    lines.extend(("", "uninitialize ok"))
+    return "\n".join(lines)
+
+
 def _build_section(title: str, endpoint_type_mask: int, sdk: RusGuardSdkProtocol) -> DiagnosticSection:
     endpoint_infos = sdk.find_endpoint_infos(endpoint_type_mask)
     lines = [f"count: {len(endpoint_infos)}"]
@@ -402,3 +559,15 @@ def _decode_ascii(value: bytes | ctypes.Array[ctypes.c_char]) -> str:
 
 def decode_api_error(code: int) -> tuple[str, str]:
     return _API_ERROR_DETAILS.get(code, ("UNKNOWN_API_ERROR", "unknown RusGuard SDK error"))
+
+
+def _format_operation_result(result: OperationResult) -> str:
+    if result.ok:
+        return "ok"
+    return f"fail(code={result.code}, name={result.code_name}, message={result.code_message})"
+
+
+def _format_optional_operation_result(result: OperationResult | None, *, skipped_on_fail: bool) -> str:
+    if result is None:
+        return "skipped" if skipped_on_fail else "not-run"
+    return _format_operation_result(result)

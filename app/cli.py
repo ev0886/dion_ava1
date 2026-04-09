@@ -5,7 +5,11 @@ import sys
 from typing import Callable
 
 from app.application.composition import ApplicationContainer, create_bootstrapped_application_container
-from app.diagnostics import run_rusguard_sdk_enumeration_command, run_rusguard_sdk_serial_open_diagnostic_command
+from app.diagnostics import (
+    run_rusguard_sdk_acm_probe_command,
+    run_rusguard_sdk_enumeration_command,
+    run_rusguard_sdk_serial_open_diagnostic_command,
+)
 from app.domain.enums import StartupReadinessStatus
 from app.runtime import add_common_settings_arguments, render_json, settings_from_args
 
@@ -28,6 +32,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="Probe discovered RusGuard SDK SERIAL endpoints with open/status/close",
     )
     rusguard_serial_diagnostic.add_argument("--library-path", type=str, default=None)
+    rusguard_acm_probe = subparsers.add_parser(
+        "rusguard-sdk-acm-probe",
+        help="Probe only the discovered RusGuard SDK SERIAL endpoint at /dev/ttyACM0 using the vendor setup sequence",
+    )
+    rusguard_acm_probe.add_argument("--library-path", type=str, default=None)
 
     export_plan = subparsers.add_parser("export-plan")
     export_plan.add_argument("--requested-by-user-id", type=int, required=True)
@@ -126,6 +135,8 @@ def _diagnostic_runner(command: str) -> Callable[..., int] | None:
         return run_rusguard_sdk_enumeration_command
     if command == "rusguard-sdk-serial-open-diagnostic":
         return run_rusguard_sdk_serial_open_diagnostic_command
+    if command == "rusguard-sdk-acm-probe":
+        return run_rusguard_sdk_acm_probe_command
     return None
 
 
