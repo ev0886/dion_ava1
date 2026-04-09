@@ -30,6 +30,7 @@ from app.hardware.lock_real import RealLockAdapter
 from app.hardware.lock_stub_real import StubRealLockAdapter
 from app.hardware.rfid_mock import MockRfidAdapter
 from app.hardware.rfid_real import RealRfidAdapter
+from app.hardware.rfid_rusguard import RfidStatusTransport, RusGuardAcmStatusTransport
 from app.hardware.rfid_stub_real import StubRealRfidAdapter
 from app.hardware.transport_config import (
     AnyHardwareEndpointTransportConfig,
@@ -41,6 +42,8 @@ from app.hardware.transport_config import (
     LockHardwareEndpointTransportConfig,
     REAL_HARDWARE_ENDPOINT_NAMES,
     RealHardwareSettings,
+    RfidHardwareEndpointTransportConfig,
+    RfidSerialTransportSettings,
     SerialTransportSettings,
     TcpTransportSettings,
     real_hardware_endpoints_example,
@@ -86,8 +89,12 @@ __all__ = [
     "RealHardwareSettings",
     "RealLockAdapter",
     "RealRfidAdapter",
+    "RfidHardwareEndpointTransportConfig",
+    "RfidSerialTransportSettings",
+    "RfidStatusTransport",
     "RfidReadResult",
     "RfidReaderContract",
+    "RusGuardAcmStatusTransport",
     "CommonEndpointSettings",
     "DrumHardwareEndpointTransportConfig",
     "EndpointTimeoutSettings",

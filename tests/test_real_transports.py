@@ -10,6 +10,7 @@ from app.domain.enums import StartupReadinessStatus
 from app.hardware import (
     HardwareTimeoutError,
     RealRfidAdapter,
+    RusGuardAcmStatusTransport,
     SerialTransport,
     TcpTransport,
     create_hardware_bundle,
@@ -79,18 +80,7 @@ def test_tcp_transport_request_response_happy_path() -> None:
 def test_transport_timeout_error_is_mapped_to_safe_adapter_timeout() -> None:
     adapter = RealRfidAdapter(
         config=_rfid_config(),
-        transport=SerialTransport(
-            settings=SerialTransportSettings(
-                transport="serial",
-                port="COM7",
-                baudrate=9600,
-                data_bits=8,
-                parity="none",
-                stop_bits=1,
-            ),
-            timeouts=EndpointTimeoutSettings(connect_timeout_ms=1000, read_timeout_ms=1000, write_timeout_ms=1000),
-            serial_module_loader=lambda: _FakeSerialModule([b""]),
-        ),
+        transport=_TimeoutStatusTransport(),
     )
 
     with pytest.raises(HardwareTimeoutError, match="read timed out"):
@@ -111,7 +101,7 @@ def test_real_provider_composition_uses_actual_transport_implementations_by_defa
 
     assert isinstance(bundle.drum_controller._transport, SerialTransport)
     assert isinstance(bundle.lock_controller._transport, SerialTransport)
-    assert isinstance(bundle.rfid_reader._transport, SerialTransport)
+    assert isinstance(bundle.rfid_reader._transport, RusGuardAcmStatusTransport)
 
 
 def test_real_readiness_can_become_healthy_when_rfid_lock_and_drum_transports_work(
@@ -123,13 +113,17 @@ def test_real_readiness_can_become_healthy_when_rfid_lock_and_drum_transports_wo
     def fake_create_transport_client(config):
         if config is None:
             return None
-        if config.endpoint.code == "rfid-1":
-            return _FakeTransport([b"PONG\n"])
         if config.endpoint.code == "lock-1":
             return _FakeTransport([bytes.fromhex("02 00 00 8F 10 02 03 BA 13 01")])
         return _FakeTransport([bytes.fromhex("24 00 00 C1")])
 
+    def fake_create_rfid_transport_client(config):
+        if config is None:
+            return None
+        return _FakeStatusTransport()
+
     monkeypatch.setattr(hardware_factory, "_create_transport_client", fake_create_transport_client)
+    monkeypatch.setattr(hardware_factory, "_create_rfid_transport_client", fake_create_rfid_transport_client)
 
     settings = AppSettings(
         data_dir=tmp_path,
@@ -167,6 +161,16 @@ class _FakeTransport:
 
     def send(self, payload: bytes) -> None:
         return None
+
+
+class _FakeStatusTransport:
+    def ping(self, *, timeout_ms: int | None = None) -> None:
+        return None
+
+
+class _TimeoutStatusTransport:
+    def ping(self, *, timeout_ms: int | None = None) -> None:
+        raise TimeoutError("read timed out")
 
 
 class _FakeSerialModule:
@@ -262,10 +266,10 @@ class _FakeSocket:
 
 
 def _rfid_config():
-    from app.hardware.transport_config import HardwareEndpointTransportConfig
+    from app.hardware.transport_config import RfidHardwareEndpointTransportConfig
 
-    return HardwareEndpointTransportConfig.model_validate(
-        _serial_endpoint_config(code="rfid-1", driver_name="rfid-driver", port="COM7")
+    return RfidHardwareEndpointTransportConfig.model_validate(
+        _minimal_rfid_endpoint_config(code="rfid-1", driver_name="rfid-driver", port="/dev/ttyACM0")
     )
 
 
@@ -288,6 +292,25 @@ def _serial_endpoint_config(*, code: str, driver_name: str, port: str) -> dict[s
             "data_bits": 8,
             "parity": "none",
             "stop_bits": 1,
+        },
+    }
+
+
+def _minimal_rfid_endpoint_config(*, code: str, driver_name: str, port: str) -> dict[str, object]:
+    return {
+        "endpoint": {
+            "code": code,
+            "driver_name": driver_name,
+            "enabled": True,
+            "timeouts": {
+                "connect_timeout_ms": 1000,
+                "read_timeout_ms": 1000,
+                "write_timeout_ms": 1000,
+            },
+        },
+        "transport": {
+            "transport": "serial",
+            "port": port,
         },
     }
 

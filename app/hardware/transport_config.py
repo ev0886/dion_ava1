@@ -106,10 +106,40 @@ class LockHardwareEndpointTransportConfig(BaseModel):
     protocol: LockControllerProtocolSettings = Field(default_factory=LockControllerProtocolSettings)
 
 
+class RfidSerialTransportSettings(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    transport: Literal["serial"]
+    port: str = Field(min_length=1, max_length=255)
+    sdk_library: str | None = Field(default=None, min_length=1, max_length=1024)
+    baudrate: int = Field(default=9600, gt=0, le=921600)
+    data_bits: Literal[5, 6, 7, 8] = 8
+    parity: Literal["none", "even", "odd"] = "none"
+    stop_bits: Literal[1, 2] = 1
+
+    @field_validator("port", "sdk_library")
+    @classmethod
+    def _validate_optional_path_like_text(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        cleaned = value.strip()
+        if not cleaned:
+            raise ValueError("must not be blank")
+        return cleaned
+
+
+class RfidHardwareEndpointTransportConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    endpoint: CommonEndpointSettings
+    transport: RfidSerialTransportSettings
+
+
 AnyHardwareEndpointTransportConfig = (
     HardwareEndpointTransportConfig
     | DrumHardwareEndpointTransportConfig
     | LockHardwareEndpointTransportConfig
+    | RfidHardwareEndpointTransportConfig
 )
 
 
@@ -118,7 +148,7 @@ class RealHardwareSettings(BaseModel):
 
     drum_controller: DrumHardwareEndpointTransportConfig | None = None
     lock_controller: LockHardwareEndpointTransportConfig | None = None
-    rfid_reader: HardwareEndpointTransportConfig | None = None
+    rfid_reader: RfidHardwareEndpointTransportConfig | None = None
 
 
 def real_hardware_endpoints_example() -> dict[str, object]:
@@ -179,11 +209,7 @@ def real_hardware_endpoints_example() -> dict[str, object]:
             },
             "transport": {
                 "transport": "serial",
-                "port": "/dev/input/event0",
-                "baudrate": 9600,
-                "data_bits": 8,
-                "parity": "none",
-                "stop_bits": 1,
+                "port": "/dev/ttyACM0",
             },
         },
     }

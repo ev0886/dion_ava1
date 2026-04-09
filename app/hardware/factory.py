@@ -16,6 +16,7 @@ from app.hardware.lock_real import RealLockAdapter
 from app.hardware.lock_stub_real import StubRealLockAdapter
 from app.hardware.rfid_mock import MockRfidAdapter
 from app.hardware.rfid_real import RealRfidAdapter
+from app.hardware.rfid_rusguard import RfidStatusTransport, RusGuardAcmStatusTransport
 from app.hardware.rfid_stub_real import StubRealRfidAdapter
 from app.hardware.transport_config import (
     AnyHardwareEndpointTransportConfig,
@@ -23,6 +24,7 @@ from app.hardware.transport_config import (
     HardwareEndpointTransportConfig,
     LockHardwareEndpointTransportConfig,
     REAL_HARDWARE_ENDPOINT_NAMES,
+    RfidHardwareEndpointTransportConfig,
     real_hardware_endpoints_example_json,
 )
 from app.hardware.transports import (
@@ -69,7 +71,8 @@ class RealEndpointConfigSummary:
 def create_hardware_bundle(
     settings: AppSettings,
     *,
-    transport_overrides: dict[str, SerialRequestResponseTransport | TcpRequestResponseTransport] | None = None,
+    transport_overrides: dict[str, SerialRequestResponseTransport | TcpRequestResponseTransport | RfidStatusTransport]
+    | None = None,
 ) -> HardwareBundle:
     """Create the configured hardware bundle without changing provider-selection semantics."""
 
@@ -99,7 +102,7 @@ def _build_real_hardware(
     settings: AppSettings,
     provider: HardwareProvider,
     *,
-    transport_overrides: dict[str, SerialRequestResponseTransport | TcpRequestResponseTransport],
+    transport_overrides: dict[str, SerialRequestResponseTransport | TcpRequestResponseTransport | RfidStatusTransport],
 ) -> HardwareBundle:
     """Build real adapters so each endpoint can fail independently and degrade readiness safely."""
 
@@ -120,7 +123,7 @@ def _build_real_hardware(
     )
     rfid_reader = RealRfidAdapter(
         config=rfid_config.config,
-        transport=transport_overrides.get("rfid_reader") or _create_transport_client(rfid_config.config),
+        transport=transport_overrides.get("rfid_reader") or _create_rfid_transport_client(rfid_config.config),
         config_error=rfid_config.error_message,
     )
     return _bundle_from_parts(provider, drum_controller=drum_controller, lock_controller=lock_controller, rfid_reader=rfid_reader)
@@ -172,6 +175,8 @@ def _endpoint_config_model(endpoint_name: str):
         return DrumHardwareEndpointTransportConfig
     if endpoint_name == "lock_controller":
         return LockHardwareEndpointTransportConfig
+    if endpoint_name == "rfid_reader":
+        return RfidHardwareEndpointTransportConfig
     return HardwareEndpointTransportConfig
 
 
@@ -235,3 +240,9 @@ def _create_transport_client(
     if config.transport.transport == "serial":
         return SerialTransport(settings=config.transport, timeouts=config.endpoint.timeouts)
     return TcpTransport(settings=config.transport, timeouts=config.endpoint.timeouts)
+
+
+def _create_rfid_transport_client(config: RfidHardwareEndpointTransportConfig | None) -> RfidStatusTransport | None:
+    if config is None:
+        return None
+    return RusGuardAcmStatusTransport(settings=config.transport, timeouts=config.endpoint.timeouts)
