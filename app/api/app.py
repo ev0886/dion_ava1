@@ -11,6 +11,7 @@ from fastapi.staticfiles import StaticFiles
 from app.api.dependencies import get_application_container
 from app.api.errors import register_exception_handlers
 from app.api.schemas import (
+    AdminUserUpdateRequest,
     AuthReadAndResolveRfidRequest,
     AuthResolveRequest,
     DispenseOperationRequest,
@@ -27,7 +28,7 @@ from app.application.dto.operations import DispenseRequest, RefillRequest, Retur
 from app.bootstrap import bootstrap
 from app.config import AppSettings, get_settings
 from app.persistence.session import create_session_factory, create_sqlalchemy_engine
-from app.ui.mvp import render_mvp_page
+from app.ui.mvp import render_admin_page, render_mvp_page
 
 
 def create_app(settings: AppSettings | None = None) -> FastAPI:
@@ -56,6 +57,32 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
     @app.get("/ui/mvp")
     def ui_mvp():
         return render_mvp_page(app.state.settings)
+
+    @app.get("/ui/admin")
+    def ui_admin():
+        return render_admin_page(app.state.settings)
+
+    @app.get("/admin/users")
+    def admin_list_users(container: ApplicationContainer = Depends(get_application_container)) -> JSONResponse:
+        return JSONResponse({"users": to_api_payload(container.services.admin_users.list_users())})
+
+    @app.put("/admin/users/{user_id}")
+    def admin_update_user(
+        user_id: int,
+        payload: AdminUserUpdateRequest,
+        container: ApplicationContainer = Depends(get_application_container),
+    ) -> JSONResponse:
+        return JSONResponse(
+            {
+                "user": to_api_payload(
+                    container.services.admin_users.update_user(
+                        user_id=user_id,
+                        rfid_uid=payload.rfid_uid,
+                        dispense_restriction_policy=payload.dispense_restriction_policy,
+                    )
+                )
+            }
+        )
 
     @app.get("/readiness")
     def readiness(container: ApplicationContainer = Depends(get_application_container)) -> JSONResponse:

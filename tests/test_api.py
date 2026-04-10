@@ -77,6 +77,18 @@ def test_ui_mvp_page_serves_configured_dispense_flow(tmp_path: Path) -> None:
     assert '"autoResetTimeoutMs": 15000' in response.text
 
 
+def test_ui_admin_page_serves_user_management_config(tmp_path: Path) -> None:
+    app = create_app(_settings(tmp_path, "api_ui_admin.sqlite3"))
+
+    with TestClient(app) as client:
+        response = client.get("/ui/admin")
+
+    assert response.status_code == 200
+    assert "Operator Admin MVP" in response.text
+    assert '"/admin/users"' in response.text
+    assert '"once_per_day"' in response.text
+
+
 def test_ui_mvp_static_assets_are_served(tmp_path: Path) -> None:
     app = create_app(_settings(tmp_path, "api_ui_assets.sqlite3"))
 
@@ -86,6 +98,17 @@ def test_ui_mvp_static_assets_are_served(tmp_path: Path) -> None:
     assert response.status_code == 200
     assert "resetToIdle" in response.text
     assert "scheduleAutoReset" in response.text
+
+
+def test_ui_admin_static_assets_are_served(tmp_path: Path) -> None:
+    app = create_app(_settings(tmp_path, "api_ui_admin_assets.sqlite3"))
+
+    with TestClient(app) as client:
+        response = client.get("/ui-assets/admin.js")
+
+    assert response.status_code == 200
+    assert "saveRow" in response.text
+    assert "loadUsers" in response.text
 
 
 def test_auth_and_inventory_happy_path(tmp_path: Path) -> None:
@@ -218,6 +241,88 @@ def test_auth_read_and_resolve_rfid_api_retries_past_partial_read(
     assert response.status_code == 200
     assert response.json()["rfid_uid"] == "000FE2767C0045"
 
+
+
+def test_admin_users_endpoint_lists_assigned_and_unassigned_users(tmp_path: Path) -> None:
+    app = create_app(_settings(tmp_path, "api_admin_list.sqlite3"))
+    _seed_base_domain(app)
+    _seed_unassigned_user(app)
+
+    with TestClient(app) as client:
+        response = client.get("/admin/users")
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "users": [
+            {
+                "user_id": 1,
+                "user_code": "user-1",
+                "full_name": "User One",
+                "status": "active",
+                "is_active": True,
+                "role_code": "user",
+                "rfid_uid": "000FE2767C0045",
+                "dispense_restriction_policy": "unlimited",
+            },
+            {
+                "user_id": 2,
+                "user_code": "operator-1",
+                "full_name": "Operator One",
+                "status": "active",
+                "is_active": True,
+                "role_code": "operator",
+                "rfid_uid": None,
+                "dispense_restriction_policy": "once_per_day",
+            },
+        ]
+    }
+
+
+def test_admin_update_user_assigns_rfid_uid_and_changes_policy(tmp_path: Path) -> None:
+    app = create_app(_settings(tmp_path, "api_admin_update.sqlite3"))
+    _seed_base_domain(app)
+    _seed_unassigned_user(app)
+
+    with TestClient(app) as client:
+        response = client.put(
+            "/admin/users/2",
+            json={
+                "rfid_uid": "aa bb-11 22",
+                "dispense_restriction_policy": "unlimited",
+            },
+        )
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "user": {
+            "user_id": 2,
+            "user_code": "operator-1",
+            "full_name": "Operator One",
+            "status": "active",
+            "is_active": True,
+            "role_code": "operator",
+            "rfid_uid": "AABB1122",
+            "dispense_restriction_policy": "unlimited",
+        }
+    }
+
+
+def test_admin_update_user_can_clear_rfid_uid_assignment(tmp_path: Path) -> None:
+    app = create_app(_settings(tmp_path, "api_admin_clear_uid.sqlite3"))
+    _seed_base_domain(app)
+
+    with TestClient(app) as client:
+        response = client.put(
+            "/admin/users/1",
+            json={
+                "rfid_uid": "",
+                "dispense_restriction_policy": "once_per_day",
+            },
+        )
+
+    assert response.status_code == 200
+    assert response.json()["user"]["rfid_uid"] is None
+    assert response.json()["user"]["dispense_restriction_policy"] == "once_per_day"
 
 
 def test_dispense_operation_happy_path(tmp_path: Path) -> None:
@@ -461,6 +566,24 @@ def _seed_base_domain(app, *, user_policy: DispenseRestrictionPolicy = DispenseR
                 is_active=True,
                 issued_at=user.created_at,
                 revoked_at=None,
+            )
+        )
+        session.commit()
+
+
+def _seed_unassigned_user(app) -> None:
+    with app.state.session_factory() as session:
+        operator_role = Role(code=RoleCode.OPERATOR, name="Operator")
+        session.add(operator_role)
+        session.flush()
+        session.add(
+            User(
+                role_id=operator_role.id,
+                user_code="operator-1",
+                full_name="Operator One",
+                status=UserStatus.ACTIVE,
+                dispense_restriction_policy=DispenseRestrictionPolicy.ONCE_PER_DAY,
+                is_active=True,
             )
         )
         session.commit()

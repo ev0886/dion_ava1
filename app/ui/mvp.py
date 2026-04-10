@@ -9,6 +9,7 @@ from app.config import AppSettings
 
 _UI_DIR = Path(__file__).resolve().parent
 _MVP_TEMPLATE_PATH = _UI_DIR / "templates" / "mvp.html"
+_ADMIN_TEMPLATE_PATH = _UI_DIR / "templates" / "admin.html"
 
 
 def render_mvp_page(settings: AppSettings) -> HTMLResponse:
@@ -23,6 +24,21 @@ def render_mvp_page(settings: AppSettings) -> HTMLResponse:
     return HTMLResponse(
         template.replace(
             "__DION_UI_CONFIG__",
+            json.dumps(ui_config, ensure_ascii=True),
+        )
+    )
+
+
+def render_admin_page(settings: AppSettings) -> HTMLResponse:
+    template = _ADMIN_TEMPLATE_PATH.read_text(encoding="utf-8")
+    ui_config = {
+        "listUsersEndpoint": "/admin/users",
+        "updateUserEndpointBase": "/admin/users",
+        "supportedPolicies": ["unlimited", "once_per_day"],
+    }
+    return HTMLResponse(
+        template.replace(
+            "__DION_ADMIN_UI_CONFIG__",
             json.dumps(ui_config, ensure_ascii=True),
         )
     )

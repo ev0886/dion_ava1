@@ -1,3 +1,4 @@
+from app.application.dto.admin import AdminUserRecordDTO
 from app.application.dto.auth import AuthRequest, AuthenticatedUserDTO
 from app.application.dto.inventory import (
     AvailableDispenseOptionDTO,
@@ -48,6 +49,7 @@ from app.application.dto.startup import (
 )
 
 __all__ = [
+    "AdminUserRecordDTO",
     "AuthRequest",
     "AuthenticatedUserDTO",
     "CreateOperationCommand",

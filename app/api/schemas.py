@@ -4,7 +4,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict
 
-from app.domain.enums import RoleCode
+from app.domain.enums import DispenseRestrictionPolicy, RoleCode
 
 
 class ApiModel(BaseModel):
@@ -62,6 +62,11 @@ class ExportCreateRequest(ApiModel):
     destination_type: str = "filesystem"
     destination_path: str = "var/exports"
     comment: str | None = None
+
+
+class AdminUserUpdateRequest(ApiModel):
+    rfid_uid: str | None = None
+    dispense_restriction_policy: DispenseRestrictionPolicy
 
 
 class ErrorResponse(ApiModel):

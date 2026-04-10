@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
 
+from app.application.admin_service import AdminUserService
 from app.application.auth_service import AuthService
 from app.application.dispense_service import DispenseOperationService
 from app.application.export_service import ExportService
@@ -41,6 +42,7 @@ class RepositoryBundle:
 
 @dataclass(frozen=True, slots=True)
 class ServiceBundle:
+    admin_users: AdminUserService
     auth: AuthService
     inventory: InventoryService
     operation_sessions: OperationSessionService
@@ -96,6 +98,7 @@ def build_services(
         repositories.inventory,
     )
     return ServiceBundle(
+        admin_users=AdminUserService(repositories.users),
         auth=auth_service,
         inventory=inventory_service,
         operation_sessions=operation_session_service,

@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>DION ABA1 Operator Admin MVP</title>
+  <link rel="stylesheet" href="/ui-assets/admin.css">
+</head>
+<body>
+  <main class="admin-shell">
+    <header class="hero">
+      <div>
+        <p class="eyebrow">DION ABA1</p>
+        <h1>Operator Admin MVP</h1>
+      </div>
+      <p class="hero-note">
+        Local-network user maintenance only. Access matrix and CSV import remain deferred in this branch.
+      </p>
+    </header>
+
+    <section class="status-panel" id="status-panel" aria-live="polite">
+      <strong id="status-title">Ready</strong>
+      <p id="status-message">Loading users from the local machine backend.</p>
+    </section>
+
+    <section class="panel">
+      <div class="panel-heading">
+        <div>
+          <p class="eyebrow">Users</p>
+          <h2>User RFID And Policy Maintenance</h2>
+        </div>
+        <button id="refresh-button" class="secondary-button" type="button">Refresh</button>
+      </div>
+      <div class="table-wrap">
+        <table class="user-table">
+          <thead>
+            <tr>
+              <th>User ID</th>
+              <th>User Code</th>
+              <th>Full Name</th>
+              <th>Status</th>
+              <th>Active</th>
+              <th>Role</th>
+              <th>RFID UID</th>
+              <th>Dispense Policy</th>
+              <th>Save</th>
+            </tr>
+          </thead>
+          <tbody id="user-table-body">
+            <tr>
+              <td colspan="9" class="placeholder-cell">Loading users...</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    window.DION_ADMIN_UI_CONFIG = __DION_ADMIN_UI_CONFIG__;
+  </script>
+  <script src="/ui-assets/admin.js"></script>
+</body>
+</html>
