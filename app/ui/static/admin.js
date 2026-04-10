@@ -9,6 +9,8 @@
     userTableBody: document.getElementById("user-table-body"),
     importFile: document.getElementById("import-file"),
     importTextarea: document.getElementById("import-textarea"),
+    loadExampleButton: document.getElementById("load-example-button"),
+    downloadExampleLink: document.getElementById("download-example-link"),
     importButton: document.getElementById("import-button"),
     importResult: document.getElementById("import-result"),
     importResultTitle: document.getElementById("import-result-title"),
@@ -134,6 +136,7 @@
   function syncControls() {
     elements.refreshButton.disabled = state.isLoading;
     elements.importButton.disabled = state.isLoading || state.isImporting;
+    elements.loadExampleButton.disabled = state.isImporting;
     elements.importFile.disabled = state.isImporting;
     elements.importTextarea.disabled = state.isImporting;
     const saveButtons = elements.userTableBody.querySelectorAll(".save-button");
@@ -150,6 +153,12 @@
       return await file.text();
     }
     return elements.importTextarea.value;
+  }
+
+  function loadExampleCsv() {
+    elements.importTextarea.value = config.importExampleCsvText;
+    elements.importFile.value = "";
+    setImportResult("", "Example Loaded", "The sample CSV has been inserted into the textarea and is ready to edit.");
   }
 
   function formatImportSummary(result) {
@@ -261,6 +270,12 @@
   elements.refreshButton.addEventListener("click", function () {
     void loadUsers();
   });
+  elements.loadExampleButton.addEventListener("click", function () {
+    loadExampleCsv();
+  });
+  if (elements.downloadExampleLink && config.importExampleCsvAssetUrl) {
+    elements.downloadExampleLink.href = config.importExampleCsvAssetUrl;
+  }
   elements.importButton.addEventListener("click", function () {
     void importUsers();
   });

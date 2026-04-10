@@ -243,6 +243,21 @@ body {
   justify-items: start;
 }
 
+.import-action-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+}
+
+.text-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 2.8rem;
+  padding: 0.7rem 1rem;
+  text-decoration: none;
+}
+
 .import-result {
   padding: 0.9rem 1rem;
   border: 1px solid var(--border);
@@ -274,5 +289,9 @@ body {
   .panel-heading {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .import-action-row {
+    width: 100%;
   }
 }

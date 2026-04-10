@@ -45,7 +45,16 @@
           ></textarea>
         </label>
         <div class="import-actions">
-          <button id="import-button" class="save-button" type="button">Import CSV</button>
+          <div class="import-action-row">
+            <button id="load-example-button" class="secondary-button" type="button">Load Example</button>
+            <a
+              id="download-example-link"
+              class="secondary-button text-button"
+              href="/ui-assets/admin-users-import-example.csv"
+              download="admin-users-import-example.csv"
+            >Download Example CSV</a>
+            <button id="import-button" class="save-button" type="button">Import CSV</button>
+          </div>
           <p class="row-note">Paste CSV or choose a file. File content takes priority when both are present.</p>
         </div>
         <div id="import-result" class="import-result" aria-live="polite">

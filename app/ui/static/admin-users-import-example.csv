@@ -1,0 +1,3 @@
+user_code,full_name,role_code,rfid_uid,dispense_restriction_policy
+user-1001,Ivan Petrov,user,11 22 aa bb,unlimited
+operator-2001,Anna Sidorova,operator,44 55 cc dd,once_per_day
