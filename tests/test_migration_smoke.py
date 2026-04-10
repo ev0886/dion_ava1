@@ -32,3 +32,5 @@ def test_alembic_upgrade_creates_core_tables(tmp_path: Path) -> None:
         "exports",
         "backups",
     }.issubset(table_names)
+    user_columns = {column["name"] for column in inspector.get_columns("users")}
+    assert "dispense_restriction_policy" in user_columns

@@ -14,6 +14,7 @@ from app.application.return_service import ReturnOperationService
 from app.config import AppSettings
 from app.domain.enums import (
     BindingType,
+    DispenseRestrictionPolicy,
     ItemStatus,
     InventoryTransactionType,
     OperationState,
@@ -24,6 +25,7 @@ from app.domain.enums import (
     UserStatus,
 )
 from app.hardware import HardwareFacade, LockState, MockDrumAdapter, MockHardwareMode, MockLockAdapter, MockRfidAdapter
+from app.application.exceptions import ValidationError
 from app.persistence.base import Base
 from app.persistence.models import (
     InventoryBalance,
@@ -201,6 +203,51 @@ def test_operation_history_entries_are_written(session_factory: sessionmaker[Ses
         assert history_states[-1] is OperationState.COMPLETED
 
 
+def test_once_per_day_policy_blocks_second_successful_dispense_same_day(session_factory: sessionmaker[Session]) -> None:
+    with session_factory() as session:
+        ids = _seed_catalog(
+            session,
+            starting_quantity=5,
+            user_policy=DispenseRestrictionPolicy.ONCE_PER_DAY,
+        )
+        service = DispenseOperationService(OperationRepository(session), InventoryRepository(session))
+
+        first_result = service.execute(
+            DispenseRequest(user_id=ids.user_id, item_id=ids.item_id, slot_id=ids.slot_id, quantity=1),
+            _hardware_facade(),
+        )
+
+        with pytest.raises(ValidationError, match="one successful dispense per day"):
+            service.execute(
+                DispenseRequest(user_id=ids.user_id, item_id=ids.item_id, slot_id=ids.slot_id, quantity=1),
+                _hardware_facade(),
+            )
+
+        assert first_result.operation_state is OperationState.COMPLETED
+
+
+def test_once_per_day_policy_ignores_failed_dispense_attempts(session_factory: sessionmaker[Session]) -> None:
+    with session_factory() as session:
+        ids = _seed_catalog(
+            session,
+            starting_quantity=5,
+            user_policy=DispenseRestrictionPolicy.ONCE_PER_DAY,
+        )
+        service = DispenseOperationService(OperationRepository(session), InventoryRepository(session))
+
+        failed_result = service.execute(
+            DispenseRequest(user_id=ids.user_id, item_id=ids.item_id, slot_id=ids.slot_id, quantity=1),
+            _hardware_facade(drum_mode=MockHardwareMode.TIMEOUT),
+        )
+        successful_result = service.execute(
+            DispenseRequest(user_id=ids.user_id, item_id=ids.item_id, slot_id=ids.slot_id, quantity=1),
+            _hardware_facade(),
+        )
+
+        assert failed_result.operation_state is OperationState.FAILED
+        assert successful_result.operation_state is OperationState.COMPLETED
+
+
 def test_inventory_transaction_rows_are_written_for_successful_inventory_flows(
     session_factory: sessionmaker[Session],
 ) -> None:
@@ -256,7 +303,12 @@ class _SeedIds:
         self.slot_id = slot_id
 
 
-def _seed_catalog(session: Session, *, starting_quantity: int) -> _SeedIds:
+def _seed_catalog(
+    session: Session,
+    *,
+    starting_quantity: int,
+    user_policy: DispenseRestrictionPolicy = DispenseRestrictionPolicy.UNLIMITED,
+) -> _SeedIds:
     user_role = Role(code=RoleCode.USER, name="User")
     operator_role = Role(code=RoleCode.OPERATOR, name="Operator")
     session.add_all((user_role, operator_role))
@@ -267,6 +319,7 @@ def _seed_catalog(session: Session, *, starting_quantity: int) -> _SeedIds:
         user_code="user-1",
         full_name="User One",
         status=UserStatus.ACTIVE,
+        dispense_restriction_policy=user_policy,
         is_active=True,
     )
     operator = User(
@@ -274,6 +327,7 @@ def _seed_catalog(session: Session, *, starting_quantity: int) -> _SeedIds:
         user_code="operator-1",
         full_name="Operator One",
         status=UserStatus.ACTIVE,
+        dispense_restriction_policy=DispenseRestrictionPolicy.UNLIMITED,
         is_active=True,
     )
     session.add_all((user, operator))

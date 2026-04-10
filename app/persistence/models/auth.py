@@ -2,10 +2,10 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text
+from sqlalchemy import Boolean, DateTime, Enum as SqlEnum, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
-from app.domain.enums import RoleCode, UserStatus
+from app.domain.enums import DispenseRestrictionPolicy, RoleCode, UserStatus
 from app.persistence.base import Base, CreatedAtMixin, PrimaryKeyMixin, UpdatedAtMixin
 from app.persistence.types import enum_column
 
@@ -25,6 +25,17 @@ class User(PrimaryKeyMixin, CreatedAtMixin, UpdatedAtMixin, Base):
     user_code: Mapped[str] = mapped_column(String(100), nullable=False, unique=True)
     full_name: Mapped[str] = mapped_column(String(255), nullable=False)
     status: Mapped[UserStatus] = enum_column(UserStatus, index=True)
+    dispense_restriction_policy: Mapped[DispenseRestrictionPolicy] = mapped_column(
+        SqlEnum(
+            DispenseRestrictionPolicy,
+            native_enum=False,
+            validate_strings=True,
+            length=max(len(member.value) for member in DispenseRestrictionPolicy),
+        ),
+        nullable=False,
+        default=DispenseRestrictionPolicy.UNLIMITED,
+        server_default=DispenseRestrictionPolicy.UNLIMITED.value,
+    )
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default="1")
 
 

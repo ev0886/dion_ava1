@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+
 from app.application.dto.operations import (
     CreateOperationCommand,
     DispenseRequest,
@@ -13,12 +14,12 @@ from app.application.exceptions import NotFoundError, ValidationError
 from app.application.inventory_mutation import InventoryMutationService
 from app.application.operation_recorder import OperationRecorder
 from app.application.state_machine import assert_transition_allowed, can_transition
-from app.application.time import utc_now
-from app.domain.enums import OperationState, OperationType
+from app.application.time import runtime_day_bounds, runtime_today, utc_now
+from app.domain.enums import DispenseRestrictionPolicy, OperationState, OperationType
 from app.hardware import HardwareFacade, UnlockResult
 from app.hardware.dto import DrumPositionResult
 from app.hardware.exceptions import HardwareError
-from app.persistence.models import Operation, Slot
+from app.persistence.models import Operation, Slot, User
 from app.persistence.repositories.inventory import InventoryRepository
 from app.persistence.repositories.operations import OperationRepository
 
@@ -63,6 +64,7 @@ class DispenseOperationService:
         if not validation.valid:
             raise ValidationError("; ".join(validation.messages))
 
+        self._enforce_dispense_restriction(request.user_id)
         slot = self._require_slot(request.slot_id)
         command = CreateOperationCommand(
             operation_type=OperationType.DISPENSE,
@@ -121,6 +123,25 @@ class DispenseOperationService:
             raise
 
         return self._to_dto(operation)
+
+    def _enforce_dispense_restriction(self, user_id: int) -> None:
+        user = self.operation_repository.session.get(User, user_id)
+        if user is None:
+            raise NotFoundError(f"User not found: {user_id}")
+
+        policy = user.dispense_restriction_policy
+        if policy is DispenseRestrictionPolicy.UNLIMITED:
+            return
+        if policy is not DispenseRestrictionPolicy.ONCE_PER_DAY:
+            raise ValidationError(f"Unsupported dispense restriction policy: {policy}")
+
+        day_start, next_day_start = runtime_day_bounds(runtime_today())
+        if self.operation_repository.has_completed_dispense_for_user_between(
+            user_id=user_id,
+            started_at=day_start,
+            finished_before=next_day_start,
+        ):
+            raise ValidationError("Dispense blocked: user is limited to one successful dispense per day")
 
     def assert_transition_allowed(self, current_state: OperationState, target_state: OperationState) -> None:
         assert_transition_allowed(OperationType.DISPENSE, current_state, target_state)

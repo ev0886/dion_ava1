@@ -15,6 +15,11 @@ class UserStatus(StrEnum):
     BLOCKED = "blocked"
 
 
+class DispenseRestrictionPolicy(StrEnum):
+    UNLIMITED = "unlimited"
+    ONCE_PER_DAY = "once_per_day"
+
+
 class ItemStatus(StrEnum):
     ACTIVE = "active"
     INACTIVE = "inactive"

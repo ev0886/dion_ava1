@@ -8,6 +8,7 @@ from app.domain.constants import (
 from app.domain.enums import (
     BackupStatus,
     BindingType,
+    DispenseRestrictionPolicy,
     ExportStatus,
     HardwareEndpointStatus,
     HardwareEndpointType,
@@ -30,6 +31,7 @@ from app.domain.enums import (
 __all__ = [
     "BackupStatus",
     "BindingType",
+    "DispenseRestrictionPolicy",
     "DEFAULT_PIN_MAX_ATTEMPTS",
     "DEFAULT_PIN_MIN_LENGTH",
     "DEFAULT_RFID_UID_FORMAT",

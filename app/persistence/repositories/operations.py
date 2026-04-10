@@ -1,8 +1,10 @@
 from __future__ import annotations
 
-from sqlalchemy import or_, select
+from datetime import datetime
 
-from app.domain.enums import OperationState
+from sqlalchemy import and_, or_, select
+
+from app.domain.enums import OperationState, OperationType
 from app.persistence.models import Operation, OperationSession, OperationStateHistory
 from app.persistence.repositories.base import Repository
 
@@ -66,6 +68,29 @@ class OperationRepository(Repository):
             .order_by(OperationStateHistory.id.asc())
         )
         return list(self.session.execute(statement).scalars())
+
+    def has_completed_dispense_for_user_between(
+        self,
+        *,
+        user_id: int,
+        started_at: datetime,
+        finished_before: datetime,
+    ) -> bool:
+        statement = (
+            select(Operation.id)
+            .where(Operation.user_id == user_id)
+            .where(Operation.operation_type == OperationType.DISPENSE)
+            .where(Operation.operation_state == OperationState.COMPLETED)
+            .where(
+                and_(
+                    Operation.finished_at.is_not(None),
+                    Operation.finished_at >= started_at,
+                    Operation.finished_at < finished_before,
+                )
+            )
+            .limit(1)
+        )
+        return self.session.execute(statement).scalar_one_or_none() is not None
 
 
 class OperationSessionRepository(Repository):

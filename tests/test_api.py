@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from datetime import datetime
 
 import pytest
 from fastapi.testclient import TestClient
@@ -11,7 +12,16 @@ from app.domain.enums import HardwareEndpointType
 from app.hardware import HardwareFacade, LockState, MockDrumAdapter, MockLockAdapter, MockRfidAdapter
 from app.hardware.dto import HardwareOperationStatus, RfidReadResult
 from app.hardware.factory import HardwareBundle
-from app.domain.enums import BindingType, ItemStatus, OperationState, RoleCode, SlotStatus, SlotType, UserStatus
+from app.domain.enums import (
+    BindingType,
+    DispenseRestrictionPolicy,
+    ItemStatus,
+    OperationState,
+    RoleCode,
+    SlotStatus,
+    SlotType,
+    UserStatus,
+)
 from app.persistence.models import (
     InventoryBalance,
     Item,
@@ -225,6 +235,79 @@ def test_dispense_operation_happy_path(tmp_path: Path) -> None:
     assert response.json()["qty_confirmed"] == 1
 
 
+def test_dispense_operation_blocks_second_successful_same_day_dispense_for_once_per_day_user(tmp_path: Path) -> None:
+    app = create_app(_settings(tmp_path, "api_dispense_once_per_day.sqlite3"))
+    _seed_base_domain(app, user_policy=DispenseRestrictionPolicy.ONCE_PER_DAY)
+
+    with TestClient(app) as client:
+        first_response = client.post(
+            "/operations/dispense",
+            json={"user_id": 1, "item_id": 1, "slot_id": 1, "quantity": 1},
+        )
+        second_response = client.post(
+            "/operations/dispense",
+            json={"user_id": 1, "item_id": 1, "slot_id": 1, "quantity": 1},
+        )
+
+    assert first_response.status_code == 200
+    assert second_response.status_code == 400
+    assert second_response.json()["detail"] == "Dispense blocked: user is limited to one successful dispense per day"
+
+
+def test_dispense_operation_does_not_count_failed_attempt_before_success_for_once_per_day_user(tmp_path: Path) -> None:
+    app = create_app(_settings(tmp_path, "api_dispense_failed_attempt.sqlite3"))
+    _seed_base_domain(app, user_policy=DispenseRestrictionPolicy.ONCE_PER_DAY)
+
+    with app.state.session_factory() as session:
+        failed_operation = Operation(
+            session_id=None,
+            operation_type="dispense",
+            operation_state=OperationState.FAILED,
+            user_id=1,
+            item_id=1,
+            slot_id=1,
+            qty_requested=1,
+            qty_confirmed=None,
+            result="hardware_error",
+            error_code="hardware_timeout",
+            error_message="seeded failure",
+            hardware_context_json={},
+            business_context_json={},
+            started_at=datetime(2026, 4, 10, 8, 0, 0),
+            finished_at=datetime(2026, 4, 10, 8, 1, 0),
+        )
+        session.add(failed_operation)
+        session.commit()
+
+    with TestClient(app) as client:
+        response = client.post(
+            "/operations/dispense",
+            json={"user_id": 1, "item_id": 1, "slot_id": 1, "quantity": 1},
+        )
+
+    assert response.status_code == 200
+    assert response.json()["operation_state"] == "completed"
+
+
+def test_dispense_operation_keeps_unlimited_user_unrestricted(tmp_path: Path) -> None:
+    app = create_app(_settings(tmp_path, "api_dispense_unlimited.sqlite3"))
+    _seed_base_domain(app, user_policy=DispenseRestrictionPolicy.UNLIMITED)
+
+    with TestClient(app) as client:
+        first_response = client.post(
+            "/operations/dispense",
+            json={"user_id": 1, "item_id": 1, "slot_id": 1, "quantity": 1},
+        )
+        second_response = client.post(
+            "/operations/dispense",
+            json={"user_id": 1, "item_id": 1, "slot_id": 1, "quantity": 1},
+        )
+
+    assert first_response.status_code == 200
+    assert second_response.status_code == 200
+    assert second_response.json()["operation_state"] == "completed"
+
+
 def test_dispense_operation_rejects_inactive_slot_item_path(tmp_path: Path) -> None:
     app = create_app(_settings(tmp_path, "api_dispense_inactive_path.sqlite3"))
     _seed_base_domain(app)
@@ -325,7 +408,7 @@ def _real_settings(tmp_path: Path, sqlite_filename: str) -> AppSettings:
     )
 
 
-def _seed_base_domain(app) -> None:
+def _seed_base_domain(app, *, user_policy: DispenseRestrictionPolicy = DispenseRestrictionPolicy.UNLIMITED) -> None:
     with app.state.session_factory() as session:
         role = Role(code=RoleCode.USER, name="User")
         session.add(role)
@@ -336,6 +419,7 @@ def _seed_base_domain(app) -> None:
             user_code="user-1",
             full_name="User One",
             status=UserStatus.ACTIVE,
+            dispense_restriction_policy=user_policy,
             is_active=True,
         )
         item = Item(
