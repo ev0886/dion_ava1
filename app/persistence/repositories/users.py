@@ -7,6 +7,7 @@ from sqlalchemy import select
 from app.application.dto.admin import AdminUserRecordDTO
 from app.persistence.models import User, UserRfidCard
 from app.persistence.models.auth import Role
+from app.domain.enums import RoleCode
 from app.persistence.repositories.base import Repository
 
 
@@ -16,6 +17,10 @@ class UserRepository(Repository):
 
     def get_by_user_code(self, user_code: str) -> User | None:
         statement = select(User).where(User.user_code == user_code)
+        return self.session.execute(statement).scalar_one_or_none()
+
+    def get_role_by_code(self, role_code: RoleCode) -> Role | None:
+        statement = select(Role).where(Role.code == role_code)
         return self.session.execute(statement).scalar_one_or_none()
 
     def get_by_rfid_card_uid(self, card_uid: str) -> User | None:

@@ -1,15 +1,36 @@
 from __future__ import annotations
 
+import csv
+from dataclasses import dataclass
 from datetime import UTC, datetime
+from io import StringIO
 
-from app.application.dto.admin import AdminUserRecordDTO
+from app.application.dto.admin import AdminUserImportResultDTO, AdminUserRecordDTO
 from app.application.exceptions import NotFoundError, ValidationError
-from app.domain.enums import DispenseRestrictionPolicy
+from app.domain.enums import DispenseRestrictionPolicy, RoleCode, UserStatus
 from app.persistence.models import User
 from app.persistence.repositories.users import UserRepository
 
 
+@dataclass(frozen=True, slots=True)
+class _ImportedUserRow:
+    row_number: int
+    user_code: str
+    full_name: str
+    role_code: RoleCode
+    rfid_uid: str | None
+    dispense_restriction_policy: DispenseRestrictionPolicy
+
+
 class AdminUserService:
+    _CSV_COLUMNS = (
+        "user_code",
+        "full_name",
+        "role_code",
+        "rfid_uid",
+        "dispense_restriction_policy",
+    )
+
     def __init__(self, user_repository: UserRepository) -> None:
         self.user_repository = user_repository
 
@@ -32,6 +53,49 @@ class AdminUserService:
         user.dispense_restriction_policy = dispense_restriction_policy
         self.user_repository.session.commit()
         return self.user_repository.get_admin_record(user.id)
+
+    def import_users_csv(self, csv_text: str) -> AdminUserImportResultDTO:
+        rows = self._parse_csv_rows(csv_text)
+        created_count = 0
+        updated_count = 0
+
+        try:
+            for row in rows:
+                role = self.user_repository.get_role_by_code(row.role_code)
+                if role is None:
+                    raise ValidationError(f"CSV row {row.row_number}: unknown role_code '{row.role_code.value}'")
+
+                user = self.user_repository.get_by_user_code(row.user_code)
+                if user is None:
+                    user = User(
+                        role_id=role.id,
+                        user_code=row.user_code,
+                        full_name=row.full_name,
+                        status=UserStatus.ACTIVE,
+                        dispense_restriction_policy=row.dispense_restriction_policy,
+                        is_active=True,
+                    )
+                    self.user_repository.session.add(user)
+                    self.user_repository.session.flush()
+                    created_count += 1
+                else:
+                    user.role_id = role.id
+                    user.full_name = row.full_name
+                    user.dispense_restriction_policy = row.dispense_restriction_policy
+                    updated_count += 1
+
+                self._apply_rfid_assignment(user=user, normalized_rfid_uid=row.rfid_uid)
+
+            self.user_repository.session.commit()
+        except Exception:
+            self.user_repository.session.rollback()
+            raise
+
+        return AdminUserImportResultDTO(
+            created_count=created_count,
+            updated_count=updated_count,
+            total_rows=len(rows),
+        )
 
     def _apply_rfid_assignment(self, *, user: User, normalized_rfid_uid: str | None) -> None:
         active_cards = self.user_repository.list_active_rfid_cards_for_user(user.id)
@@ -72,6 +136,69 @@ class AdminUserService:
         if not normalized:
             return None
         return normalized
+
+    @classmethod
+    def _parse_csv_rows(cls, csv_text: str) -> list[_ImportedUserRow]:
+        if not csv_text.strip():
+            raise ValidationError("CSV payload must not be empty")
+
+        reader = csv.DictReader(StringIO(csv_text))
+        if reader.fieldnames is None:
+            raise ValidationError("CSV header row is required")
+
+        fieldnames = [fieldname.strip() for fieldname in reader.fieldnames]
+        if tuple(fieldnames) != cls._CSV_COLUMNS:
+            raise ValidationError(
+                "CSV columns must be exactly: user_code, full_name, role_code, rfid_uid, dispense_restriction_policy"
+            )
+
+        rows: list[_ImportedUserRow] = []
+        for row_number, raw_row in enumerate(reader, start=2):
+            if raw_row is None:
+                continue
+            rows.append(
+                _ImportedUserRow(
+                    row_number=row_number,
+                    user_code=cls._require_csv_value(raw_row, "user_code", row_number),
+                    full_name=cls._require_csv_value(raw_row, "full_name", row_number),
+                    role_code=cls._parse_role_code(raw_row.get("role_code"), row_number),
+                    rfid_uid=cls._normalize_optional_rfid_uid(raw_row.get("rfid_uid")),
+                    dispense_restriction_policy=cls._parse_policy(raw_row.get("dispense_restriction_policy"), row_number),
+                )
+            )
+
+        if not rows:
+            raise ValidationError("CSV must contain at least one data row")
+        return rows
+
+    @staticmethod
+    def _require_csv_value(raw_row: dict[str, str | None], column_name: str, row_number: int) -> str:
+        value = (raw_row.get(column_name) or "").strip()
+        if not value:
+            raise ValidationError(f"CSV row {row_number}: {column_name} must not be empty")
+        return value
+
+    @staticmethod
+    def _parse_role_code(raw_role_code: str | None, row_number: int) -> RoleCode:
+        normalized = (raw_role_code or "").strip().lower()
+        if not normalized:
+            raise ValidationError(f"CSV row {row_number}: role_code must not be empty")
+        try:
+            return RoleCode(normalized)
+        except ValueError as exc:
+            raise ValidationError(f"CSV row {row_number}: invalid role_code '{raw_role_code}'") from exc
+
+    @staticmethod
+    def _parse_policy(raw_policy: str | None, row_number: int) -> DispenseRestrictionPolicy:
+        normalized = (raw_policy or "").strip().lower()
+        if not normalized:
+            raise ValidationError(f"CSV row {row_number}: dispense_restriction_policy must not be empty")
+        try:
+            return DispenseRestrictionPolicy(normalized)
+        except ValueError as exc:
+            raise ValidationError(
+                f"CSV row {row_number}: invalid dispense_restriction_policy '{raw_policy}'"
+            ) from exc
 
 
 def _utcnow_naive() -> datetime:

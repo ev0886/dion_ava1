@@ -15,3 +15,10 @@ class AdminUserRecordDTO:
     role_code: RoleCode | None
     rfid_uid: str | None
     dispense_restriction_policy: DispenseRestrictionPolicy
+
+
+@dataclass(frozen=True, slots=True)
+class AdminUserImportResultDTO:
+    created_count: int
+    updated_count: int
+    total_rows: int

@@ -364,6 +364,119 @@ def test_admin_users_handles_legacy_uppercase_policy_and_rewrites_lowercase_on_u
     assert persisted_policy == "once_per_day"
 
 
+def test_admin_user_import_creates_users_from_csv(tmp_path: Path) -> None:
+    app = create_app(_settings(tmp_path, "api_admin_import_create.sqlite3"))
+    _seed_base_domain(app)
+
+    csv_payload = "\n".join(
+        (
+            "user_code,full_name,role_code,rfid_uid,dispense_restriction_policy",
+            "user-2,User Two,user,aa bb-11 22,ONCE_PER_DAY",
+        )
+    )
+
+    with TestClient(app) as client:
+        response = client.post(
+            "/admin/users/import",
+            content=csv_payload.encode("utf-8"),
+            headers={"content-type": "text/csv; charset=utf-8"},
+        )
+        list_response = client.get("/admin/users")
+
+    assert response.status_code == 200
+    assert response.json() == {"result": {"created_count": 1, "updated_count": 0, "total_rows": 1}}
+    assert list_response.status_code == 200
+    assert list_response.json()["users"] == [
+        {
+            "user_id": 1,
+            "user_code": "user-1",
+            "full_name": "User One",
+            "status": "active",
+            "is_active": True,
+            "role_code": "user",
+            "rfid_uid": "000FE2767C0045",
+            "dispense_restriction_policy": "unlimited",
+        },
+        {
+            "user_id": 2,
+            "user_code": "user-2",
+            "full_name": "User Two",
+            "status": "active",
+            "is_active": True,
+            "role_code": "user",
+            "rfid_uid": "AABB1122",
+            "dispense_restriction_policy": "once_per_day",
+        },
+    ]
+
+    with app.state.engine.connect() as connection:
+        persisted_policy = connection.execute(
+            text("SELECT dispense_restriction_policy FROM users WHERE user_code = 'user-2'")
+        ).scalar_one()
+
+    assert persisted_policy == "once_per_day"
+
+
+def test_admin_user_import_rejects_invalid_policy(tmp_path: Path) -> None:
+    app = create_app(_settings(tmp_path, "api_admin_import_invalid_policy.sqlite3"))
+    _seed_base_domain(app)
+
+    csv_payload = "\n".join(
+        (
+            "user_code,full_name,role_code,rfid_uid,dispense_restriction_policy",
+            "user-2,User Two,user,,weekly",
+        )
+    )
+
+    with TestClient(app) as client:
+        response = client.post(
+            "/admin/users/import",
+            content=csv_payload.encode("utf-8"),
+            headers={"content-type": "text/csv; charset=utf-8"},
+        )
+
+    assert response.status_code == 400
+    assert response.json() == {
+        "error": "validation_error",
+        "detail": "CSV row 2: invalid dispense_restriction_policy 'weekly'",
+    }
+
+
+def test_admin_user_import_updates_existing_user_by_user_code(tmp_path: Path) -> None:
+    app = create_app(_settings(tmp_path, "api_admin_import_update.sqlite3"))
+    _seed_base_domain(app)
+    _seed_unassigned_user(app)
+
+    csv_payload = "\n".join(
+        (
+            "user_code,full_name,role_code,rfid_uid,dispense_restriction_policy",
+            "user-1,Updated User,user,11 22 aa bb,once_per_day",
+        )
+    )
+
+    with TestClient(app) as client:
+        response = client.post(
+            "/admin/users/import",
+            content=csv_payload.encode("utf-8"),
+            headers={"content-type": "text/csv; charset=utf-8"},
+        )
+        list_response = client.get("/admin/users")
+
+    assert response.status_code == 200
+    assert response.json() == {"result": {"created_count": 0, "updated_count": 1, "total_rows": 1}}
+    assert list_response.status_code == 200
+    assert list_response.json()["users"][0] == {
+        "user_id": 1,
+        "user_code": "user-1",
+        "full_name": "Updated User",
+        "status": "active",
+        "is_active": True,
+        "role_code": "user",
+        "rfid_uid": "1122AABB",
+        "dispense_restriction_policy": "once_per_day",
+    }
+
+
 def test_dispense_operation_happy_path(tmp_path: Path) -> None:
     app = create_app(_settings(tmp_path, "api_dispense.sqlite3"))
     _seed_base_domain(app)

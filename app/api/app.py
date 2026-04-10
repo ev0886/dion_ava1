@@ -4,7 +4,7 @@ from contextlib import asynccontextmanager
 
 from pathlib import Path
 
-from fastapi import Depends, FastAPI
+from fastapi import Depends, FastAPI, Request
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -80,6 +80,20 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
                         rfid_uid=payload.rfid_uid,
                         dispense_restriction_policy=payload.dispense_restriction_policy,
                     )
+                )
+            }
+        )
+
+    @app.post("/admin/users/import")
+    async def admin_import_users(
+        request: Request,
+        container: ApplicationContainer = Depends(get_application_container),
+    ) -> JSONResponse:
+        csv_text = (await request.body()).decode("utf-8-sig")
+        return JSONResponse(
+            {
+                "result": to_api_payload(
+                    container.services.admin_users.import_users_csv(csv_text)
                 )
             }
         )
