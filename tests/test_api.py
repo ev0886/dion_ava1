@@ -401,6 +401,7 @@ class _FakeRealDispenseTransport:
         *,
         timeout_ms: int | None = None,
         response_timeouts_ms: list[int] | None = None,
+        frame_gap_timeout_ms: int | None = None,
     ) -> list[bytes]:
         if len(self._sequence_responses) < len(payloads):
             raise AssertionError("Not enough fake sequence responses remain.")

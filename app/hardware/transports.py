@@ -20,6 +20,7 @@ class SerialRequestResponseTransport(Protocol):
         *,
         timeout_ms: int | None = None,
         response_timeouts_ms: list[int] | None = None,
+        frame_gap_timeout_ms: int | None = None,
     ) -> list[bytes]: ...
 
 
@@ -117,6 +118,7 @@ class SerialTransport:
         *,
         timeout_ms: int | None = None,
         response_timeouts_ms: list[int] | None = None,
+        frame_gap_timeout_ms: int | None = None,
     ) -> list[bytes]:
         if not payloads:
             return []
@@ -150,7 +152,7 @@ class SerialTransport:
                     connection.flush()
                 if hasattr(connection, "timeout"):
                     connection.timeout = response_timeout_ms / 1000
-                response = _read_serial_response(connection)
+                response = _read_serial_response(connection, inter_byte_timeout_ms=frame_gap_timeout_ms)
                 if not response:
                     raise TimeoutError("Serial transport read timed out.")
                 responses.append(response)
@@ -216,6 +218,7 @@ class SerialTransportSkeleton:
         *,
         timeout_ms: int | None = None,
         response_timeouts_ms: list[int] | None = None,
+        frame_gap_timeout_ms: int | None = None,
     ) -> list[bytes]:
         raise NotImplementedError("Serial transport I/O is not implemented yet.")
 
@@ -251,14 +254,36 @@ def _recv_until_newline(sock: socket.socket) -> bytes:
     return bytes(chunks)
 
 
-def _read_serial_response(connection: Any) -> bytes:
+def _read_serial_response(connection: Any, *, inter_byte_timeout_ms: int | None = None) -> bytes:
     if hasattr(connection, "read"):
         chunks = bytearray()
         first_chunk = connection.read(1)
         if not first_chunk:
             return b""
         chunks.extend(first_chunk)
+        original_timeout = getattr(connection, "timeout", None) if inter_byte_timeout_ms is not None else None
         while True:
+            if inter_byte_timeout_ms is not None:
+                in_waiting = getattr(connection, "in_waiting", 0)
+                if callable(in_waiting):
+                    in_waiting = in_waiting()
+                if isinstance(in_waiting, int) and in_waiting > 0:
+                    chunk = connection.read(in_waiting)
+                    if not chunk:
+                        break
+                    chunks.extend(chunk)
+                    continue
+                try:
+                    if hasattr(connection, "timeout"):
+                        connection.timeout = inter_byte_timeout_ms / 1000
+                    chunk = connection.read(1)
+                finally:
+                    if hasattr(connection, "timeout") and original_timeout is not None:
+                        connection.timeout = original_timeout
+                if not chunk:
+                    break
+                chunks.extend(chunk)
+                continue
             if chunks.endswith(b"\n"):
                 break
             in_waiting = getattr(connection, "in_waiting", 0)

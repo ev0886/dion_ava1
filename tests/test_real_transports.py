@@ -16,6 +16,7 @@ from app.hardware import (
     create_hardware_bundle,
 )
 from app.hardware.transport_config import EndpointTimeoutSettings, SerialTransportSettings, TcpTransportSettings
+from app.hardware.transports import _read_serial_response
 
 
 def test_serial_transport_request_response_happy_path() -> None:
@@ -86,6 +87,21 @@ def test_serial_transport_request_sequence_can_apply_per_response_timeouts() -> 
     assert responses == [bytes.fromhex("21 AA AA C4"), bytes.fromhex("25 C0")]
     assert serial_module.last_connection is not None
     assert serial_module.last_connection.timeout_history == [1.0, 5.0]
+
+
+def test_serial_read_response_can_complete_on_inter_byte_gap_without_newline() -> None:
+    connection = _GapAwareSerialConnection(
+        initial_timeout_s=0.1,
+        chunks_by_timeout_s={
+            0.1: [b"\x21"],
+            0.02: [b"\xAA", b"\xAA", b"\xC4", b""],
+        },
+    )
+
+    response = _read_serial_response(connection, inter_byte_timeout_ms=20)
+
+    assert response == bytes.fromhex("21 AA AA C4")
+    assert connection.timeout_history == [0.02, 0.1, 0.02, 0.1, 0.02, 0.1, 0.02, 0.1]
 
 
 def test_tcp_transport_request_response_happy_path() -> None:
@@ -299,6 +315,31 @@ class _FakeSocket:
 
     def close(self) -> None:
         return None
+
+
+class _GapAwareSerialConnection:
+    def __init__(self, *, initial_timeout_s: float, chunks_by_timeout_s: dict[float, list[bytes]]) -> None:
+        self._timeout = initial_timeout_s
+        self._chunks_by_timeout_s = {timeout: list(chunks) for timeout, chunks in chunks_by_timeout_s.items()}
+        self.in_waiting = 0
+        self.timeout_history: list[float] = []
+
+    def read(self, size: int = 1) -> bytes:
+        chunks = self._chunks_by_timeout_s.get(self._timeout, [])
+        if not chunks:
+            return b""
+        chunk = chunks.pop(0)
+        self.in_waiting = 0
+        return chunk[:size]
+
+    @property
+    def timeout(self) -> float:
+        return self._timeout
+
+    @timeout.setter
+    def timeout(self, value: float) -> None:
+        self._timeout = value
+        self.timeout_history.append(value)
 
 
 def _rfid_config():

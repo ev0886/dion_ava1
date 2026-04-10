@@ -25,9 +25,9 @@ from app.hardware.transports import SerialRequestResponseTransport
 
 
 class RealDrumAdapter(RealHardwareAdapterBase):
-    _MOVE_COMPLETION_TIMEOUT_MULTIPLIER = 5
-    _MOVE_COMPLETION_TIMEOUT_MIN_MS = 5000
-    _MOVE_COMPLETION_TIMEOUT_MAX_MS = 60000
+    _MOVE_ACK_TIMEOUT_MS = 100
+    _MOVE_COMPLETION_TIMEOUT_MS = 15000
+    _FRAME_INTER_BYTE_GAP_TIMEOUT_MS = 20
 
     def __init__(
         self,
@@ -152,6 +152,7 @@ class RealDrumAdapter(RealHardwareAdapterBase):
                     payloads,
                     timeout_ms=ack_timeout_ms,
                     response_timeouts_ms=[ack_timeout_ms, completion_timeout_ms],
+                    frame_gap_timeout_ms=self._FRAME_INTER_BYTE_GAP_TIMEOUT_MS,
                 )
             except TimeoutError as error:
                 raise HardwareTimeoutError(
@@ -174,9 +175,4 @@ class RealDrumAdapter(RealHardwareAdapterBase):
         return parse_packet(raw_first_response), parse_packet(raw_second_response)
 
     def _move_response_timeouts_ms(self) -> tuple[int | None, int]:
-        base_timeout_ms = self._config.endpoint.timeouts.read_timeout_ms if self._config is not None else 1000
-        completion_timeout_ms = min(
-            max(base_timeout_ms * self._MOVE_COMPLETION_TIMEOUT_MULTIPLIER, self._MOVE_COMPLETION_TIMEOUT_MIN_MS),
-            self._MOVE_COMPLETION_TIMEOUT_MAX_MS,
-        )
-        return base_timeout_ms, completion_timeout_ms
+        return self._MOVE_ACK_TIMEOUT_MS, self._MOVE_COMPLETION_TIMEOUT_MS

@@ -46,7 +46,8 @@ def test_real_drum_adapter_move_to_position_success() -> None:
     assert result.ok is True
     assert result.position == 7
     assert transport.sequence_payloads == [[bytes.fromhex("11 00 07 F3"), bytes.fromhex("30 D5")]]
-    assert transport.sequence_timeout_calls == [(1000, [1000, 5000])]
+    assert transport.sequence_timeout_calls == [(100, [100, 15000])]
+    assert transport.sequence_frame_gap_timeout_calls == [20]
     assert transport.request_payloads == []
 
 
@@ -60,14 +61,15 @@ def test_real_drum_adapter_move_to_position_busy_maps_to_busy_error() -> None:
         adapter.move_to_position(7)
 
 
-def test_real_drum_adapter_move_to_position_extends_only_completion_timeout_budget() -> None:
+def test_real_drum_adapter_move_to_position_uses_documented_protocol_timeouts() -> None:
     transport = _FakeTransport([], sequence_responses=[bytes.fromhex("21 AA AA C4"), bytes.fromhex("25 C0")])
     adapter = RealDrumAdapter(config=_drum_config(read_timeout_ms=2500), transport=transport)
 
     result = adapter.move_to_position(3)
 
     assert result.ok is True
-    assert transport.sequence_timeout_calls == [(2500, [2500, 12500])]
+    assert transport.sequence_timeout_calls == [(100, [100, 15000])]
+    assert transport.sequence_frame_gap_timeout_calls == [20]
 
 
 def test_real_drum_adapter_malformed_response_returns_safe_failure() -> None:
@@ -125,6 +127,7 @@ class _FakeTransport:
         self.sent_payloads: list[bytes] = []
         self.sequence_payloads: list[list[bytes]] = []
         self.sequence_timeout_calls: list[tuple[int | None, list[int] | None]] = []
+        self.sequence_frame_gap_timeout_calls: list[int | None] = []
 
     def request(self, payload: bytes, *, timeout_ms: int | None = None) -> bytes:
         self.request_payloads.append(payload)
@@ -142,9 +145,11 @@ class _FakeTransport:
         *,
         timeout_ms: int | None = None,
         response_timeouts_ms: list[int] | None = None,
+        frame_gap_timeout_ms: int | None = None,
     ) -> list[bytes]:
         self.sequence_payloads.append(list(payloads))
         self.sequence_timeout_calls.append((timeout_ms, None if response_timeouts_ms is None else list(response_timeouts_ms)))
+        self.sequence_frame_gap_timeout_calls.append(frame_gap_timeout_ms)
         if len(self._sequence_responses) < len(payloads):
             raise AssertionError("Not enough fake sequence responses remain.")
         responses = self._sequence_responses[: len(payloads)]
@@ -168,6 +173,7 @@ class _RaisingTransport:
         *,
         timeout_ms: int | None = None,
         response_timeouts_ms: list[int] | None = None,
+        frame_gap_timeout_ms: int | None = None,
     ) -> list[bytes]:
         raise self._error
 
