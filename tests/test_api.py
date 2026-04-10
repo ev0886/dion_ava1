@@ -86,7 +86,10 @@ def test_ui_admin_page_serves_user_management_config(tmp_path: Path) -> None:
 
     assert response.status_code == 200
     assert "Operator Admin MVP" in response.text
+    assert "CSV Import" in response.text
+    assert "Import CSV" in response.text
     assert '"/admin/users"' in response.text
+    assert '"/admin/users/import"' in response.text
     assert '"once_per_day"' in response.text
 
 
@@ -110,6 +113,8 @@ def test_ui_admin_static_assets_are_served(tmp_path: Path) -> None:
     assert response.status_code == 200
     assert "saveRow" in response.text
     assert "loadUsers" in response.text
+    assert "importUsers" in response.text
+    assert "created_count" in response.text
 
 
 def test_auth_and_inventory_happy_path(tmp_path: Path) -> None:

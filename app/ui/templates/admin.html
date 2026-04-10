@@ -27,6 +27,38 @@
       <div class="panel-heading">
         <div>
           <p class="eyebrow">Users</p>
+          <h2>CSV Import</h2>
+        </div>
+      </div>
+      <div class="import-grid">
+        <label class="field-block" for="import-file">
+          <span class="field-label">CSV File</span>
+          <input id="import-file" class="inline-input" type="file" accept=".csv,text/csv">
+        </label>
+        <label class="field-block" for="import-textarea">
+          <span class="field-label">CSV Content</span>
+          <textarea
+            id="import-textarea"
+            class="inline-textarea"
+            rows="6"
+            placeholder="user_code,full_name,role_code,rfid_uid,dispense_restriction_policy"
+          ></textarea>
+        </label>
+        <div class="import-actions">
+          <button id="import-button" class="save-button" type="button">Import CSV</button>
+          <p class="row-note">Paste CSV or choose a file. File content takes priority when both are present.</p>
+        </div>
+        <div id="import-result" class="import-result" aria-live="polite">
+          <strong id="import-result-title">No import run yet.</strong>
+          <p id="import-result-message">Import summary will appear here after submission.</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-heading">
+        <div>
+          <p class="eyebrow">Users</p>
           <h2>User RFID And Policy Maintenance</h2>
         </div>
         <button id="refresh-button" class="secondary-button" type="button">Refresh</button>

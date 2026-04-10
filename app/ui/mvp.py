@@ -34,6 +34,7 @@ def render_admin_page(settings: AppSettings) -> HTMLResponse:
     ui_config = {
         "listUsersEndpoint": "/admin/users",
         "updateUserEndpointBase": "/admin/users",
+        "importUsersEndpoint": "/admin/users/import",
         "supportedPolicies": ["unlimited", "once_per_day"],
     }
     return HTMLResponse(

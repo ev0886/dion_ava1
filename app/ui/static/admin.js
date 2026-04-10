@@ -7,11 +7,18 @@
     statusMessage: document.getElementById("status-message"),
     refreshButton: document.getElementById("refresh-button"),
     userTableBody: document.getElementById("user-table-body"),
+    importFile: document.getElementById("import-file"),
+    importTextarea: document.getElementById("import-textarea"),
+    importButton: document.getElementById("import-button"),
+    importResult: document.getElementById("import-result"),
+    importResultTitle: document.getElementById("import-result-title"),
+    importResultMessage: document.getElementById("import-result-message"),
   };
 
   const state = {
     users: [],
     isLoading: false,
+    isImporting: false,
     savingUserIds: new Set(),
   };
 
@@ -31,6 +38,15 @@
       .replaceAll(">", "&gt;")
       .replaceAll('"', "&quot;")
       .replaceAll("'", "&#39;");
+  }
+
+  function setImportResult(kind, title, message) {
+    elements.importResult.className = "import-result";
+    if (kind) {
+      elements.importResult.classList.add("import-result-" + kind);
+    }
+    elements.importResultTitle.textContent = title;
+    elements.importResultMessage.textContent = message;
   }
 
   function userRowMarkup(user) {
@@ -117,12 +133,35 @@
 
   function syncControls() {
     elements.refreshButton.disabled = state.isLoading;
+    elements.importButton.disabled = state.isLoading || state.isImporting;
+    elements.importFile.disabled = state.isImporting;
+    elements.importTextarea.disabled = state.isImporting;
     const saveButtons = elements.userTableBody.querySelectorAll(".save-button");
     saveButtons.forEach(function (button) {
       const row = button.closest("tr");
       const userId = row ? Number(row.dataset.userId) : 0;
       button.disabled = state.isLoading || state.savingUserIds.has(userId);
     });
+  }
+
+  async function readImportCsvText() {
+    const file = elements.importFile.files && elements.importFile.files[0];
+    if (file) {
+      return await file.text();
+    }
+    return elements.importTextarea.value;
+  }
+
+  function formatImportSummary(result) {
+    return (
+      "Created: " +
+      String(result.created_count) +
+      ", updated: " +
+      String(result.updated_count) +
+      ", total rows: " +
+      String(result.total_rows) +
+      "."
+    );
   }
 
   async function loadUsers() {
@@ -186,8 +225,44 @@
     }
   }
 
+  async function importUsers() {
+    state.isImporting = true;
+    syncControls();
+    setStatus("", "Importing", "Submitting users CSV to the local backend.");
+    setImportResult("", "Import In Progress", "Waiting for backend validation and import result.");
+
+    try {
+      const csvText = await readImportCsvText();
+      const response = await fetch(config.importUsersEndpoint, {
+        method: "POST",
+        headers: {
+          "Content-Type": "text/csv; charset=utf-8",
+        },
+        body: csvText,
+      });
+      const payload = await response.json();
+      if (!response.ok) {
+        throw new Error(payload.detail || payload.error || "Import request failed.");
+      }
+
+      const result = payload.result || {};
+      setImportResult("success", "Import Completed", formatImportSummary(result));
+      setStatus("success", "Import Completed", "Users CSV processed successfully. Refreshing the list.");
+      await loadUsers();
+    } catch (error) {
+      setImportResult("error", "Import Failed", String(error));
+      setStatus("error", "Import Failed", String(error));
+    } finally {
+      state.isImporting = false;
+      syncControls();
+    }
+  }
+
   elements.refreshButton.addEventListener("click", function () {
     void loadUsers();
+  });
+  elements.importButton.addEventListener("click", function () {
+    void importUsers();
   });
 
   void loadUsers();
