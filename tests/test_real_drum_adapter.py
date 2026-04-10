@@ -46,7 +46,7 @@ def test_real_drum_adapter_move_to_position_success() -> None:
     assert result.ok is True
     assert result.position == 7
     assert transport.sequence_payloads == [[bytes.fromhex("11 00 07 F3"), bytes.fromhex("30 D5")]]
-    assert transport.sequence_timeout_calls == [(100, [100, 15000])]
+    assert transport.sequence_timeout_calls == [(100, [100, 30000])]
     assert transport.sequence_frame_gap_timeout_calls == [20]
     assert transport.request_payloads == []
 
@@ -68,7 +68,18 @@ def test_real_drum_adapter_move_to_position_uses_documented_protocol_timeouts() 
     result = adapter.move_to_position(3)
 
     assert result.ok is True
-    assert transport.sequence_timeout_calls == [(100, [100, 15000])]
+    assert transport.sequence_timeout_calls == [(100, [100, 30000])]
+    assert transport.sequence_frame_gap_timeout_calls == [20]
+
+
+def test_real_drum_adapter_move_to_position_allows_drum_specific_completion_timeout_override() -> None:
+    transport = _FakeTransport([], sequence_responses=[bytes.fromhex("21 AA AA C4"), bytes.fromhex("25 C0")])
+    adapter = RealDrumAdapter(config=_drum_config(move_completion_timeout_ms=45000), transport=transport)
+
+    result = adapter.move_to_position(3)
+
+    assert result.ok is True
+    assert transport.sequence_timeout_calls == [(100, [100, 45000])]
     assert transport.sequence_frame_gap_timeout_calls == [20]
 
 
@@ -178,15 +189,28 @@ class _RaisingTransport:
         raise self._error
 
 
-def _drum_config(*, read_timeout_ms: int = 1000):
+def _drum_config(*, read_timeout_ms: int = 1000, move_completion_timeout_ms: int = 30000):
     from app.hardware.transport_config import DrumHardwareEndpointTransportConfig
 
     return DrumHardwareEndpointTransportConfig.model_validate(
-        _serial_endpoint_config(code="drum-1", driver_name="drum-driver", port="COM7", read_timeout_ms=read_timeout_ms)
+        _serial_endpoint_config(
+            code="drum-1",
+            driver_name="drum-driver",
+            port="COM7",
+            read_timeout_ms=read_timeout_ms,
+            move_completion_timeout_ms=move_completion_timeout_ms,
+        )
     )
 
 
-def _serial_endpoint_config(*, code: str, driver_name: str, port: str, read_timeout_ms: int = 1000) -> dict[str, object]:
+def _serial_endpoint_config(
+    *,
+    code: str,
+    driver_name: str,
+    port: str,
+    read_timeout_ms: int = 1000,
+    move_completion_timeout_ms: int = 30000,
+) -> dict[str, object]:
     return {
         "endpoint": {
             "code": code,
@@ -197,6 +221,9 @@ def _serial_endpoint_config(*, code: str, driver_name: str, port: str, read_time
                 "read_timeout_ms": read_timeout_ms,
                 "write_timeout_ms": 1000,
             },
+        },
+        "protocol": {
+            "move_completion_timeout_ms": move_completion_timeout_ms,
         },
         "transport": {
             "transport": "serial",

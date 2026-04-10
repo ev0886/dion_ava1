@@ -96,6 +96,13 @@ class DrumHardwareEndpointTransportConfig(BaseModel):
 
     endpoint: CommonEndpointSettings
     transport: SerialTransportSettings
+    protocol: "DrumControllerProtocolSettings" = Field(default_factory=lambda: DrumControllerProtocolSettings())
+
+
+class DrumControllerProtocolSettings(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    move_completion_timeout_ms: int = Field(default=30000, ge=1, le=60000)
 
 
 class LockHardwareEndpointTransportConfig(BaseModel):
@@ -163,6 +170,9 @@ def real_hardware_endpoints_example() -> dict[str, object]:
                     "read_timeout_ms": 1000,
                     "write_timeout_ms": 1000,
                 },
+            },
+            "protocol": {
+                "move_completion_timeout_ms": 30000,
             },
             "transport": {
                 "transport": "serial",

@@ -26,7 +26,7 @@ from app.hardware.transports import SerialRequestResponseTransport
 
 class RealDrumAdapter(RealHardwareAdapterBase):
     _MOVE_ACK_TIMEOUT_MS = 100
-    _MOVE_COMPLETION_TIMEOUT_MS = 15000
+    _DEFAULT_MOVE_COMPLETION_TIMEOUT_MS = 30000
     _FRAME_INTER_BYTE_GAP_TIMEOUT_MS = 20
 
     def __init__(
@@ -175,4 +175,7 @@ class RealDrumAdapter(RealHardwareAdapterBase):
         return parse_packet(raw_first_response), parse_packet(raw_second_response)
 
     def _move_response_timeouts_ms(self) -> tuple[int | None, int]:
-        return self._MOVE_ACK_TIMEOUT_MS, self._MOVE_COMPLETION_TIMEOUT_MS
+        completion_timeout_ms = self._DEFAULT_MOVE_COMPLETION_TIMEOUT_MS
+        if self._config is not None:
+            completion_timeout_ms = self._config.protocol.move_completion_timeout_ms
+        return self._MOVE_ACK_TIMEOUT_MS, completion_timeout_ms
