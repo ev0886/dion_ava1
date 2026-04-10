@@ -4,7 +4,7 @@ from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
-from sqlalchemy import create_engine, select
+from sqlalchemy import create_engine, select, text
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.application.dispense_service import DispenseOperationService
@@ -246,6 +246,38 @@ def test_once_per_day_policy_ignores_failed_dispense_attempts(session_factory: s
 
         assert failed_result.operation_state is OperationState.FAILED
         assert successful_result.operation_state is OperationState.COMPLETED
+
+
+def test_user_policy_orm_loads_legacy_uppercase_and_lowercase_storage(session_factory: sessionmaker[Session]) -> None:
+    with session_factory() as session:
+        ids = _seed_catalog(
+            session,
+            starting_quantity=5,
+            user_policy=DispenseRestrictionPolicy.UNLIMITED,
+        )
+        session.execute(
+            text(
+                """
+                UPDATE users
+                SET dispense_restriction_policy = CASE id
+                    WHEN :user_id THEN 'UNLIMITED'
+                    WHEN :operator_user_id THEN 'once_per_day'
+                END
+                WHERE id IN (:user_id, :operator_user_id)
+                """
+            ),
+            {"user_id": ids.user_id, "operator_user_id": ids.operator_user_id},
+        )
+        session.commit()
+        session.expire_all()
+
+        user = session.get(User, ids.user_id)
+        operator = session.get(User, ids.operator_user_id)
+
+        assert user is not None
+        assert operator is not None
+        assert user.dispense_restriction_policy is DispenseRestrictionPolicy.UNLIMITED
+        assert operator.dispense_restriction_policy is DispenseRestrictionPolicy.ONCE_PER_DAY
 
 
 def test_inventory_transaction_rows_are_written_for_successful_inventory_flows(

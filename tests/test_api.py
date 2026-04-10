@@ -5,6 +5,7 @@ from datetime import datetime
 
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy import text
 
 from app.api import create_app
 from app.config import AppSettings, HardwareProvider
@@ -323,6 +324,44 @@ def test_admin_update_user_can_clear_rfid_uid_assignment(tmp_path: Path) -> None
     assert response.status_code == 200
     assert response.json()["user"]["rfid_uid"] is None
     assert response.json()["user"]["dispense_restriction_policy"] == "once_per_day"
+
+
+def test_admin_users_handles_legacy_uppercase_policy_and_rewrites_lowercase_on_update(tmp_path: Path) -> None:
+    app = create_app(_settings(tmp_path, "api_admin_policy_normalize.sqlite3"))
+    _seed_base_domain(app)
+
+    with app.state.engine.begin() as connection:
+        connection.execute(
+            text(
+                """
+                UPDATE users
+                SET dispense_restriction_policy = 'UNLIMITED'
+                WHERE id = 1
+                """
+            )
+        )
+
+    with TestClient(app) as client:
+        list_response = client.get("/admin/users")
+        update_response = client.put(
+            "/admin/users/1",
+            json={
+                "rfid_uid": "000FE2767C0045",
+                "dispense_restriction_policy": "once_per_day",
+            },
+        )
+
+    assert list_response.status_code == 200
+    assert list_response.json()["users"][0]["dispense_restriction_policy"] == "unlimited"
+    assert update_response.status_code == 200
+    assert update_response.json()["user"]["dispense_restriction_policy"] == "once_per_day"
+
+    with app.state.engine.connect() as connection:
+        persisted_policy = connection.execute(
+            text("SELECT dispense_restriction_policy FROM users WHERE id = 1")
+        ).scalar_one()
+
+    assert persisted_policy == "once_per_day"
 
 
 def test_dispense_operation_happy_path(tmp_path: Path) -> None:
