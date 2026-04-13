@@ -62,6 +62,11 @@
       unlimited: "\u0411\u0435\u0437 \u043e\u0433\u0440\u0430\u043d\u0438\u0447\u0435\u043d\u0438\u0439",
       once_per_day: "\u041e\u0434\u0438\u043d \u0440\u0430\u0437 \u0432 \u0434\u0435\u043d\u044c",
     },
+    userStatus: {
+      active: "\u0410\u043a\u0442\u0438\u0432\u0435\u043d",
+      inactive: "\u041d\u0435\u0430\u043a\u0442\u0438\u0432\u0435\u043d",
+      blocked: "\u0417\u0430\u0431\u043b\u043e\u043a\u0438\u0440\u043e\u0432\u0430\u043d",
+    },
   };
 
   function setStatus(kind, title, message) {
@@ -145,6 +150,14 @@
         );
       })
       .join("");
+    const activeOptions = [
+      '<option value="true" ' +
+        (user.is_active ? "selected" : "") +
+        ">\u0410\u043a\u0442\u0438\u0432\u0435\u043d</option>",
+      '<option value="false" ' +
+        (!user.is_active ? "selected" : "") +
+        ">\u041d\u0435\u0430\u043a\u0442\u0438\u0432\u0435\u043d</option>",
+    ].join("");
 
     return (
       '<tr data-user-id="' +
@@ -160,11 +173,14 @@
       escapeHtml(user.full_name) +
       "</td>" +
       '<td><span class="status-chip">' +
-      escapeHtml(user.status) +
+      escapeHtml(getDisplayLabel("userStatus", user.status)) +
       "</span></td>" +
       '<td><span class="active-chip">' +
       (user.is_active ? "активен" : "неактивен") +
-      "</span></td>" +
+      "</span>" +
+      '<select class="inline-select" name="is_active">' +
+      activeOptions +
+      "</select></td>" +
       "<td>" +
       escapeHtml(user.role_code || "n/a") +
       "</td>" +
@@ -425,6 +441,7 @@
     setStatus("", "Сохранение", "Сохранение изменений для пользователя " + String(userId) + ".");
 
     const rfidInput = row.querySelector('input[name="rfid_uid"]');
+    const activeSelect = row.querySelector('select[name="is_active"]');
     const policySelect = row.querySelector('select[name="dispense_restriction_policy"]');
 
     try {
@@ -432,6 +449,7 @@
         method: "PUT",
         body: JSON.stringify({
           rfid_uid: rfidInput ? rfidInput.value : "",
+          is_active: activeSelect ? activeSelect.value === "true" : true,
           dispense_restriction_policy: policySelect ? policySelect.value : "unlimited",
         }),
       });

@@ -186,6 +186,30 @@ def test_export_users_csv_returns_import_compatible_columns_and_current_values(
         )
 
 
+def test_update_user_can_deactivate_user_and_preserve_record(
+    session_factory: sessionmaker[Session],
+) -> None:
+    with session_factory() as session:
+        _seed_import_duplicate_rfid_domain(session)
+        service = AdminUserService(UserRepository(session))
+
+        updated = service.update_user(
+            user_id=1,
+            rfid_uid="000FE2767C0045",
+            is_active=False,
+            dispense_restriction_policy=DispenseRestrictionPolicy.UNLIMITED,
+        )
+
+        persisted = session.get(User, 1)
+
+        assert updated.user_id == 1
+        assert updated.is_active is False
+        assert updated.status is UserStatus.INACTIVE
+        assert persisted is not None
+        assert persisted.is_active is False
+        assert persisted.status is UserStatus.INACTIVE
+
+
 def test_list_recent_operations_for_admin_returns_newest_first_with_joined_fields(
     session_factory: sessionmaker[Session],
 ) -> None:

@@ -12,12 +12,12 @@ from app.application.dto.operations import (
     OperationValidationResult,
     TransitionCheckResult,
 )
-from app.application.exceptions import NotFoundError, ValidationError
+from app.application.exceptions import AuthorizationError, NotFoundError, ValidationError
 from app.application.inventory_mutation import InventoryMutationService
 from app.application.operation_recorder import OperationRecorder
 from app.application.state_machine import assert_transition_allowed, can_transition
 from app.application.time import runtime_day_bounds, runtime_today, utc_now
-from app.domain.enums import DispenseRestrictionPolicy, OperationState, OperationType
+from app.domain.enums import DispenseRestrictionPolicy, OperationState, OperationType, UserStatus
 from app.hardware import HardwareFacade, UnlockResult
 from app.hardware.dto import DrumPositionResult
 from app.hardware.exceptions import HardwareError
@@ -146,6 +146,12 @@ class DispenseOperationService:
         user = self.operation_repository.session.get(User, user_id)
         if user is None:
             raise NotFoundError(f"User not found: {user_id}")
+        if not user.is_active:
+            raise AuthorizationError("User is inactive")
+        if user.status is UserStatus.INACTIVE:
+            raise AuthorizationError("User status is inactive")
+        if user.status is UserStatus.BLOCKED:
+            raise AuthorizationError("User is blocked")
 
         policy = user.dispense_restriction_policy
         if policy is DispenseRestrictionPolicy.UNLIMITED:

@@ -66,6 +66,7 @@ class ExportCreateRequest(ApiModel):
 
 class AdminUserUpdateRequest(ApiModel):
     rfid_uid: str | None = None
+    is_active: bool = True
     dispense_restriction_policy: DispenseRestrictionPolicy
 
 

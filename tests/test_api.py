@@ -620,6 +620,7 @@ def test_admin_update_user_assigns_rfid_uid_and_changes_policy(tmp_path: Path) -
             "/admin/users/2",
             json={
                 "rfid_uid": "aa bb-11 22",
+                "is_active": True,
                 "dispense_restriction_policy": "unlimited",
             },
         )
@@ -648,6 +649,7 @@ def test_admin_update_user_can_clear_rfid_uid_assignment(tmp_path: Path) -> None
             "/admin/users/1",
             json={
                 "rfid_uid": "",
+                "is_active": True,
                 "dispense_restriction_policy": "once_per_day",
             },
         )
@@ -678,6 +680,7 @@ def test_admin_users_handles_legacy_uppercase_policy_and_rewrites_lowercase_on_u
             "/admin/users/1",
             json={
                 "rfid_uid": "000FE2767C0045",
+                "is_active": True,
                 "dispense_restriction_policy": "once_per_day",
             },
         )
@@ -693,6 +696,157 @@ def test_admin_users_handles_legacy_uppercase_policy_and_rewrites_lowercase_on_u
         ).scalar_one()
 
     assert persisted_policy == "once_per_day"
+
+
+def test_admin_update_user_can_deactivate_user_and_user_stays_in_admin_list(tmp_path: Path) -> None:
+    app = create_app(_settings(tmp_path, "api_admin_deactivate.sqlite3"))
+    _seed_base_domain(app)
+
+    with TestClient(app) as client:
+        update_response = client.put(
+            "/admin/users/1",
+            json={
+                "rfid_uid": "000FE2767C0045",
+                "is_active": False,
+                "dispense_restriction_policy": "unlimited",
+            },
+        )
+        list_response = client.get("/admin/users")
+
+    assert update_response.status_code == 200
+    assert update_response.json() == {
+        "user": {
+            "user_id": 1,
+            "user_code": "user-1",
+            "full_name": "User One",
+            "status": "inactive",
+            "is_active": False,
+            "role_code": "user",
+            "rfid_uid": "000FE2767C0045",
+            "dispense_restriction_policy": "unlimited",
+        }
+    }
+    assert list_response.status_code == 200
+    assert list_response.json()["users"][0] == {
+        "user_id": 1,
+        "user_code": "user-1",
+        "full_name": "User One",
+        "status": "inactive",
+        "is_active": False,
+        "role_code": "user",
+        "rfid_uid": "000FE2767C0045",
+        "dispense_restriction_policy": "unlimited",
+    }
+
+    with app.state.engine.connect() as connection:
+        persisted = connection.execute(
+            text("SELECT status, is_active FROM users WHERE id = 1")
+        ).one()
+
+    assert persisted == ("INACTIVE", 0)
+
+
+def test_admin_recent_operations_keeps_deactivated_user_in_history(tmp_path: Path) -> None:
+    app = create_app(_settings(tmp_path, "api_admin_deactivate_history.sqlite3"))
+    _seed_base_domain(app)
+
+    with app.state.session_factory() as session:
+        session.add(
+            Operation(
+                session_id=None,
+                operation_type=OperationType.DISPENSE,
+                operation_state=OperationState.COMPLETED,
+                user_id=1,
+                item_id=1,
+                slot_id=1,
+                qty_requested=1,
+                qty_confirmed=1,
+                result=None,
+                error_code=None,
+                error_message=None,
+                hardware_context_json={},
+                business_context_json={},
+                started_at=datetime(2026, 4, 13, 12, 0, 0),
+                finished_at=datetime(2026, 4, 13, 12, 1, 0),
+            )
+        )
+        session.commit()
+
+    with TestClient(app) as client:
+        deactivate_response = client.put(
+            "/admin/users/1",
+            json={
+                "rfid_uid": "000FE2767C0045",
+                "is_active": False,
+                "dispense_restriction_policy": "unlimited",
+            },
+        )
+        history_response = client.get("/admin/operations/recent")
+
+    assert deactivate_response.status_code == 200
+    assert history_response.status_code == 200
+    assert history_response.json() == {
+        "operations": [
+            {
+                "operation_id": 1,
+                "started_at": "2026-04-13T12:00:00",
+                "operation_type": "dispense",
+                "operation_state": "completed",
+                "user_code": "user-1",
+                "user_full_name": "User One",
+                "item_name": "Item One",
+                "quantity": 1,
+                "slot_code": "slot-1",
+            }
+        ]
+    }
+
+
+def test_deactivated_user_is_rejected_by_auth_and_dispense_flow(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    app = create_app(_settings(tmp_path, "api_admin_deactivate_auth.sqlite3"))
+    _seed_base_domain(app)
+
+    rfid_reader = MockRfidAdapter()
+    rfid_reader.queue_card("00 0f-e2 76 7c 00 45")
+    hardware_bundle = HardwareBundle(
+        provider=HardwareProvider.MOCK,
+        drum_controller=MockDrumAdapter(),
+        lock_controller=MockLockAdapter(lock_states={(1, 1): LockState.LOCKED}),
+        rfid_reader=rfid_reader,
+        facade=HardwareFacade(
+            drum_controller=MockDrumAdapter(),
+            lock_controller=MockLockAdapter(lock_states={(1, 1): LockState.LOCKED}),
+            rfid_reader=rfid_reader,
+        ),
+    )
+    monkeypatch.setattr("app.application.composition.create_hardware_bundle", lambda _settings: hardware_bundle)
+
+    with TestClient(app) as client:
+        deactivate_response = client.put(
+            "/admin/users/1",
+            json={
+                "rfid_uid": "000FE2767C0045",
+                "is_active": False,
+                "dispense_restriction_policy": "unlimited",
+            },
+        )
+        auth_response = client.post("/auth/resolve", json={"user_id": 1})
+        rfid_response = client.post("/auth/read-and-resolve-rfid", json={})
+        dispense_response = client.post(
+            "/operations/dispense",
+            json={"user_id": 1, "item_id": 1, "slot_id": 1, "quantity": 1},
+        )
+
+    assert deactivate_response.status_code == 200
+    assert auth_response.status_code == 403
+    assert auth_response.json()["detail"] == "User is inactive"
+    assert rfid_response.status_code == 403
+    assert rfid_response.json()["detail"] == "User is inactive"
+    assert dispense_response.status_code == 403
+    assert dispense_response.json()["detail"] == "User is inactive"
 
 
 def test_admin_user_import_creates_users_from_csv(tmp_path: Path) -> None:

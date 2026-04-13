@@ -98,6 +98,7 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
                     container.services.admin_users.update_user(
                         user_id=user_id,
                         rfid_uid=payload.rfid_uid,
+                        is_active=payload.is_active,
                         dispense_restriction_policy=payload.dispense_restriction_policy,
                     )
                 )

@@ -67,6 +67,7 @@ class AdminUserService:
         *,
         user_id: int,
         rfid_uid: str | None,
+        is_active: bool,
         dispense_restriction_policy: DispenseRestrictionPolicy,
     ) -> AdminUserRecordDTO:
         user = self.user_repository.get_by_id(user_id)
@@ -75,6 +76,12 @@ class AdminUserService:
 
         normalized_rfid_uid = self._normalize_optional_rfid_uid(rfid_uid)
         self._apply_rfid_assignment(user=user, normalized_rfid_uid=normalized_rfid_uid)
+        user.is_active = is_active
+        if is_active:
+            if user.status is UserStatus.INACTIVE:
+                user.status = UserStatus.ACTIVE
+        elif user.status is UserStatus.ACTIVE:
+            user.status = UserStatus.INACTIVE
         user.dispense_restriction_policy = dispense_restriction_policy
         self.user_repository.session.commit()
         return self.user_repository.get_admin_record(user.id)
