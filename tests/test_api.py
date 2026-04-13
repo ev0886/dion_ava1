@@ -466,6 +466,31 @@ def test_admin_user_import_rejects_invalid_policy(tmp_path: Path) -> None:
     }
 
 
+def test_admin_user_import_rejects_invalid_role_code_with_allowed_values(tmp_path: Path) -> None:
+    app = create_app(_settings(tmp_path, "api_admin_import_invalid_role.sqlite3"))
+    _seed_base_domain(app)
+
+    csv_payload = "\n".join(
+        (
+            "user_code,full_name,role_code,rfid_uid,dispense_restriction_policy",
+            "user-2,User Two,manager,,once_per_day",
+        )
+    )
+
+    with TestClient(app) as client:
+        response = client.post(
+            "/admin/users/import",
+            content=csv_payload.encode("utf-8"),
+            headers={"content-type": "text/csv; charset=utf-8"},
+        )
+
+    assert response.status_code == 400
+    assert response.json() == {
+        "error": "validation_error",
+        "detail": "CSV row 2: invalid role_code 'manager'. Allowed role_code values: admin, operator, user",
+    }
+
+
 def test_admin_user_import_updates_existing_user_by_user_code(tmp_path: Path) -> None:
     app = create_app(_settings(tmp_path, "api_admin_import_update.sqlite3"))
     _seed_base_domain(app)

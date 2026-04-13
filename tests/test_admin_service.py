@@ -53,6 +53,29 @@ def test_import_users_csv_adds_row_context_to_duplicate_rfid_conflict(
         )
 
 
+def test_import_users_csv_rejects_invalid_role_code_with_allowed_values(
+    session_factory: sessionmaker[Session],
+) -> None:
+    with session_factory() as session:
+        _seed_import_duplicate_rfid_domain(session)
+        service = AdminUserService(UserRepository(session))
+
+        csv_payload = "\n".join(
+            (
+                "user_code,full_name,role_code,rfid_uid,dispense_restriction_policy",
+                "user-2,User Two,manager,,once_per_day",
+            )
+        )
+
+        with pytest.raises(ValidationError) as exc_info:
+            service.import_users_csv(csv_payload)
+
+        assert str(exc_info.value) == (
+            "CSV row 2: invalid role_code 'manager'. "
+            "Allowed role_code values: admin, operator, user"
+        )
+
+
 def _seed_import_duplicate_rfid_domain(session: Session) -> None:
     user_role = Role(code=RoleCode.USER, name="User")
     operator_role = Role(code=RoleCode.OPERATOR, name="Operator")

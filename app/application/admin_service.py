@@ -206,7 +206,11 @@ class AdminUserService:
         try:
             return RoleCode(normalized)
         except ValueError as exc:
-            raise ValidationError(f"CSV row {row_number}: invalid role_code '{raw_role_code}'") from exc
+            allowed_role_codes = ", ".join(role_code.value for role_code in RoleCode)
+            raise ValidationError(
+                f"CSV row {row_number}: invalid role_code '{raw_role_code}'. "
+                f"Allowed role_code values: {allowed_role_codes}"
+            ) from exc
 
     @staticmethod
     def _parse_policy(raw_policy: str | None, row_number: int) -> DispenseRestrictionPolicy:
