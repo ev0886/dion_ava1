@@ -18,6 +18,7 @@ from app.domain.enums import (
     DispenseRestrictionPolicy,
     ItemStatus,
     OperationState,
+    OperationType,
     RoleCode,
     SlotStatus,
     SlotType,
@@ -92,11 +93,14 @@ def test_ui_admin_page_serves_user_management_config(tmp_path: Path) -> None:
     assert "Импортировать CSV" in response.text
     assert "Загрузить пример" in response.text
     assert "Скачать пример CSV" in response.text
+    assert "Последние действия системы" in response.text
     assert '"/admin/users"' in response.text
+    assert '"/admin/operations/recent"' in response.text
     assert '"/admin/users/import"' in response.text
     assert '"/ui-assets/admin-users-import-example.csv"' in response.text
     assert '"once_per_day"' in response.text
     assert '"/admin/users/export"' in response.text
+    assert '"recentOperationsEndpoint"' in response.text
     assert '"exportUsersEndpoint"' in response.text
     assert '"importExampleCsvText"' in response.text
 
@@ -345,6 +349,84 @@ def test_admin_users_endpoint_lists_assigned_and_unassigned_users(tmp_path: Path
                 "role_code": "operator",
                 "rfid_uid": None,
                 "dispense_restriction_policy": "once_per_day",
+            },
+        ]
+    }
+
+
+def test_admin_recent_operations_endpoint_returns_latest_slice_newest_first(tmp_path: Path) -> None:
+    app = create_app(_settings(tmp_path, "api_admin_recent_operations.sqlite3"))
+    _seed_base_domain(app)
+    _seed_unassigned_user(app)
+
+    with app.state.session_factory() as session:
+        session.add_all(
+            [
+                Operation(
+                    session_id=None,
+                    operation_type=OperationType.DISPENSE,
+                    operation_state=OperationState.COMPLETED,
+                    user_id=1,
+                    item_id=1,
+                    slot_id=1,
+                    qty_requested=1,
+                    qty_confirmed=1,
+                    result=None,
+                    error_code=None,
+                    error_message=None,
+                    hardware_context_json={},
+                    business_context_json={},
+                    started_at=datetime(2026, 4, 13, 9, 0, 0),
+                    finished_at=datetime(2026, 4, 13, 9, 1, 0),
+                ),
+                Operation(
+                    session_id=None,
+                    operation_type=OperationType.REFILL_ITEM,
+                    operation_state=OperationState.COMPLETED,
+                    user_id=2,
+                    item_id=1,
+                    slot_id=1,
+                    qty_requested=5,
+                    qty_confirmed=5,
+                    result=None,
+                    error_code=None,
+                    error_message=None,
+                    hardware_context_json={},
+                    business_context_json={},
+                    started_at=datetime(2026, 4, 13, 10, 0, 0),
+                    finished_at=datetime(2026, 4, 13, 10, 1, 0),
+                ),
+            ]
+        )
+        session.commit()
+
+    with TestClient(app) as client:
+        response = client.get("/admin/operations/recent")
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "operations": [
+            {
+                "operation_id": 2,
+                "started_at": "2026-04-13T10:00:00",
+                "operation_type": "refill_item",
+                "operation_state": "completed",
+                "user_code": "operator-1",
+                "user_full_name": "Operator One",
+                "item_name": "Item One",
+                "quantity": 5,
+                "slot_code": "slot-1",
+            },
+            {
+                "operation_id": 1,
+                "started_at": "2026-04-13T09:00:00",
+                "operation_type": "dispense",
+                "operation_state": "completed",
+                "user_code": "user-1",
+                "user_full_name": "User One",
+                "item_name": "Item One",
+                "quantity": 1,
+                "slot_code": "slot-1",
             },
         ]
     }

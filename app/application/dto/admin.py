@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime
 
-from app.domain.enums import DispenseRestrictionPolicy, RoleCode, UserStatus
+from app.domain.enums import DispenseRestrictionPolicy, OperationState, OperationType, RoleCode, UserStatus
 
 
 @dataclass(frozen=True, slots=True)
@@ -22,3 +23,16 @@ class AdminUserImportResultDTO:
     created_count: int
     updated_count: int
     total_rows: int
+
+
+@dataclass(frozen=True, slots=True)
+class AdminRecentOperationDTO:
+    operation_id: int
+    started_at: datetime | None
+    operation_type: OperationType
+    operation_state: OperationState
+    user_code: str | None
+    user_full_name: str | None
+    item_name: str | None
+    quantity: int | None
+    slot_code: str | None

@@ -5,10 +5,11 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from io import StringIO
 
-from app.application.dto.admin import AdminUserImportResultDTO, AdminUserRecordDTO
+from app.application.dto.admin import AdminRecentOperationDTO, AdminUserImportResultDTO, AdminUserRecordDTO
 from app.application.exceptions import NotFoundError, ValidationError
 from app.domain.enums import DispenseRestrictionPolicy, RoleCode, UserStatus
 from app.persistence.models import User
+from app.persistence.repositories.operations import OperationRepository
 from app.persistence.repositories.users import UserRepository
 
 
@@ -246,6 +247,14 @@ class AdminUserService:
             raise ValidationError(
                 f"CSV row {row_number}: invalid dispense_restriction_policy '{raw_policy}'"
             ) from exc
+
+
+class AdminOperationService:
+    def __init__(self, operation_repository: OperationRepository) -> None:
+        self.operation_repository = operation_repository
+
+    def list_recent_operations(self, *, limit: int = 20) -> list[AdminRecentOperationDTO]:
+        return self.operation_repository.list_recent_for_admin(limit=limit)
 
 
 def _utcnow_naive() -> datetime:

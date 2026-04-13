@@ -6,7 +6,7 @@ from pydantic import ValidationError
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
 
-from app.application.admin_service import AdminUserService
+from app.application.admin_service import AdminOperationService, AdminUserService
 from app.application.auth_service import AuthService
 from app.application.dispense_service import DispenseOperationService
 from app.application.export_service import ExportService
@@ -45,6 +45,7 @@ class RepositoryBundle:
 @dataclass(frozen=True, slots=True)
 class ServiceBundle:
     admin_users: AdminUserService
+    admin_operations: AdminOperationService
     auth: AuthService
     inventory: InventoryService
     operation_sessions: OperationSessionService
@@ -102,6 +103,7 @@ def build_services(
     )
     return ServiceBundle(
         admin_users=AdminUserService(repositories.users),
+        admin_operations=AdminOperationService(repositories.operations),
         auth=auth_service,
         inventory=inventory_service,
         operation_sessions=operation_session_service,

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterator
+from datetime import datetime
 from pathlib import Path
 
 import pytest
@@ -8,10 +9,12 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.application.admin_service import AdminUserService
+from app.application.dto.admin import AdminRecentOperationDTO
 from app.application.exceptions import ValidationError
-from app.domain.enums import DispenseRestrictionPolicy, RoleCode, UserStatus
+from app.domain.enums import DispenseRestrictionPolicy, ItemStatus, OperationState, OperationType, RoleCode, SlotStatus, SlotType, UserStatus
 from app.persistence.base import Base
-from app.persistence.models import Role, User, UserRfidCard
+from app.persistence.models import Item, Operation, Role, Slot, User, UserRfidCard
+from app.persistence.repositories.operations import OperationRepository
 from app.persistence.repositories.users import UserRepository
 
 
@@ -180,6 +183,100 @@ def test_export_users_csv_returns_import_compatible_columns_and_current_values(
                 "operator-1,Operator One,operator,,once_per_day",
                 "",
             )
+        )
+
+
+def test_list_recent_operations_for_admin_returns_newest_first_with_joined_fields(
+    session_factory: sessionmaker[Session],
+) -> None:
+    with session_factory() as session:
+        _seed_import_duplicate_rfid_domain(session)
+        item = Item(
+            item_group_id=None,
+            sku="item-1",
+            name="Item One",
+            description=None,
+            unit="pcs",
+            return_allowed=True,
+            min_level=0,
+            status=ItemStatus.ACTIVE,
+        )
+        slot = Slot(
+            code="slot-1",
+            slot_type=SlotType.UNIVERSAL,
+            drum_position=1,
+            board_address=1,
+            lock_number=1,
+            capacity=10,
+            status=SlotStatus.ACTIVE,
+        )
+        session.add_all((item, slot))
+        session.flush()
+
+        session.add_all(
+            (
+                Operation(
+                    session_id=None,
+                    operation_type=OperationType.REFILL_ITEM,
+                    operation_state=OperationState.COMPLETED,
+                    user_id=2,
+                    item_id=item.id,
+                    slot_id=slot.id,
+                    qty_requested=4,
+                    qty_confirmed=4,
+                    result=None,
+                    error_code=None,
+                    error_message=None,
+                    hardware_context_json={},
+                    business_context_json={},
+                    started_at=datetime(2026, 4, 13, 11, 30, 0),
+                    finished_at=datetime(2026, 4, 13, 11, 31, 0),
+                ),
+                Operation(
+                    session_id=None,
+                    operation_type=OperationType.DISPENSE,
+                    operation_state=OperationState.FAILED,
+                    user_id=1,
+                    item_id=item.id,
+                    slot_id=slot.id,
+                    qty_requested=1,
+                    qty_confirmed=None,
+                    result=None,
+                    error_code=None,
+                    error_message=None,
+                    hardware_context_json={},
+                    business_context_json={},
+                    started_at=datetime(2026, 4, 13, 10, 0, 0),
+                    finished_at=datetime(2026, 4, 13, 10, 1, 0),
+                ),
+            )
+        )
+        session.commit()
+
+        rows = OperationRepository(session).list_recent_for_admin(limit=20)
+
+        assert len(rows) == 2
+        assert rows[0] == AdminRecentOperationDTO(
+            operation_id=rows[0].operation_id,
+            started_at=datetime(2026, 4, 13, 11, 30, 0),
+            operation_type=OperationType.REFILL_ITEM,
+            operation_state=OperationState.COMPLETED,
+            user_code="operator-1",
+            user_full_name="Operator One",
+            item_name="Item One",
+            quantity=4,
+            slot_code="slot-1",
+        )
+        assert rows[1] == AdminRecentOperationDTO(
+            operation_id=rows[1].operation_id,
+            started_at=datetime(2026, 4, 13, 10, 0, 0),
+            operation_type=OperationType.DISPENSE,
+            operation_state=OperationState.FAILED,
+            user_code="user-1",
+            user_full_name="User One",
+            item_name="Item One",
+            quantity=1,
+            slot_code="slot-1",
         )
 
 

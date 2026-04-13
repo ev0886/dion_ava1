@@ -2,10 +2,11 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import and_, or_, select
+from sqlalchemy import and_, func, or_, select
 
+from app.application.dto.admin import AdminRecentOperationDTO
 from app.domain.enums import OperationState, OperationType
-from app.persistence.models import Operation, OperationSession, OperationStateHistory
+from app.persistence.models import Item, Operation, OperationSession, OperationStateHistory, Slot, User
 from app.persistence.repositories.base import Repository
 
 
@@ -91,6 +92,42 @@ class OperationRepository(Repository):
             .limit(1)
         )
         return self.session.execute(statement).scalar_one_or_none() is not None
+
+    def list_recent_for_admin(self, *, limit: int = 20) -> list[AdminRecentOperationDTO]:
+        statement = (
+            select(
+                Operation.id,
+                Operation.started_at,
+                Operation.operation_type,
+                Operation.operation_state,
+                User.user_code,
+                User.full_name,
+                Item.name,
+                Operation.qty_confirmed,
+                Operation.qty_requested,
+                Slot.code,
+            )
+            .outerjoin(User, User.id == Operation.user_id)
+            .outerjoin(Item, Item.id == Operation.item_id)
+            .outerjoin(Slot, Slot.id == Operation.slot_id)
+            .order_by(func.coalesce(Operation.started_at, Operation.finished_at).desc(), Operation.id.desc())
+            .limit(limit)
+        )
+        rows = self.session.execute(statement).all()
+        return [
+            AdminRecentOperationDTO(
+                operation_id=operation_id,
+                started_at=started_at,
+                operation_type=operation_type,
+                operation_state=operation_state,
+                user_code=user_code,
+                user_full_name=full_name,
+                item_name=item_name,
+                quantity=qty_confirmed if qty_confirmed is not None else qty_requested,
+                slot_code=slot_code,
+            )
+            for operation_id, started_at, operation_type, operation_state, user_code, full_name, item_name, qty_confirmed, qty_requested, slot_code in rows
+        ]
 
 
 class OperationSessionRepository(Repository):

@@ -7,6 +7,7 @@
     statusMessage: document.getElementById("status-message"),
     refreshButton: document.getElementById("refresh-button"),
     userTableBody: document.getElementById("user-table-body"),
+    operationsTableBody: document.getElementById("operations-table-body"),
     importFile: document.getElementById("import-file"),
     importTextarea: document.getElementById("import-textarea"),
     loadExampleButton: document.getElementById("load-example-button"),
@@ -20,6 +21,7 @@
 
   const state = {
     users: [],
+    operations: [],
     isLoading: false,
     isImporting: false,
     savingUserIds: new Set(),
@@ -123,6 +125,76 @@
     });
   }
 
+  function formatDateTime(value) {
+    if (!value) {
+      return "n/a";
+    }
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) {
+      return value;
+    }
+    return date.toLocaleString("ru-RU", {
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+    });
+  }
+
+  function buildUserLabel(operation) {
+    const parts = [];
+    if (operation.user_code) {
+      parts.push(operation.user_code);
+    }
+    if (operation.user_full_name) {
+      parts.push(operation.user_full_name);
+    }
+    return parts.length ? parts.join(" / ") : "n/a";
+  }
+
+  function operationRowMarkup(operation) {
+    const quantity =
+      operation.quantity === null || operation.quantity === undefined ? "n/a" : String(operation.quantity);
+
+    return (
+      "<tr>" +
+      "<td>" +
+      escapeHtml(formatDateTime(operation.started_at)) +
+      "</td>" +
+      "<td>" +
+      escapeHtml(operation.operation_type || "n/a") +
+      "</td>" +
+      '<td><span class="status-chip">' +
+      escapeHtml(operation.operation_state || "n/a") +
+      "</span></td>" +
+      "<td>" +
+      escapeHtml(buildUserLabel(operation)) +
+      "</td>" +
+      "<td>" +
+      escapeHtml(operation.item_name || "n/a") +
+      "</td>" +
+      "<td>" +
+      escapeHtml(quantity) +
+      "</td>" +
+      "<td>" +
+      escapeHtml(operation.slot_code || "n/a") +
+      "</td>" +
+      "</tr>"
+    );
+  }
+
+  function renderOperations() {
+    if (!state.operations.length) {
+      elements.operationsTableBody.innerHTML =
+        '<tr><td colspan="7" class="placeholder-cell">Последние операции пока не найдены.</td></tr>';
+      return;
+    }
+
+    elements.operationsTableBody.innerHTML = state.operations.map(operationRowMarkup).join("");
+  }
+
   async function readJson(url, options) {
     const response = await fetch(url, {
       headers: {
@@ -175,10 +247,6 @@
   }
 
   async function loadUsers() {
-    state.isLoading = true;
-    syncControls();
-    setStatus("", "Загрузка", "Обновление записей пользователей из локального backend.");
-
     try {
       const { response, payload } = await readJson(config.listUsersEndpoint, { method: "GET" });
       if (!response.ok) {
@@ -186,10 +254,41 @@
       }
       state.users = Array.isArray(payload.users) ? payload.users : [];
       renderUsers();
-      setStatus("success", "Готово", "Записи пользователей загружены. Измените RFID UID или политику выдачи и сохраните нужную строку.");
     } catch (error) {
       state.users = [];
       renderUsers();
+      throw error;
+    }
+  }
+
+  async function loadRecentOperations() {
+    try {
+      const { response, payload } = await readJson(config.recentOperationsEndpoint, { method: "GET" });
+      if (!response.ok) {
+        throw new Error(payload.detail || "Не удалось получить список последних операций.");
+      }
+      state.operations = Array.isArray(payload.operations) ? payload.operations : [];
+      renderOperations();
+    } catch (error) {
+      state.operations = [];
+      renderOperations();
+      throw error;
+    }
+  }
+
+  async function loadAdminData() {
+    state.isLoading = true;
+    syncControls();
+    setStatus("", "Загрузка", "Обновление пользователей и последних операций из локального backend.");
+
+    try {
+      await Promise.all([loadUsers(), loadRecentOperations()]);
+      setStatus(
+        "success",
+        "Готово",
+        "Пользователи и последние операции загружены. Измените RFID UID или политику выдачи и сохраните нужную строку."
+      );
+    } catch (error) {
       setStatus("error", "Ошибка загрузки", String(error));
     } finally {
       state.isLoading = false;
@@ -258,7 +357,7 @@
       const result = payload.result || {};
       setImportResult("success", "Импорт завершен", formatImportSummary(result));
       setStatus("success", "Импорт завершен", "CSV пользователей успешно обработан. Обновляю список.");
-      await loadUsers();
+      await loadAdminData();
     } catch (error) {
       setImportResult("error", "Ошибка импорта", String(error));
       setStatus("error", "Ошибка импорта", String(error));
@@ -269,7 +368,7 @@
   }
 
   elements.refreshButton.addEventListener("click", function () {
-    void loadUsers();
+    void loadAdminData();
   });
   elements.loadExampleButton.addEventListener("click", function () {
     loadExampleCsv();
@@ -284,5 +383,6 @@
     void importUsers();
   });
 
-  void loadUsers();
+  renderOperations();
+  void loadAdminData();
 })();
