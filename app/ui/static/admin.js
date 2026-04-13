@@ -10,6 +10,7 @@
     importFile: document.getElementById("import-file"),
     importTextarea: document.getElementById("import-textarea"),
     loadExampleButton: document.getElementById("load-example-button"),
+    exportUsersLink: document.getElementById("export-users-link"),
     downloadExampleLink: document.getElementById("download-example-link"),
     importButton: document.getElementById("import-button"),
     importResult: document.getElementById("import-result"),
@@ -275,6 +276,9 @@
   });
   if (elements.downloadExampleLink && config.importExampleCsvAssetUrl) {
     elements.downloadExampleLink.href = config.importExampleCsvAssetUrl;
+  }
+  if (elements.exportUsersLink && config.exportUsersEndpoint) {
+    elements.exportUsersLink.href = config.exportUsersEndpoint;
   }
   elements.importButton.addEventListener("click", function () {
     void importUsers();

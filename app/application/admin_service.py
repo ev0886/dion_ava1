@@ -38,6 +38,22 @@ class AdminUserService:
     def list_users(self) -> list[AdminUserRecordDTO]:
         return self.user_repository.list_for_admin()
 
+    def export_users_csv(self) -> str:
+        output = StringIO()
+        writer = csv.writer(output, lineterminator="\n")
+        writer.writerow(self._CSV_COLUMNS)
+        for user in self.user_repository.list_for_admin():
+            writer.writerow(
+                (
+                    user.user_code,
+                    user.full_name,
+                    user.role_code.value if user.role_code is not None else "",
+                    user.rfid_uid or "",
+                    user.dispense_restriction_policy.value,
+                )
+            )
+        return output.getvalue()
+
     def update_user(
         self,
         *,

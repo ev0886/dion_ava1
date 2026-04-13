@@ -40,6 +40,7 @@ def render_admin_page(settings: AppSettings) -> HTMLResponse:
     template = _ADMIN_TEMPLATE_PATH.read_text(encoding="utf-8")
     ui_config = {
         "listUsersEndpoint": "/admin/users",
+        "exportUsersEndpoint": "/admin/users/export",
         "updateUserEndpointBase": "/admin/users",
         "importUsersEndpoint": "/admin/users/import",
         "importExampleCsvAssetUrl": "/ui-assets/admin-users-import-example.csv",

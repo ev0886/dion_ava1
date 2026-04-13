@@ -164,6 +164,25 @@ def test_import_users_csv_rejects_empty_required_fields_with_row_context(
         assert str(exc_info.value) == expected_detail
 
 
+def test_export_users_csv_returns_import_compatible_columns_and_current_values(
+    session_factory: sessionmaker[Session],
+) -> None:
+    with session_factory() as session:
+        _seed_import_duplicate_rfid_domain(session)
+        service = AdminUserService(UserRepository(session))
+
+        exported_csv = service.export_users_csv()
+
+        assert exported_csv == "\n".join(
+            (
+                "user_code,full_name,role_code,rfid_uid,dispense_restriction_policy",
+                "user-1,User One,user,000FE2767C0045,unlimited",
+                "operator-1,Operator One,operator,,once_per_day",
+                "",
+            )
+        )
+
+
 def _seed_import_duplicate_rfid_domain(session: Session) -> None:
     user_role = Role(code=RoleCode.USER, name="User")
     operator_role = Role(code=RoleCode.OPERATOR, name="Operator")

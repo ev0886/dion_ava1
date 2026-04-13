@@ -95,6 +95,8 @@ def test_ui_admin_page_serves_user_management_config(tmp_path: Path) -> None:
     assert '"/admin/users/import"' in response.text
     assert '"/ui-assets/admin-users-import-example.csv"' in response.text
     assert '"once_per_day"' in response.text
+    assert '"/admin/users/export"' in response.text
+    assert '"exportUsersEndpoint"' in response.text
     assert '"importExampleCsvText"' in response.text
 
 
@@ -345,6 +347,27 @@ def test_admin_users_endpoint_lists_assigned_and_unassigned_users(tmp_path: Path
             },
         ]
     }
+
+
+def test_admin_users_export_endpoint_returns_import_compatible_csv(tmp_path: Path) -> None:
+    app = create_app(_settings(tmp_path, "api_admin_export.sqlite3"))
+    _seed_base_domain(app)
+    _seed_unassigned_user(app)
+
+    with TestClient(app) as client:
+        response = client.get("/admin/users/export")
+
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/csv; charset=utf-8")
+    assert response.headers["content-disposition"] == 'attachment; filename="admin-users-export.csv"'
+    assert response.text == "\n".join(
+        (
+            "user_code,full_name,role_code,rfid_uid,dispense_restriction_policy",
+            "user-1,User One,user,000FE2767C0045,unlimited",
+            "operator-1,Operator One,operator,,once_per_day",
+            "",
+        )
+    )
 
 
 def test_admin_update_user_assigns_rfid_uid_and_changes_policy(tmp_path: Path) -> None:
