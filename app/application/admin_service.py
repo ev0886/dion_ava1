@@ -173,13 +173,18 @@ class AdminUserService:
             )
 
         rows: list[_ImportedUserRow] = []
+        seen_user_codes: set[str] = set()
         for row_number, raw_row in enumerate(reader, start=2):
             if raw_row is None:
                 continue
+            user_code = cls._require_csv_value(raw_row, "user_code", row_number)
+            if user_code in seen_user_codes:
+                raise ValidationError(f"CSV row {row_number}: duplicate user_code {user_code} in import file")
+            seen_user_codes.add(user_code)
             rows.append(
                 _ImportedUserRow(
                     row_number=row_number,
-                    user_code=cls._require_csv_value(raw_row, "user_code", row_number),
+                    user_code=user_code,
                     full_name=cls._require_csv_value(raw_row, "full_name", row_number),
                     role_code=cls._parse_role_code(raw_row.get("role_code"), row_number),
                     rfid_uid=cls._normalize_optional_rfid_uid(raw_row.get("rfid_uid")),

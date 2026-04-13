@@ -535,6 +535,46 @@ def test_admin_user_import_rejects_invalid_role_code_with_allowed_values(tmp_pat
     }
 
 
+def test_admin_user_import_rejects_duplicate_user_code_in_same_payload(tmp_path: Path) -> None:
+    app = create_app(_settings(tmp_path, "api_admin_import_duplicate_user_code.sqlite3"))
+    _seed_base_domain(app)
+
+    csv_payload = "\n".join(
+        (
+            "user_code,full_name,role_code,rfid_uid,dispense_restriction_policy",
+            "user-2,User Two,user,,once_per_day",
+            "user-2,User Two Again,user,,unlimited",
+        )
+    )
+
+    with TestClient(app) as client:
+        response = client.post(
+            "/admin/users/import",
+            content=csv_payload.encode("utf-8"),
+            headers={"content-type": "text/csv; charset=utf-8"},
+        )
+        list_response = client.get("/admin/users")
+
+    assert response.status_code == 400
+    assert response.json() == {
+        "error": "validation_error",
+        "detail": "CSV row 3: duplicate user_code user-2 in import file",
+    }
+    assert list_response.status_code == 200
+    assert list_response.json()["users"] == [
+        {
+            "user_id": 1,
+            "user_code": "user-1",
+            "full_name": "User One",
+            "status": "active",
+            "is_active": True,
+            "role_code": "user",
+            "rfid_uid": "000FE2767C0045",
+            "dispense_restriction_policy": "unlimited",
+        }
+    ]
+
+
 @pytest.mark.parametrize(
     ("row_text", "expected_detail"),
     (

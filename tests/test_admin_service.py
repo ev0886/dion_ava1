@@ -76,6 +76,27 @@ def test_import_users_csv_rejects_invalid_role_code_with_allowed_values(
         )
 
 
+def test_import_users_csv_rejects_duplicate_user_code_in_same_payload(
+    session_factory: sessionmaker[Session],
+) -> None:
+    with session_factory() as session:
+        _seed_import_duplicate_rfid_domain(session)
+        service = AdminUserService(UserRepository(session))
+
+        csv_payload = "\n".join(
+            (
+                "user_code,full_name,role_code,rfid_uid,dispense_restriction_policy",
+                "user-2,User Two,user,,once_per_day",
+                "user-2,User Two Again,user,,unlimited",
+            )
+        )
+
+        with pytest.raises(ValidationError) as exc_info:
+            service.import_users_csv(csv_payload)
+
+        assert str(exc_info.value) == "CSV row 3: duplicate user_code user-2 in import file"
+
+
 @pytest.mark.parametrize(
     ("row_text", "expected_detail"),
     (
