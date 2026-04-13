@@ -84,7 +84,10 @@ class AdminUserService:
                     user.dispense_restriction_policy = row.dispense_restriction_policy
                     updated_count += 1
 
-                self._apply_rfid_assignment(user=user, normalized_rfid_uid=row.rfid_uid)
+                try:
+                    self._apply_rfid_assignment(user=user, normalized_rfid_uid=row.rfid_uid)
+                except ValidationError as exc:
+                    raise ValidationError(f"CSV row {row.row_number}: {exc}") from exc
 
             self.user_repository.session.commit()
         except Exception:
@@ -106,7 +109,7 @@ class AdminUserService:
 
         existing_card = self.user_repository.get_rfid_card_by_uid(normalized_rfid_uid)
         if existing_card is not None and existing_card.user_id != user.id and existing_card.revoked_at is None:
-            raise ValidationError(f"RFID UID is already assigned to another user: {normalized_rfid_uid}")
+            raise ValidationError(self._build_rfid_conflict_message(normalized_rfid_uid, existing_card.user_id))
 
         cards_to_revoke = [card for card in active_cards if existing_card is None or card.id != existing_card.id]
         self.user_repository.revoke_rfid_cards(cards_to_revoke)
@@ -136,6 +139,15 @@ class AdminUserService:
         if not normalized:
             return None
         return normalized
+
+    def _build_rfid_conflict_message(self, normalized_rfid_uid: str, owner_user_id: int) -> str:
+        owner = self.user_repository.get_by_id(owner_user_id)
+        if owner is None:
+            return f"RFID UID '{normalized_rfid_uid}' is already assigned to another user"
+        return (
+            f"RFID UID '{normalized_rfid_uid}' is already assigned to user_code "
+            f"'{owner.user_code}' ({owner.full_name})"
+        )
 
     @classmethod
     def _parse_csv_rows(cls, csv_text: str) -> list[_ImportedUserRow]:
