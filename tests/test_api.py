@@ -168,6 +168,8 @@ def test_ui_admin_static_assets_are_served(tmp_path: Path) -> None:
     assert "updated_count" in response.text
     assert "total_rows" in response.text
     assert "getDisplayLabel" in response.text
+    assert 'name="is_active"' in response.text
+    assert "active-chip" not in response.text
     assert 'degraded: "\\u041e\\u0433\\u0440\\u0430\\u043d\\u0438\\u0447\\u0435\\u043d\\u043d\\u0430\\u044f \\u0433\\u043e\\u0442\\u043e\\u0432\\u043d\\u043e\\u0441\\u0442\\u044c"' in response.text
     assert 'dispense: "\\u0412\\u044b\\u0434\\u0430\\u0447\\u0430"' in response.text
     assert 'recovery_required: "\\u0422\\u0440\\u0435\\u0431\\u0443\\u0435\\u0442\\u0441\\u044f \\u0432\\u043e\\u0441\\u0441\\u0442\\u0430\\u043d\\u043e\\u0432\\u043b\\u0435\\u043d\\u0438\\u0435"' in response.text

@@ -175,10 +175,7 @@
       '<td><span class="status-chip">' +
       escapeHtml(getDisplayLabel("userStatus", user.status)) +
       "</span></td>" +
-      '<td><span class="active-chip">' +
-      (user.is_active ? "активен" : "неактивен") +
-      "</span>" +
-      '<select class="inline-select" name="is_active">' +
+      '<td><select class="inline-select" name="is_active">' +
       activeOptions +
       "</select></td>" +
       "<td>" +
