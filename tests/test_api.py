@@ -120,6 +120,8 @@ def test_ui_admin_static_assets_are_served(tmp_path: Path) -> None:
     assert "loadExampleCsv" in response.text
     assert "importUsers" in response.text
     assert "created_count" in response.text
+    assert "updated_count" in response.text
+    assert "total_rows" in response.text
 
 
 def test_ui_admin_import_example_csv_asset_is_served(tmp_path: Path) -> None:
