@@ -280,6 +280,118 @@ def test_list_recent_operations_for_admin_returns_newest_first_with_joined_field
         )
 
 
+def test_list_problem_operations_for_admin_returns_failed_and_recovery_required_newest_first(
+    session_factory: sessionmaker[Session],
+) -> None:
+    with session_factory() as session:
+        _seed_import_duplicate_rfid_domain(session)
+        item = Item(
+            item_group_id=None,
+            sku="item-1",
+            name="Item One",
+            description=None,
+            unit="pcs",
+            return_allowed=True,
+            min_level=0,
+            status=ItemStatus.ACTIVE,
+        )
+        slot = Slot(
+            code="slot-1",
+            slot_type=SlotType.UNIVERSAL,
+            drum_position=1,
+            board_address=1,
+            lock_number=1,
+            capacity=10,
+            status=SlotStatus.ACTIVE,
+        )
+        session.add_all((item, slot))
+        session.flush()
+
+        session.add_all(
+            (
+                Operation(
+                    session_id=None,
+                    operation_type=OperationType.DISPENSE,
+                    operation_state=OperationState.COMPLETED,
+                    user_id=1,
+                    item_id=item.id,
+                    slot_id=slot.id,
+                    qty_requested=1,
+                    qty_confirmed=1,
+                    result=None,
+                    error_code=None,
+                    error_message=None,
+                    hardware_context_json={},
+                    business_context_json={},
+                    started_at=datetime(2026, 4, 13, 9, 0, 0),
+                    finished_at=datetime(2026, 4, 13, 9, 1, 0),
+                ),
+                Operation(
+                    session_id=None,
+                    operation_type=OperationType.DISPENSE,
+                    operation_state=OperationState.FAILED,
+                    user_id=1,
+                    item_id=item.id,
+                    slot_id=slot.id,
+                    qty_requested=2,
+                    qty_confirmed=None,
+                    result=None,
+                    error_code=None,
+                    error_message=None,
+                    hardware_context_json={},
+                    business_context_json={},
+                    started_at=datetime(2026, 4, 13, 10, 0, 0),
+                    finished_at=datetime(2026, 4, 13, 10, 1, 0),
+                ),
+                Operation(
+                    session_id=None,
+                    operation_type=OperationType.RETURN,
+                    operation_state=OperationState.RECOVERY_REQUIRED,
+                    user_id=2,
+                    item_id=item.id,
+                    slot_id=slot.id,
+                    qty_requested=3,
+                    qty_confirmed=None,
+                    result=None,
+                    error_code=None,
+                    error_message=None,
+                    hardware_context_json={},
+                    business_context_json={},
+                    started_at=datetime(2026, 4, 13, 11, 0, 0),
+                    finished_at=datetime(2026, 4, 13, 11, 1, 0),
+                ),
+            )
+        )
+        session.commit()
+
+        rows = OperationRepository(session).list_problem_for_admin(limit=20)
+
+        assert rows == [
+            AdminRecentOperationDTO(
+                operation_id=rows[0].operation_id,
+                started_at=datetime(2026, 4, 13, 11, 0, 0),
+                operation_type=OperationType.RETURN,
+                operation_state=OperationState.RECOVERY_REQUIRED,
+                user_code="operator-1",
+                user_full_name="Operator One",
+                item_name="Item One",
+                quantity=3,
+                slot_code="slot-1",
+            ),
+            AdminRecentOperationDTO(
+                operation_id=rows[1].operation_id,
+                started_at=datetime(2026, 4, 13, 10, 0, 0),
+                operation_type=OperationType.DISPENSE,
+                operation_state=OperationState.FAILED,
+                user_code="user-1",
+                user_full_name="User One",
+                item_name="Item One",
+                quantity=2,
+                slot_code="slot-1",
+            ),
+        ]
+
+
 def _seed_import_duplicate_rfid_domain(session: Session) -> None:
     user_role = Role(code=RoleCode.USER, name="User")
     operator_role = Role(code=RoleCode.OPERATOR, name="Operator")

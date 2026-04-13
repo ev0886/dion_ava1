@@ -11,6 +11,11 @@ from app.persistence.repositories.base import Repository
 
 
 class OperationRepository(Repository):
+    _ADMIN_PROBLEM_OPERATION_STATES: tuple[OperationState, ...] = (
+        OperationState.RECOVERY_REQUIRED,
+        OperationState.FAILED,
+    )
+
     def add(self, operation: Operation) -> None:
         self.session.add(operation)
 
@@ -94,6 +99,50 @@ class OperationRepository(Repository):
         return self.session.execute(statement).scalar_one_or_none() is not None
 
     def list_recent_for_admin(self, *, limit: int = 20) -> list[AdminRecentOperationDTO]:
+        rows = self.session.execute(self._admin_operation_list_statement(limit=limit)).all()
+        return [
+            AdminRecentOperationDTO(
+                operation_id=operation_id,
+                started_at=started_at,
+                operation_type=operation_type,
+                operation_state=operation_state,
+                user_code=user_code,
+                user_full_name=full_name,
+                item_name=item_name,
+                quantity=qty_confirmed if qty_confirmed is not None else qty_requested,
+                slot_code=slot_code,
+            )
+            for operation_id, started_at, operation_type, operation_state, user_code, full_name, item_name, qty_confirmed, qty_requested, slot_code in rows
+        ]
+
+    def list_problem_for_admin(self, *, limit: int = 20) -> list[AdminRecentOperationDTO]:
+        rows = self.session.execute(
+            self._admin_operation_list_statement(
+                limit=limit,
+                problem_states=self._ADMIN_PROBLEM_OPERATION_STATES,
+            )
+        ).all()
+        return [
+            AdminRecentOperationDTO(
+                operation_id=operation_id,
+                started_at=started_at,
+                operation_type=operation_type,
+                operation_state=operation_state,
+                user_code=user_code,
+                user_full_name=full_name,
+                item_name=item_name,
+                quantity=qty_confirmed if qty_confirmed is not None else qty_requested,
+                slot_code=slot_code,
+            )
+            for operation_id, started_at, operation_type, operation_state, user_code, full_name, item_name, qty_confirmed, qty_requested, slot_code in rows
+        ]
+
+    def _admin_operation_list_statement(
+        self,
+        *,
+        limit: int,
+        problem_states: tuple[OperationState, ...] | None = None,
+    ):
         statement = (
             select(
                 Operation.id,
@@ -110,24 +159,10 @@ class OperationRepository(Repository):
             .outerjoin(User, User.id == Operation.user_id)
             .outerjoin(Item, Item.id == Operation.item_id)
             .outerjoin(Slot, Slot.id == Operation.slot_id)
-            .order_by(func.coalesce(Operation.started_at, Operation.finished_at).desc(), Operation.id.desc())
-            .limit(limit)
         )
-        rows = self.session.execute(statement).all()
-        return [
-            AdminRecentOperationDTO(
-                operation_id=operation_id,
-                started_at=started_at,
-                operation_type=operation_type,
-                operation_state=operation_state,
-                user_code=user_code,
-                user_full_name=full_name,
-                item_name=item_name,
-                quantity=qty_confirmed if qty_confirmed is not None else qty_requested,
-                slot_code=slot_code,
-            )
-            for operation_id, started_at, operation_type, operation_state, user_code, full_name, item_name, qty_confirmed, qty_requested, slot_code in rows
-        ]
+        if problem_states is not None:
+            statement = statement.where(Operation.operation_state.in_(problem_states))
+        return statement.order_by(func.coalesce(Operation.started_at, Operation.finished_at).desc(), Operation.id.desc()).limit(limit)
 
 
 class OperationSessionRepository(Repository):

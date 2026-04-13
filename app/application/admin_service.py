@@ -256,6 +256,9 @@ class AdminOperationService:
     def list_recent_operations(self, *, limit: int = 20) -> list[AdminRecentOperationDTO]:
         return self.operation_repository.list_recent_for_admin(limit=limit)
 
+    def list_problem_operations(self, *, limit: int = 20) -> list[AdminRecentOperationDTO]:
+        return self.operation_repository.list_problem_for_admin(limit=limit)
+
 
 def _utcnow_naive() -> datetime:
     return datetime.now(UTC).replace(tzinfo=None)

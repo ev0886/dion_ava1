@@ -70,6 +70,10 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
     def admin_list_recent_operations(container: ApplicationContainer = Depends(get_application_container)) -> JSONResponse:
         return JSONResponse({"operations": to_api_payload(container.services.admin_operations.list_recent_operations())})
 
+    @app.get("/admin/operations/problem")
+    def admin_list_problem_operations(container: ApplicationContainer = Depends(get_application_container)) -> JSONResponse:
+        return JSONResponse({"operations": to_api_payload(container.services.admin_operations.list_problem_operations())})
+
     @app.get("/admin/users/export")
     def admin_export_users(container: ApplicationContainer = Depends(get_application_container)) -> PlainTextResponse:
         return PlainTextResponse(

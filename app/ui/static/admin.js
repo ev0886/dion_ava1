@@ -7,6 +7,7 @@
     statusMessage: document.getElementById("status-message"),
     refreshButton: document.getElementById("refresh-button"),
     userTableBody: document.getElementById("user-table-body"),
+    problemOperationsTableBody: document.getElementById("problem-operations-table-body"),
     operationsTableBody: document.getElementById("operations-table-body"),
     importFile: document.getElementById("import-file"),
     importTextarea: document.getElementById("import-textarea"),
@@ -21,6 +22,7 @@
 
   const state = {
     users: [],
+    problemOperations: [],
     operations: [],
     isLoading: false,
     isImporting: false,
@@ -195,6 +197,16 @@
     elements.operationsTableBody.innerHTML = state.operations.map(operationRowMarkup).join("");
   }
 
+  function renderProblemOperations() {
+    if (!state.problemOperations.length) {
+      elements.problemOperationsTableBody.innerHTML =
+        '<tr><td colspan="7" class="placeholder-cell">Проблемные операции не найдены.</td></tr>';
+      return;
+    }
+
+    elements.problemOperationsTableBody.innerHTML = state.problemOperations.map(operationRowMarkup).join("");
+  }
+
   async function readJson(url, options) {
     const response = await fetch(url, {
       headers: {
@@ -276,13 +288,28 @@
     }
   }
 
+  async function loadProblemOperations() {
+    try {
+      const { response, payload } = await readJson(config.problemOperationsEndpoint, { method: "GET" });
+      if (!response.ok) {
+        throw new Error(payload.detail || "Failed to load problem operations.");
+      }
+      state.problemOperations = Array.isArray(payload.operations) ? payload.operations : [];
+      renderProblemOperations();
+    } catch (error) {
+      state.problemOperations = [];
+      renderProblemOperations();
+      throw error;
+    }
+  }
+
   async function loadAdminData() {
     state.isLoading = true;
     syncControls();
     setStatus("", "Загрузка", "Обновление пользователей и последних операций из локального backend.");
 
     try {
-      await Promise.all([loadUsers(), loadRecentOperations()]);
+      await Promise.all([loadUsers(), loadProblemOperations(), loadRecentOperations()]);
       setStatus(
         "success",
         "Готово",
@@ -383,6 +410,7 @@
     void importUsers();
   });
 
+  renderProblemOperations();
   renderOperations();
   void loadAdminData();
 })();
