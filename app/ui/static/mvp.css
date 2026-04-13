@@ -1,18 +1,18 @@
 :root {
   color-scheme: light;
   font-family: "Segoe UI", "Helvetica Neue", sans-serif;
-  --bg: #ece6da;
-  --panel: #fbf7ef;
-  --panel-strong: #f3ebdc;
-  --text: #1f1c18;
-  --muted: #5f564b;
-  --accent: #0f6a59;
-  --accent-strong: #0a4a3f;
-  --border: #cdbda1;
-  --success: #1f7a4b;
+  --bg: #f2f4ef;
+  --panel: #ffffff;
+  --panel-strong: #f6f7f3;
+  --text: #232323;
+  --muted: #666666;
+  --accent: #76b81f;
+  --accent-strong: #5f9519;
+  --border: #b8b8b8;
+  --success: #5f9519;
   --warning: #9a6300;
   --danger: #a33122;
-  --shadow: 0 12px 30px rgba(53, 42, 23, 0.12);
+  --shadow: 0 12px 30px rgba(78, 95, 62, 0.12);
 }
 
 * {
@@ -29,8 +29,8 @@ body {
 body {
   margin: 0;
   background:
-    radial-gradient(circle at top center, rgba(15, 106, 89, 0.14), transparent 24rem),
-    linear-gradient(180deg, #f5f0e6 0%, var(--bg) 100%);
+    radial-gradient(circle at top center, rgba(118, 184, 31, 0.12), transparent 24rem),
+    linear-gradient(180deg, #fafbf8 0%, var(--bg) 100%);
   color: var(--text);
 }
 
@@ -149,7 +149,7 @@ body {
   flex-shrink: 0;
   padding: 0.34rem 0.65rem;
   border-radius: 999px;
-  background: #ebe2d2;
+  background: #eef2e8;
   font-size: 0.82rem;
   font-weight: 700;
 }
@@ -166,7 +166,7 @@ body {
 }
 
 .action-card {
-  background: linear-gradient(180deg, #fff7e6 0%, #f6eddc 100%);
+  background: linear-gradient(180deg, #ffffff 0%, #f5f8ef 100%);
 }
 
 .primary-actions {
@@ -228,7 +228,7 @@ body {
   padding: 0.85rem;
   border-radius: 0.95rem;
   border: 2px dashed var(--border);
-  background: #fffdf8;
+  background: #ffffff;
 }
 
 .user-card-empty {
@@ -277,7 +277,7 @@ body {
   padding: 0.8rem 0.85rem;
   border: 1px solid var(--border);
   border-radius: 0.95rem;
-  background: #fffdf8;
+  background: #ffffff;
   text-align: left;
   cursor: pointer;
   display: grid;
@@ -287,13 +287,13 @@ body {
 .option-button:hover,
 .option-button:focus-visible {
   border-color: var(--accent);
-  box-shadow: 0 0 0 2px rgba(15, 106, 89, 0.12);
+  box-shadow: 0 0 0 2px rgba(118, 184, 31, 0.18);
   outline: none;
 }
 
 .option-selected {
   border-color: var(--accent);
-  background: #e7f2ee;
+  background: #f2f8e6;
 }
 
 .option-title {
@@ -340,13 +340,13 @@ body {
 }
 
 .result-neutral {
-  background: #efe9de;
-  border-color: #d8ccb8;
+  background: #f4f4f4;
+  border-color: #cfcfcf;
 }
 
 .result-success {
-  background: #def1e4;
-  border-color: #8bc39c;
+  background: #eef7df;
+  border-color: #a7c96b;
 }
 
 .result-failure {
