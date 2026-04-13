@@ -72,7 +72,8 @@ def test_ui_mvp_page_serves_configured_dispense_flow(tmp_path: Path) -> None:
         response = client.get("/ui/mvp")
 
     assert response.status_code == 200
-    assert "Start RFID Scan" in response.text
+    assert "Начать RFID-сканирование" in response.text
+    assert "Готово к выдаче" in response.text
     assert '"/inventory/available-dispense-options"' in response.text
     assert '"dispenseQuantity": 1' in response.text
     assert '"autoResetTimeoutMs": 15000' in response.text
@@ -85,11 +86,11 @@ def test_ui_admin_page_serves_user_management_config(tmp_path: Path) -> None:
         response = client.get("/ui/admin")
 
     assert response.status_code == 200
-    assert "Operator Admin MVP" in response.text
-    assert "CSV Import" in response.text
-    assert "Import CSV" in response.text
-    assert "Load Example" in response.text
-    assert "Download Example CSV" in response.text
+    assert "Админка оператора MVP" in response.text
+    assert "Импорт CSV" in response.text
+    assert "Импортировать CSV" in response.text
+    assert "Загрузить пример" in response.text
+    assert "Скачать пример CSV" in response.text
     assert '"/admin/users"' in response.text
     assert '"/admin/users/import"' in response.text
     assert '"/ui-assets/admin-users-import-example.csv"' in response.text

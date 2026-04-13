@@ -77,7 +77,7 @@
       escapeHtml(user.status) +
       "</span></td>" +
       '<td><span class="active-chip">' +
-      (user.is_active ? "active" : "inactive") +
+      (user.is_active ? "активен" : "неактивен") +
       "</span></td>" +
       "<td>" +
       escapeHtml(user.role_code || "n/a") +
@@ -85,8 +85,8 @@
       "<td>" +
       '<input class="inline-input" name="rfid_uid" type="text" value="' +
       escapeHtml(user.rfid_uid || "") +
-      '" placeholder="Unassigned">' +
-      '<div class="row-note">Leave blank to clear assignment.</div>' +
+      '" placeholder="Не назначен">' +
+      '<div class="row-note">Оставьте пустым, чтобы снять привязку.</div>' +
       "</td>" +
       "<td>" +
       '<select class="inline-select" name="dispense_restriction_policy">' +
@@ -96,7 +96,7 @@
       "<td>" +
       '<button class="save-button" type="button" ' +
       saveDisabled +
-      ">Save</button>" +
+      ">Сохранить</button>" +
       "</td>" +
       "</tr>"
     );
@@ -105,7 +105,7 @@
   function renderUsers() {
     if (!state.users.length) {
       elements.userTableBody.innerHTML =
-        '<tr><td colspan="9" class="placeholder-cell">No users found in the current runtime database.</td></tr>';
+        '<tr><td colspan="9" class="placeholder-cell">В текущей runtime-базе пользователи не найдены.</td></tr>';
       return;
     }
 
@@ -158,16 +158,16 @@
   function loadExampleCsv() {
     elements.importTextarea.value = config.importExampleCsvText;
     elements.importFile.value = "";
-    setImportResult("", "Example Loaded", "The sample CSV has been inserted into the textarea and is ready to edit.");
+    setImportResult("", "Пример загружен", "Образец CSV вставлен в текстовое поле и готов к редактированию.");
   }
 
   function formatImportSummary(result) {
     return (
-      "Created: " +
+      "Создано: " +
       String(result.created_count) +
-      ", updated: " +
+      ", обновлено: " +
       String(result.updated_count) +
-      ", total rows: " +
+      ", всего строк: " +
       String(result.total_rows) +
       "."
     );
@@ -176,20 +176,20 @@
   async function loadUsers() {
     state.isLoading = true;
     syncControls();
-    setStatus("", "Loading", "Refreshing user records from the local backend.");
+    setStatus("", "Загрузка", "Обновление записей пользователей из локального backend.");
 
     try {
       const { response, payload } = await readJson(config.listUsersEndpoint, { method: "GET" });
       if (!response.ok) {
-        throw new Error(payload.detail || "User list request failed.");
+        throw new Error(payload.detail || "Не удалось получить список пользователей.");
       }
       state.users = Array.isArray(payload.users) ? payload.users : [];
       renderUsers();
-      setStatus("success", "Ready", "User records loaded. Edit RFID UID or dispense policy and save per row.");
+      setStatus("success", "Готово", "Записи пользователей загружены. Измените RFID UID или политику выдачи и сохраните нужную строку.");
     } catch (error) {
       state.users = [];
       renderUsers();
-      setStatus("error", "Load Failed", String(error));
+      setStatus("error", "Ошибка загрузки", String(error));
     } finally {
       state.isLoading = false;
       syncControls();
@@ -199,7 +199,7 @@
   async function saveRow(userId, row) {
     state.savingUserIds.add(userId);
     syncControls();
-    setStatus("", "Saving", "Saving changes for user " + String(userId) + ".");
+    setStatus("", "Сохранение", "Сохранение изменений для пользователя " + String(userId) + ".");
 
     const rfidInput = row.querySelector('input[name="rfid_uid"]');
     const policySelect = row.querySelector('select[name="dispense_restriction_policy"]');
@@ -213,7 +213,7 @@
         }),
       });
       if (!response.ok) {
-        throw new Error(payload.detail || "Save request failed.");
+        throw new Error(payload.detail || "Не удалось сохранить изменения.");
       }
 
       const savedUser = payload.user;
@@ -223,11 +223,11 @@
       renderUsers();
       setStatus(
         "success",
-        "Saved",
-        "User " + String(userId) + " updated. RFID UID and dispense policy are now stored in the local database."
+        "Сохранено",
+        "Пользователь " + String(userId) + " обновлен. RFID UID и политика выдачи сохранены в локальной базе."
       );
     } catch (error) {
-      setStatus("error", "Save Failed", String(error));
+      setStatus("error", "Ошибка сохранения", String(error));
     } finally {
       state.savingUserIds.delete(userId);
       syncControls();
@@ -237,8 +237,8 @@
   async function importUsers() {
     state.isImporting = true;
     syncControls();
-    setStatus("", "Importing", "Submitting users CSV to the local backend.");
-    setImportResult("", "Import In Progress", "Waiting for backend validation and import result.");
+    setStatus("", "Импорт", "Отправка CSV пользователей в локальный backend.");
+    setImportResult("", "Импорт выполняется", "Ожидание валидации backend и результата импорта.");
 
     try {
       const csvText = await readImportCsvText();
@@ -251,16 +251,16 @@
       });
       const payload = await response.json();
       if (!response.ok) {
-        throw new Error(payload.detail || payload.error || "Import request failed.");
+        throw new Error(payload.detail || payload.error || "Не удалось выполнить импорт.");
       }
 
       const result = payload.result || {};
-      setImportResult("success", "Import Completed", formatImportSummary(result));
-      setStatus("success", "Import Completed", "Users CSV processed successfully. Refreshing the list.");
+      setImportResult("success", "Импорт завершен", formatImportSummary(result));
+      setStatus("success", "Импорт завершен", "CSV пользователей успешно обработан. Обновляю список.");
       await loadUsers();
     } catch (error) {
-      setImportResult("error", "Import Failed", String(error));
-      setStatus("error", "Import Failed", String(error));
+      setImportResult("error", "Ошибка импорта", String(error));
+      setStatus("error", "Ошибка импорта", String(error));
     } finally {
       state.isImporting = false;
       syncControls();

@@ -1,9 +1,9 @@
 <!doctype html>
-<html lang="en">
+<html lang="ru">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>DION ABA1 Operator Admin MVP</title>
+  <title>DION ABA1 Админка оператора MVP</title>
   <link rel="stylesheet" href="/ui-assets/admin.css">
 </head>
 <body>
@@ -11,32 +11,32 @@
     <header class="hero">
       <div>
         <p class="eyebrow">DION ABA1</p>
-        <h1>Operator Admin MVP</h1>
+        <h1>Админка оператора MVP</h1>
       </div>
       <p class="hero-note">
-        Local-network user maintenance only. Access matrix and CSV import remain deferred in this branch.
+        Только локальное обслуживание пользователей. Матрица доступа и расширенная CSV-логика остаются вне этой ветки.
       </p>
     </header>
 
     <section class="status-panel" id="status-panel" aria-live="polite">
-      <strong id="status-title">Ready</strong>
-      <p id="status-message">Loading users from the local machine backend.</p>
+      <strong id="status-title">Готово</strong>
+      <p id="status-message">Загрузка пользователей из локального backend.</p>
     </section>
 
     <section class="panel">
       <div class="panel-heading">
         <div>
-          <p class="eyebrow">Users</p>
-          <h2>CSV Import</h2>
+          <p class="eyebrow">Пользователи</p>
+          <h2>Импорт CSV</h2>
         </div>
       </div>
       <div class="import-grid">
         <label class="field-block" for="import-file">
-          <span class="field-label">CSV File</span>
+          <span class="field-label">CSV-файл</span>
           <input id="import-file" class="inline-input" type="file" accept=".csv,text/csv">
         </label>
         <label class="field-block" for="import-textarea">
-          <span class="field-label">CSV Content</span>
+          <span class="field-label">Содержимое CSV</span>
           <textarea
             id="import-textarea"
             class="inline-textarea"
@@ -46,20 +46,20 @@
         </label>
         <div class="import-actions">
           <div class="import-action-row">
-            <button id="load-example-button" class="secondary-button" type="button">Load Example</button>
+            <button id="load-example-button" class="secondary-button" type="button">Загрузить пример</button>
             <a
               id="download-example-link"
               class="secondary-button text-button"
               href="/ui-assets/admin-users-import-example.csv"
               download="admin-users-import-example.csv"
-            >Download Example CSV</a>
-            <button id="import-button" class="save-button" type="button">Import CSV</button>
+            >Скачать пример CSV</a>
+            <button id="import-button" class="save-button" type="button">Импортировать CSV</button>
           </div>
-          <p class="row-note">Paste CSV or choose a file. File content takes priority when both are present.</p>
+          <p class="row-note">Вставьте CSV или выберите файл. Если указаны оба варианта, приоритет у содержимого файла.</p>
         </div>
         <div id="import-result" class="import-result" aria-live="polite">
-          <strong id="import-result-title">No import run yet.</strong>
-          <p id="import-result-message">Import summary will appear here after submission.</p>
+          <strong id="import-result-title">Импорт еще не запускался.</strong>
+          <p id="import-result-message">После отправки здесь появится итог импорта.</p>
         </div>
       </div>
     </section>
@@ -67,29 +67,29 @@
     <section class="panel">
       <div class="panel-heading">
         <div>
-          <p class="eyebrow">Users</p>
-          <h2>User RFID And Policy Maintenance</h2>
+          <p class="eyebrow">Пользователи</p>
+          <h2>Поддержка RFID и политики выдачи</h2>
         </div>
-        <button id="refresh-button" class="secondary-button" type="button">Refresh</button>
+        <button id="refresh-button" class="secondary-button" type="button">Обновить</button>
       </div>
       <div class="table-wrap">
         <table class="user-table">
           <thead>
             <tr>
-              <th>User ID</th>
-              <th>User Code</th>
-              <th>Full Name</th>
-              <th>Status</th>
-              <th>Active</th>
-              <th>Role</th>
+              <th>ID пользователя</th>
+              <th>Код пользователя</th>
+              <th>Полное имя</th>
+              <th>Статус</th>
+              <th>Активен</th>
+              <th>Роль</th>
               <th>RFID UID</th>
-              <th>Dispense Policy</th>
-              <th>Save</th>
+              <th>Политика выдачи</th>
+              <th>Сохранить</th>
             </tr>
           </thead>
           <tbody id="user-table-body">
             <tr>
-              <td colspan="9" class="placeholder-cell">Loading users...</td>
+              <td colspan="9" class="placeholder-cell">Загрузка пользователей...</td>
             </tr>
           </tbody>
         </table>
