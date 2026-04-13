@@ -5,7 +5,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import Depends, FastAPI, Request
-from fastapi.responses import JSONResponse, PlainTextResponse
+from fastapi.responses import JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 
 from app.api.dependencies import get_application_container
@@ -79,9 +79,9 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
         return JSONResponse(to_api_payload(container.services.admin_system_status.get_system_status(container.settings)))
 
     @app.get("/admin/users/export")
-    def admin_export_users(container: ApplicationContainer = Depends(get_application_container)) -> PlainTextResponse:
-        return PlainTextResponse(
-            content=container.services.admin_users.export_users_csv(),
+    def admin_export_users(container: ApplicationContainer = Depends(get_application_container)) -> Response:
+        return Response(
+            content=container.services.admin_users.export_users_csv().encode("utf-8-sig"),
             media_type="text/csv; charset=utf-8",
             headers={"content-disposition": 'attachment; filename="admin-users-export.csv"'},
         )

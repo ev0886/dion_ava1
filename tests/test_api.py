@@ -580,7 +580,8 @@ def test_admin_users_export_endpoint_returns_import_compatible_csv(tmp_path: Pat
     assert response.status_code == 200
     assert response.headers["content-type"].startswith("text/csv; charset=utf-8")
     assert response.headers["content-disposition"] == 'attachment; filename="admin-users-export.csv"'
-    assert response.text == "\n".join(
+    assert response.content.startswith(b"\xef\xbb\xbf")
+    assert response.content.decode("utf-8-sig") == "\n".join(
         (
             "user_code,full_name,role_code,rfid_uid,dispense_restriction_policy",
             "user-1,User One,user,000FE2767C0045,unlimited",
@@ -588,6 +589,25 @@ def test_admin_users_export_endpoint_returns_import_compatible_csv(tmp_path: Pat
             "",
         )
     )
+
+
+def test_admin_users_export_endpoint_emits_utf8_bom_and_preserves_russian_text(tmp_path: Path) -> None:
+    app = create_app(_settings(tmp_path, "api_admin_export_russian.sqlite3"))
+    _seed_base_domain(app)
+
+    with app.state.session_factory() as session:
+        user = session.query(User).filter_by(id=1).one()
+        user.full_name = "Иван Петров"
+        session.commit()
+
+    with TestClient(app) as client:
+        response = client.get("/admin/users/export")
+
+    assert response.status_code == 200
+    assert response.content.startswith(b"\xef\xbb\xbf")
+    exported_csv = response.content.decode("utf-8-sig")
+    assert exported_csv.splitlines()[0] == "user_code,full_name,role_code,rfid_uid,dispense_restriction_policy"
+    assert "user-1,Иван Петров,user,000FE2767C0045,unlimited" in exported_csv
 
 
 def test_admin_update_user_assigns_rfid_uid_and_changes_policy(tmp_path: Path) -> None:
