@@ -535,6 +535,56 @@ def test_admin_user_import_rejects_invalid_role_code_with_allowed_values(tmp_pat
     }
 
 
+@pytest.mark.parametrize(
+    ("row_text", "expected_detail"),
+    (
+        (
+            ",User Two,user,,once_per_day",
+            "CSV row 2: user_code must not be empty",
+        ),
+        (
+            "user-2,   ,user,,once_per_day",
+            "CSV row 2: full_name must not be empty",
+        ),
+        (
+            "user-2,User Two,  ,,once_per_day",
+            "CSV row 2: role_code must not be empty",
+        ),
+        (
+            "user-2,User Two,user,,   ",
+            "CSV row 2: dispense_restriction_policy must not be empty",
+        ),
+    ),
+)
+def test_admin_user_import_rejects_empty_required_fields_with_row_context(
+    tmp_path: Path,
+    row_text: str,
+    expected_detail: str,
+) -> None:
+    app = create_app(_settings(tmp_path, "api_admin_import_required_field.sqlite3"))
+    _seed_base_domain(app)
+
+    csv_payload = "\n".join(
+        (
+            "user_code,full_name,role_code,rfid_uid,dispense_restriction_policy",
+            row_text,
+        )
+    )
+
+    with TestClient(app) as client:
+        response = client.post(
+            "/admin/users/import",
+            content=csv_payload.encode("utf-8"),
+            headers={"content-type": "text/csv; charset=utf-8"},
+        )
+
+    assert response.status_code == 400
+    assert response.json() == {
+        "error": "validation_error",
+        "detail": expected_detail,
+    }
+
+
 def test_admin_user_import_updates_existing_user_by_user_code(tmp_path: Path) -> None:
     app = create_app(_settings(tmp_path, "api_admin_import_update.sqlite3"))
     _seed_base_domain(app)
