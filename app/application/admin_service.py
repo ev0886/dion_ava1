@@ -61,33 +61,33 @@ class AdminUserService:
 
         try:
             for row in rows:
-                role = self.user_repository.get_role_by_code(row.role_code)
-                if role is None:
-                    raise ValidationError(f"CSV row {row.row_number}: unknown role_code '{row.role_code.value}'")
-
-                user = self.user_repository.get_by_user_code(row.user_code)
-                if user is None:
-                    user = User(
-                        role_id=role.id,
-                        user_code=row.user_code,
-                        full_name=row.full_name,
-                        status=UserStatus.ACTIVE,
-                        dispense_restriction_policy=row.dispense_restriction_policy,
-                        is_active=True,
-                    )
-                    self.user_repository.session.add(user)
-                    self.user_repository.session.flush()
-                    created_count += 1
-                else:
-                    user.role_id = role.id
-                    user.full_name = row.full_name
-                    user.dispense_restriction_policy = row.dispense_restriction_policy
-                    updated_count += 1
-
                 try:
+                    role = self.user_repository.get_role_by_code(row.role_code)
+                    if role is None:
+                        raise ValidationError(f"unknown role_code '{row.role_code.value}'")
+
+                    user = self.user_repository.get_by_user_code(row.user_code)
+                    if user is None:
+                        user = User(
+                            role_id=role.id,
+                            user_code=row.user_code,
+                            full_name=row.full_name,
+                            status=UserStatus.ACTIVE,
+                            dispense_restriction_policy=row.dispense_restriction_policy,
+                            is_active=True,
+                        )
+                        self.user_repository.session.add(user)
+                        self.user_repository.session.flush()
+                        created_count += 1
+                    else:
+                        user.role_id = role.id
+                        user.full_name = row.full_name
+                        user.dispense_restriction_policy = row.dispense_restriction_policy
+                        updated_count += 1
+
                     self._apply_rfid_assignment(user=user, normalized_rfid_uid=row.rfid_uid)
                 except ValidationError as exc:
-                    raise ValidationError(f"CSV row {row.row_number}: {exc}") from exc
+                    raise self._with_csv_row_context(row.row_number, exc) from exc
 
             self.user_repository.session.commit()
         except Exception:
@@ -148,6 +148,14 @@ class AdminUserService:
             f"RFID UID '{normalized_rfid_uid}' is already assigned to user_code "
             f"'{owner.user_code}' ({owner.full_name})"
         )
+
+    @staticmethod
+    def _with_csv_row_context(row_number: int, exc: ValidationError) -> ValidationError:
+        detail = str(exc)
+        prefix = f"CSV row {row_number}: "
+        if detail.startswith(prefix):
+            return exc
+        return ValidationError(f"{prefix}{detail}")
 
     @classmethod
     def _parse_csv_rows(cls, csv_text: str) -> list[_ImportedUserRow]:
