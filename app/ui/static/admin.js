@@ -5,6 +5,12 @@
     statusPanel: document.getElementById("status-panel"),
     statusTitle: document.getElementById("status-title"),
     statusMessage: document.getElementById("status-message"),
+    systemHealthStatus: document.getElementById("system-health-status"),
+    systemReadinessStatus: document.getElementById("system-readiness-status"),
+    systemHardwareProvider: document.getElementById("system-hardware-provider"),
+    systemAppEnvironment: document.getElementById("system-app-environment"),
+    systemAppName: document.getElementById("system-app-name"),
+    systemApiBind: document.getElementById("system-api-bind"),
     refreshButton: document.getElementById("refresh-button"),
     userTableBody: document.getElementById("user-table-body"),
     problemOperationsTableBody: document.getElementById("problem-operations-table-body"),
@@ -24,6 +30,7 @@
     users: [],
     problemOperations: [],
     operations: [],
+    systemStatus: null,
     isLoading: false,
     isImporting: false,
     savingUserIds: new Set(),
@@ -54,6 +61,34 @@
     }
     elements.importResultTitle.textContent = title;
     elements.importResultMessage.textContent = message;
+  }
+
+  function formatSystemValue(value) {
+    if (value === null || value === undefined || value === "") {
+      return "n/a";
+    }
+    return String(value);
+  }
+
+  function renderSystemStatus() {
+    const systemStatus = state.systemStatus;
+    if (!systemStatus) {
+      elements.systemHealthStatus.textContent = "n/a";
+      elements.systemReadinessStatus.textContent = "n/a";
+      elements.systemHardwareProvider.textContent = "n/a";
+      elements.systemAppEnvironment.textContent = "n/a";
+      elements.systemAppName.textContent = "n/a";
+      elements.systemApiBind.textContent = "n/a";
+      return;
+    }
+
+    elements.systemHealthStatus.textContent = formatSystemValue(systemStatus.health_status);
+    elements.systemReadinessStatus.textContent = formatSystemValue(systemStatus.readiness_status);
+    elements.systemHardwareProvider.textContent = formatSystemValue(systemStatus.hardware_provider);
+    elements.systemAppEnvironment.textContent = formatSystemValue(systemStatus.app_environment);
+    elements.systemAppName.textContent = formatSystemValue(systemStatus.app_name);
+    elements.systemApiBind.textContent =
+      formatSystemValue(systemStatus.api_host) + ":" + formatSystemValue(systemStatus.api_port);
   }
 
   function userRowMarkup(user) {
@@ -273,6 +308,21 @@
     }
   }
 
+  async function loadSystemStatus() {
+    try {
+      const { response, payload } = await readJson(config.systemStatusEndpoint, { method: "GET" });
+      if (!response.ok) {
+        throw new Error(payload.detail || "Failed to load system status.");
+      }
+      state.systemStatus = payload;
+      renderSystemStatus();
+    } catch (error) {
+      state.systemStatus = null;
+      renderSystemStatus();
+      throw error;
+    }
+  }
+
   async function loadRecentOperations() {
     try {
       const { response, payload } = await readJson(config.recentOperationsEndpoint, { method: "GET" });
@@ -309,7 +359,7 @@
     setStatus("", "Загрузка", "Обновление пользователей и последних операций из локального backend.");
 
     try {
-      await Promise.all([loadUsers(), loadProblemOperations(), loadRecentOperations()]);
+      await Promise.all([loadSystemStatus(), loadUsers(), loadProblemOperations(), loadRecentOperations()]);
       setStatus(
         "success",
         "Готово",
@@ -410,6 +460,7 @@
     void importUsers();
   });
 
+  renderSystemStatus();
   renderProblemOperations();
   renderOperations();
   void loadAdminData();

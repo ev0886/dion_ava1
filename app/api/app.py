@@ -74,6 +74,10 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
     def admin_list_problem_operations(container: ApplicationContainer = Depends(get_application_container)) -> JSONResponse:
         return JSONResponse({"operations": to_api_payload(container.services.admin_operations.list_problem_operations())})
 
+    @app.get("/admin/system/status")
+    def admin_system_status(container: ApplicationContainer = Depends(get_application_container)) -> JSONResponse:
+        return JSONResponse(to_api_payload(container.services.admin_system_status.get_system_status(container.settings)))
+
     @app.get("/admin/users/export")
     def admin_export_users(container: ApplicationContainer = Depends(get_application_container)) -> PlainTextResponse:
         return PlainTextResponse(

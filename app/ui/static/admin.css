@@ -102,6 +102,31 @@ body {
   padding: 1rem 1.1rem 1.2rem;
 }
 
+.system-status-block {
+  padding: 0.9rem 1rem;
+  border: 1px solid var(--border);
+  border-radius: 0.8rem;
+  background: var(--panel-strong);
+}
+
+.system-status-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
+  gap: 0.8rem;
+}
+
+.system-status-item {
+  display: grid;
+  gap: 0.2rem;
+}
+
+.system-status-label {
+  color: var(--muted);
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
 .panel-heading {
   display: flex;
   justify-content: space-between;

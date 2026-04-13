@@ -1,4 +1,4 @@
-from app.application.admin_service import AdminUserService
+from app.application.admin_service import AdminSystemStatusService, AdminUserService
 from app.application.auth_service import AuthService
 from app.application.composition import (
     ApplicationContainer,
@@ -22,6 +22,7 @@ from app.hardware import HardwareBundle, create_hardware_bundle
 
 __all__ = [
     "ApplicationContainer",
+    "AdminSystemStatusService",
     "AdminUserService",
     "AuthService",
     "HardwareBundle",

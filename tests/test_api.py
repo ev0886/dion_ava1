@@ -60,6 +60,35 @@ def test_health_and_readiness(tmp_path: Path) -> None:
     assert readiness.json()["readiness_status"] == "ready"
 
 
+def test_admin_system_status_endpoint_returns_health_readiness_and_runtime_settings(tmp_path: Path) -> None:
+    app = create_app(
+        AppSettings(
+            data_dir=tmp_path,
+            sqlite_filename="api_admin_system_status.sqlite3",
+            alembic_config_path=Path("alembic.ini"),
+            app_name="DION ABA1 Test",
+            app_environment="test",
+            hardware_provider=HardwareProvider.STUB_REAL,
+            api_host="0.0.0.0",
+            api_port=8012,
+        )
+    )
+
+    with TestClient(app) as client:
+        response = client.get("/admin/system/status")
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "health_status": "ok",
+        "readiness_status": "degraded",
+        "hardware_provider": "stub-real",
+        "app_environment": "test",
+        "app_name": "DION ABA1 Test",
+        "api_host": "0.0.0.0",
+        "api_port": 8012,
+    }
+
+
 def test_ui_mvp_page_serves_configured_dispense_flow(tmp_path: Path) -> None:
     app = create_app(
         AppSettings(
@@ -95,7 +124,10 @@ def test_ui_admin_page_serves_user_management_config(tmp_path: Path) -> None:
     assert "Загрузить пример" in response.text
     assert "Скачать пример CSV" in response.text
     assert "Последние действия системы" in response.text
+    assert "Провайдер оборудования / режим" in response.text
+    assert "Привязка API" in response.text
     assert '"/admin/users"' in response.text
+    assert '"/admin/system/status"' in response.text
     assert '"/admin/operations/problem"' in response.text
     assert '"/admin/operations/recent"' in response.text
     assert '"/admin/users/import"' in response.text
@@ -129,6 +161,8 @@ def test_ui_admin_static_assets_are_served(tmp_path: Path) -> None:
     assert "saveRow" in response.text
     assert "loadUsers" in response.text
     assert "loadExampleCsv" in response.text
+    assert "loadSystemStatus" in response.text
+    assert "systemStatusEndpoint" in response.text
     assert "importUsers" in response.text
     assert "created_count" in response.text
     assert "updated_count" in response.text

@@ -5,7 +5,14 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from io import StringIO
 
-from app.application.dto.admin import AdminRecentOperationDTO, AdminUserImportResultDTO, AdminUserRecordDTO
+from app.application.dto.admin import (
+    AdminRecentOperationDTO,
+    AdminSystemStatusDTO,
+    AdminUserImportResultDTO,
+    AdminUserRecordDTO,
+)
+from app.application.startup_service import StartupOrchestrationService
+from app.config import AppSettings
 from app.application.exceptions import NotFoundError, ValidationError
 from app.domain.enums import DispenseRestrictionPolicy, RoleCode, UserStatus
 from app.persistence.models import User
@@ -258,6 +265,23 @@ class AdminOperationService:
 
     def list_problem_operations(self, *, limit: int = 20) -> list[AdminRecentOperationDTO]:
         return self.operation_repository.list_problem_for_admin(limit=limit)
+
+
+class AdminSystemStatusService:
+    def __init__(self, startup_service: StartupOrchestrationService) -> None:
+        self.startup_service = startup_service
+
+    def get_system_status(self, settings: AppSettings) -> AdminSystemStatusDTO:
+        startup_status = self.startup_service.run_startup_checks()
+        return AdminSystemStatusDTO(
+            health_status="ok",
+            readiness_status=startup_status.readiness_status,
+            hardware_provider=settings.hardware_provider,
+            app_environment=settings.app_environment,
+            app_name=settings.app_name,
+            api_host=settings.api_host,
+            api_port=settings.api_port,
+        )
 
 
 def _utcnow_naive() -> datetime:
