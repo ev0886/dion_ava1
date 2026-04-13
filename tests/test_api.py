@@ -86,6 +86,7 @@ def test_ui_admin_page_serves_user_management_config(tmp_path: Path) -> None:
         response = client.get("/ui/admin")
 
     assert response.status_code == 200
+    assert "Экспорт CSV" in response.text
     assert "Админка оператора MVP" in response.text
     assert "Импорт CSV" in response.text
     assert "Импортировать CSV" in response.text
