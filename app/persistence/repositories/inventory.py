@@ -127,6 +127,12 @@ class InventoryRepository(Repository):
             for row in rows
         )
 
+    def resolve_available_dispense_option(self, item_id: int) -> AvailableDispenseOptionRecord | None:
+        for option in self.list_available_dispense_options():
+            if option.item_id == item_id:
+                return option
+        return None
+
     def find_preferred_binding_for_item(self, item_id: int) -> SlotItemBinding | None:
         statement = (
             select(SlotItemBinding)

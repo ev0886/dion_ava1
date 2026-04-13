@@ -78,7 +78,7 @@
     }
     state.autoResetDeadline = null;
     elements.idleReturnChip.classList.add("hidden");
-    elements.idleReturnChip.textContent = "Скоро сброс";
+    elements.idleReturnChip.textContent = "Soon reset";
   }
 
   function renderCountdown() {
@@ -88,7 +88,7 @@
 
     const remainingMs = Math.max(0, state.autoResetDeadline - Date.now());
     const remainingSeconds = Math.ceil(remainingMs / 1000);
-    elements.idleReturnChip.textContent = "Сброс через " + remainingSeconds + " с";
+    elements.idleReturnChip.textContent = "Reset in " + remainingSeconds + " s";
   }
 
   function scheduleAutoReset(reason) {
@@ -100,7 +100,7 @@
     state.autoResetTimerId = window.setTimeout(function () {
       resetToIdle();
       if (reason) {
-        setMachineState("Ожидание", "Готово для следующего пользователя. " + reason, "neutral");
+        setMachineState("Ready", "Ready for the next user. " + reason, "neutral");
       }
     }, terminalResetDelayMs);
   }
@@ -109,16 +109,16 @@
     elements.resultPanel.className = "result-panel";
     if (kind === "success") {
       elements.resultPanel.classList.add("result-success");
-      elements.resultStatePill.textContent = "Успех";
+      elements.resultStatePill.textContent = "Success";
     } else if (kind === "warning") {
       elements.resultPanel.classList.add("result-warning");
-      elements.resultStatePill.textContent = "Восстановление";
+      elements.resultStatePill.textContent = "Recovery";
     } else if (kind === "failure") {
       elements.resultPanel.classList.add("result-failure");
-      elements.resultStatePill.textContent = "Внимание";
+      elements.resultStatePill.textContent = "Attention";
     } else {
       elements.resultPanel.classList.add("result-neutral");
-      elements.resultStatePill.textContent = "Ожидание";
+      elements.resultStatePill.textContent = "Idle";
     }
 
     elements.resultTitle.textContent = title;
@@ -135,7 +135,7 @@
     state.currentUser = null;
     state.currentRfidUid = null;
     elements.userCard.classList.add("user-card-empty");
-    elements.userStatePill.textContent = "Ожидание";
+    elements.userStatePill.textContent = "Idle";
     elements.userPlaceholder.classList.remove("hidden");
     elements.userDetails.classList.add("hidden");
     elements.userName.textContent = "";
@@ -150,7 +150,7 @@
     state.currentUser = payload.user;
     state.currentRfidUid = payload.rfid_uid;
     elements.userCard.classList.remove("user-card-empty");
-    elements.userStatePill.textContent = "Готово";
+    elements.userStatePill.textContent = "Ready";
     elements.userPlaceholder.classList.add("hidden");
     elements.userDetails.classList.remove("hidden");
     elements.userName.textContent = payload.user.full_name;
@@ -165,8 +165,8 @@
     stopAutoReset();
     clearUser();
     setBusy(false);
-    setMachineState("Ожидание", "Готово для следующего пользователя. Приложите карту и нажмите старт.", "neutral");
-    setResult("neutral", "Операций пока не было.", "Здесь появится результат последней выдачи.");
+    setMachineState("Idle", "Ready for the next user. Tap start and present a card.", "neutral");
+    setResult("neutral", "No operations yet.", "The latest dispense result will appear here.");
   }
 
   async function readJson(url, options) {
@@ -181,20 +181,12 @@
   }
 
   function describeOption(option) {
-    return (
-      option.item_name +
-      " | кол-во " +
-      option.quantity +
-      " | P" +
-      String(option.drum_position).padStart(2, "0") +
-      " Я" +
-      String(option.lock_number).padStart(2, "0")
-    );
+    return option.item_name + " | qty " + option.total_quantity;
   }
 
   function renderSelectedOption() {
     if (!state.selectedOption) {
-      elements.dispenseTarget.textContent = "Выберите товар";
+      elements.dispenseTarget.textContent = "Select an item";
       syncDispenseButton();
       return;
     }
@@ -207,7 +199,7 @@
     state.selectedOption = null;
     for (let index = 0; index < state.availableOptions.length; index += 1) {
       const option = state.availableOptions[index];
-      const currentKey = String(option.slot_id) + ":" + String(option.item_id);
+      const currentKey = String(option.item_id);
       if (currentKey === optionKey) {
         state.selectedOption = option;
         break;
@@ -216,7 +208,7 @@
 
     if (!state.selectedOption && state.availableOptions.length) {
       state.selectedOption = state.availableOptions[0];
-      optionKey = String(state.selectedOption.slot_id) + ":" + String(state.selectedOption.item_id);
+      optionKey = String(state.selectedOption.item_id);
     }
 
     const buttons = elements.dispenseOptions.querySelectorAll(".option-button");
@@ -228,17 +220,18 @@
 
   function renderOptions(options) {
     state.availableOptions = Array.isArray(options) ? options : [];
-    const selectedKey = state.selectedOption
-      ? String(state.selectedOption.slot_id) + ":" + String(state.selectedOption.item_id)
-      : null;
+    const selectedKey = state.selectedOption ? String(state.selectedOption.item_id) : null;
 
     elements.dispenseOptions.innerHTML = "";
-    elements.inventoryQuantity.textContent = String(state.availableOptions.length);
-    elements.optionCountPill.textContent = String(state.availableOptions.length) + " доступно";
+    const totalQuantity = state.availableOptions.reduce(function (sum, option) {
+      return sum + (option.total_quantity || 0);
+    }, 0);
+    elements.inventoryQuantity.textContent = String(totalQuantity);
+    elements.optionCountPill.textContent = String(state.availableOptions.length) + " available";
 
     if (!state.availableOptions.length) {
       state.selectedOption = null;
-      elements.optionsEmptyState.textContent = "Нет доступных активных товаров в наличии.";
+      elements.optionsEmptyState.textContent = "No stocked items available.";
       elements.optionsEmptyState.classList.remove("hidden");
       renderSelectedOption();
       return;
@@ -247,12 +240,12 @@
     elements.optionsEmptyState.classList.add("hidden");
     let nextSelectionKey = selectedKey;
     if (!nextSelectionKey) {
-      nextSelectionKey = String(state.availableOptions[0].slot_id) + ":" + String(state.availableOptions[0].item_id);
+      nextSelectionKey = String(state.availableOptions[0].item_id);
     }
 
     state.availableOptions.forEach(function (option) {
       const button = document.createElement("button");
-      const optionKey = String(option.slot_id) + ":" + String(option.item_id);
+      const optionKey = String(option.item_id);
       button.type = "button";
       button.className = "option-button";
       button.dataset.optionKey = optionKey;
@@ -260,15 +253,8 @@
         '<span class="option-title">' +
         option.item_name +
         "</span>" +
-        '<span class="option-meta">Артикул ' +
-        option.item_sku +
-        " | кол-во " +
-        option.quantity +
-        "</span>" +
-        '<span class="option-meta">Позиция ' +
-        option.drum_position +
-        " | замок " +
-        option.lock_number +
+        '<span class="option-meta">Qty ' +
+        option.total_quantity +
         "</span>";
       button.addEventListener("click", function () {
         selectOption(optionKey);
@@ -283,19 +269,19 @@
     try {
       const { response, payload } = await readJson(config.optionsEndpoint, { method: "GET" });
       if (!response.ok) {
-        throw new Error(payload.detail || "Эндпоинт вариантов вернул ошибку.");
+        throw new Error(payload.detail || "Options endpoint returned an error.");
       }
       renderOptions(payload.options || []);
     } catch (error) {
       state.availableOptions = [];
       state.selectedOption = null;
-      elements.inventoryQuantity.textContent = "Недоступно";
-      elements.optionCountPill.textContent = "Недоступно";
-      elements.optionsEmptyState.textContent = "Не удалось загрузить доступные остатки.";
+      elements.inventoryQuantity.textContent = "Unavailable";
+      elements.optionCountPill.textContent = "Unavailable";
+      elements.optionsEmptyState.textContent = "Could not load stocked items.";
       elements.optionsEmptyState.classList.remove("hidden");
       elements.dispenseOptions.innerHTML = "";
       renderSelectedOption();
-      setResult("failure", "Ошибка загрузки остатков", String(error));
+      setResult("failure", "Inventory load failed", String(error));
     }
   }
 
@@ -303,8 +289,8 @@
     stopAutoReset();
     clearUser();
     setBusy(true);
-    setMachineState("Авторизация", "Приложите RFID-карту, чтобы начать.", "neutral");
-    setResult("neutral", "Идет авторизация", "Ожидание чтения карты.");
+    setMachineState("Authorization", "Present an RFID card to continue.", "neutral");
+    setResult("neutral", "Authorizing", "Waiting for card read.");
 
     try {
       const { response, payload } = await readJson(config.authEndpoint, {
@@ -313,20 +299,20 @@
       });
 
       if (!response.ok) {
-        const detail = payload.detail || "RFID-карта не принята.";
-        setMachineState("Авторизация не выполнена", detail, "danger");
-        setResult("failure", "Ошибка авторизации", detail);
-        scheduleAutoReset("Экран сброшен после неуспешной авторизации.");
+        const detail = payload.detail || "RFID card was not accepted.";
+        setMachineState("Authorization failed", detail, "danger");
+        setResult("failure", "Authorization failed", detail);
+        scheduleAutoReset("Screen reset after failed authorization.");
         return;
       }
 
       showUser(payload);
-      setMachineState("Пользователь подтвержден", "Пользователь проверен. Выберите товар и выполните выдачу.", "success");
-      setResult("success", "Пользователь авторизован", payload.user.full_name + " готов к выдаче.");
+      setMachineState("User confirmed", "Select an item and start dispense.", "success");
+      setResult("success", "User authorized", payload.user.full_name + " is ready for dispense.");
     } catch (error) {
-      setMachineState("Ошибка авторизации", "UI не смог обратиться к backend-маршруту авторизации.", "danger");
-      setResult("failure", "Ошибка авторизации", String(error));
-      scheduleAutoReset("Экран сброшен после ошибки авторизации.");
+      setMachineState("Authorization error", "UI could not reach the backend auth route.", "danger");
+      setResult("failure", "Authorization error", String(error));
+      scheduleAutoReset("Screen reset after authorization error.");
     } finally {
       setBusy(false);
     }
@@ -336,31 +322,31 @@
     if (!operation || !operation.operation_state) {
       return {
         kind: "failure",
-        title: "Некорректный результат операции",
-        detail: "Backend не вернул состояние операции.",
+        title: "Invalid operation result",
+        detail: "Backend did not return an operation state.",
       };
     }
 
     if (operation.operation_state === "completed") {
       return {
         kind: "success",
-        title: "Выдача завершена",
-        detail: "Остатки обновлены, операция завершена успешно.",
+        title: "Dispense complete",
+        detail: "Inventory was updated and dispense completed successfully.",
       };
     }
 
     if (operation.operation_state === "recovery_required") {
       return {
         kind: "warning",
-        title: "Требуется восстановление",
-        detail: operation.error_message || "Для дальнейшей работы требуется восстановление.",
+        title: "Recovery required",
+        detail: operation.error_message || "Recovery is required before further work.",
       };
     }
 
     return {
       kind: "failure",
-      title: "Выдача не выполнена",
-      detail: operation.error_message || operation.result || "Операция завершилась с ошибкой.",
+      title: "Dispense failed",
+      detail: operation.error_message || operation.result || "Operation finished with an error.",
     };
   }
 
@@ -371,14 +357,13 @@
 
     stopAutoReset();
     setBusy(true);
-    setMachineState("Выдача", "Идет выдача. Не приближайтесь к автомату.", "neutral");
-    setResult("neutral", "Идет выдача", "Ожидание подтверждения от оборудования.");
+    setMachineState("Dispense", "Dispense in progress. Do not approach the machine.", "neutral");
+    setResult("neutral", "Dispense in progress", "Waiting for hardware confirmation.");
 
     try {
       const requestPayload = {
         user_id: state.currentUser.user_id,
         item_id: state.selectedOption.item_id,
-        slot_id: state.selectedOption.slot_id,
         quantity: config.dispenseQuantity || 1,
       };
 
@@ -388,23 +373,23 @@
       });
 
       if (!response.ok) {
-        const detail = payload.detail || "Backend отклонил запрос.";
-        setMachineState("Ошибка выдачи", detail, "danger");
-        setResult("failure", "Запрос на выдачу не выполнен", detail);
-        scheduleAutoReset("Экран сброшен после неуспешного запроса на выдачу.");
+        const detail = payload.detail || "Backend rejected the request.";
+        setMachineState("Dispense error", detail, "danger");
+        setResult("failure", "Dispense request failed", detail);
+        scheduleAutoReset("Screen reset after failed dispense request.");
         return;
       }
 
       const result = classifyOperation(payload);
       const tone = result.kind === "success" ? "success" : result.kind === "warning" ? "warning" : "danger";
-      setMachineState("Результат", result.detail, tone);
+      setMachineState("Result", result.detail, tone);
       setResult(result.kind, result.title, result.detail, payload);
       await refreshOptions();
-      scheduleAutoReset("Готово для следующего пользователя.");
+      scheduleAutoReset("Ready for the next user.");
     } catch (error) {
-      setMachineState("Ошибка выдачи", "UI не смог обратиться к backend-маршруту выдачи.", "danger");
-      setResult("failure", "Ошибка выдачи", String(error));
-      scheduleAutoReset("Экран сброшен после ошибки выдачи.");
+      setMachineState("Dispense error", "UI could not reach the backend dispense route.", "danger");
+      setResult("failure", "Dispense error", String(error));
+      scheduleAutoReset("Screen reset after dispense error.");
     } finally {
       setBusy(false);
     }

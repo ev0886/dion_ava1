@@ -38,6 +38,8 @@ class DispenseOperationService:
     def validate_request(self, request: DispenseRequest) -> OperationValidationResult:
         if request.quantity <= 0:
             raise ValidationError("quantity must be positive")
+        if request.slot_id is None:
+            raise ValidationError("slot_id is required")
 
         messages: list[str] = []
         balance = self.inventory_repository.get_balance(request.slot_id, request.item_id)
@@ -60,6 +62,17 @@ class DispenseOperationService:
         return self._to_dto(operation)
 
     def execute(self, request: DispenseRequest, hardware_facade: HardwareFacade) -> OperationDTO:
+        if request.slot_id is None:
+            resolved_option = self.inventory_repository.resolve_available_dispense_option(request.item_id)
+            if resolved_option is None:
+                raise NotFoundError(f"No available dispense slot found for item: {request.item_id}")
+            request = DispenseRequest(
+                user_id=request.user_id,
+                item_id=request.item_id,
+                slot_id=resolved_option.slot_id,
+                quantity=request.quantity,
+                session_id=request.session_id,
+            )
         validation = self.validate_request(request)
         if not validation.valid:
             raise ValidationError("; ".join(validation.messages))

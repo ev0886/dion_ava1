@@ -74,7 +74,7 @@ def test_ui_mvp_page_serves_configured_dispense_flow(tmp_path: Path) -> None:
     assert response.status_code == 200
     assert "Начать RFID-сканирование" in response.text
     assert "Готово к выдаче" in response.text
-    assert '"/inventory/available-dispense-options"' in response.text
+    assert '"/inventory/kiosk-dispense-options"' in response.text
     assert '"dispenseQuantity": 1' in response.text
     assert '"autoResetTimeoutMs": 15000' in response.text
 
@@ -177,6 +177,49 @@ def test_available_dispense_options_endpoint_returns_stocked_active_options(tmp_
             }
         ]
     }
+
+
+def test_kiosk_dispense_options_endpoint_returns_aggregated_item_options(tmp_path: Path) -> None:
+    app = create_app(_settings(tmp_path, "api_kiosk_dispense.sqlite3"))
+    _seed_base_domain(app)
+    _seed_additional_slot_for_same_item(app)
+
+    with TestClient(app) as client:
+        response = client.get("/inventory/kiosk-dispense-options")
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "options": [
+            {
+                "item_id": 1,
+                "item_name": "Item One",
+                "item_unit": "pcs",
+                "total_quantity": 8,
+            }
+        ]
+    }
+
+
+def test_dispense_operation_resolves_first_stocked_slot_for_item_when_slot_not_provided(tmp_path: Path) -> None:
+    app = create_app(_settings(tmp_path, "api_dispense_item_only.sqlite3"))
+    _seed_base_domain(app)
+    _seed_additional_slot_for_same_item(app)
+
+    with TestClient(app) as client:
+        response = client.post(
+            "/operations/dispense",
+            json={"user_id": 1, "item_id": 1, "quantity": 1},
+        )
+        first_slot_inventory = client.get("/inventory/1/1")
+        second_slot_inventory = client.get("/inventory/2/1")
+
+    assert response.status_code == 200
+    assert response.json()["operation_state"] == "completed"
+    assert response.json()["slot_id"] == 1
+    assert first_slot_inventory.status_code == 200
+    assert first_slot_inventory.json()["balance"]["quantity"] == 4
+    assert second_slot_inventory.status_code == 200
+    assert second_slot_inventory.json()["balance"]["quantity"] == 3
 
 
 def test_auth_read_and_resolve_rfid_happy_path(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -838,6 +881,34 @@ def _seed_unassigned_user(app) -> None:
                 is_active=True,
             )
         )
+        session.commit()
+
+
+def _seed_additional_slot_for_same_item(app) -> None:
+    with app.state.session_factory() as session:
+        item = session.query(Item).filter_by(id=1).one()
+        slot = Slot(
+            code="slot-2",
+            slot_type=SlotType.UNIVERSAL,
+            drum_position=4,
+            board_address=1,
+            lock_number=2,
+            capacity=10,
+            status=SlotStatus.ACTIVE,
+        )
+        session.add(slot)
+        session.flush()
+        session.add(
+            SlotItemBinding(
+                slot_id=slot.id,
+                item_id=item.id,
+                binding_type=BindingType.PRIMARY,
+                is_active=True,
+                valid_from=None,
+                valid_to=None,
+            )
+        )
+        session.add(InventoryBalance(slot_id=slot.id, item_id=item.id, quantity=3))
         session.commit()
 
 

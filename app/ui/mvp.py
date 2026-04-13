@@ -24,7 +24,7 @@ def render_mvp_page(settings: AppSettings) -> HTMLResponse:
     ui_config = {
         "authEndpoint": "/auth/read-and-resolve-rfid",
         "dispenseEndpoint": "/operations/dispense",
-        "optionsEndpoint": "/inventory/available-dispense-options",
+        "optionsEndpoint": "/inventory/kiosk-dispense-options",
         "autoResetTimeoutMs": 15000,
         "dispenseQuantity": 1,
     }

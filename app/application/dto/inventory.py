@@ -50,3 +50,16 @@ class AvailableDispenseOptionDTO:
 @dataclass(frozen=True, slots=True)
 class AvailableDispenseOptionsResult:
     options: tuple[AvailableDispenseOptionDTO, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class KioskDispenseOptionDTO:
+    item_id: int
+    item_name: str
+    item_unit: str
+    total_quantity: int
+
+
+@dataclass(frozen=True, slots=True)
+class KioskDispenseOptionsResult:
+    options: tuple[KioskDispenseOptionDTO, ...]

@@ -141,6 +141,12 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
     ) -> JSONResponse:
         return JSONResponse(to_api_payload(container.services.inventory.list_available_dispense_options()))
 
+    @app.get("/inventory/kiosk-dispense-options")
+    def kiosk_dispense_options(
+        container: ApplicationContainer = Depends(get_application_container),
+    ) -> JSONResponse:
+        return JSONResponse(to_api_payload(container.services.inventory.list_kiosk_dispense_options()))
+
     @app.post("/operations/dispense")
     def dispense_operation(
         payload: DispenseOperationRequest,

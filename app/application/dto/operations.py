@@ -46,7 +46,7 @@ class CreateOperationCommand:
 class DispenseRequest:
     user_id: int
     item_id: int
-    slot_id: int
+    slot_id: int | None = None
     quantity: int = 1
     session_id: int | None = None
 

@@ -50,7 +50,26 @@ class _FakeInventoryRepository:
                 item_name="Item Twenty",
                 item_unit="pcs",
             ),
+            AvailableDispenseOptionRecord(
+                slot_id=11,
+                item_id=20,
+                quantity=2,
+                updated_at=datetime(2026, 4, 9, 12, 5, 0),
+                slot_code="slot-p03-l02",
+                drum_position=3,
+                board_address=0,
+                lock_number=2,
+                item_sku="item-20",
+                item_name="Item Twenty",
+                item_unit="pcs",
+            ),
         )
+
+    def resolve_available_dispense_option(self, item_id: int) -> AvailableDispenseOptionRecord | None:
+        for option in self.list_available_dispense_options():
+            if option.item_id == item_id:
+                return option
+        return None
 
 
 def test_inventory_lookup_result_shape() -> None:
@@ -80,8 +99,27 @@ def test_inventory_service_lists_available_dispense_options() -> None:
 
     result = service.list_available_dispense_options()
 
-    assert len(result.options) == 1
+    assert len(result.options) == 2
     assert result.options[0].slot_id == 10
     assert result.options[0].item_id == 20
     assert result.options[0].quantity == 7
     assert result.options[0].board_address == 0
+
+
+def test_inventory_service_lists_kiosk_dispense_options_aggregated_by_item() -> None:
+    service = InventoryService(_FakeInventoryRepository(balance=None, bindings=[]))
+
+    result = service.list_kiosk_dispense_options()
+
+    assert len(result.options) == 1
+    assert result.options[0].item_id == 20
+    assert result.options[0].item_name == "Item Twenty"
+    assert result.options[0].total_quantity == 9
+
+
+def test_inventory_service_resolves_first_available_slot_for_item() -> None:
+    service = InventoryService(_FakeInventoryRepository(balance=None, bindings=[]))
+
+    result = service.resolve_dispense_slot_for_item(20)
+
+    assert result == 10

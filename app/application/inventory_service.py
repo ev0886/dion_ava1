@@ -7,9 +7,11 @@ from app.application.dto.inventory import (
     AvailableDispenseOptionsResult,
     InventoryBalanceDTO,
     InventoryLookupResult,
+    KioskDispenseOptionDTO,
+    KioskDispenseOptionsResult,
     SlotBindingDTO,
 )
-from app.application.exceptions import ValidationError
+from app.application.exceptions import NotFoundError, ValidationError
 from app.persistence.models import InventoryBalance, SlotItemBinding
 from app.persistence.repositories.inventory import InventoryRepository
 
@@ -55,6 +57,34 @@ class InventoryService:
                 for option in self.inventory_repository.list_available_dispense_options()
             )
         )
+
+    def list_kiosk_dispense_options(self) -> KioskDispenseOptionsResult:
+        aggregated: dict[int, KioskDispenseOptionDTO] = {}
+        for option in self.inventory_repository.list_available_dispense_options():
+            current = aggregated.get(option.item_id)
+            if current is None:
+                aggregated[option.item_id] = KioskDispenseOptionDTO(
+                    item_id=option.item_id,
+                    item_name=option.item_name,
+                    item_unit=option.item_unit,
+                    total_quantity=option.quantity,
+                )
+                continue
+            aggregated[option.item_id] = KioskDispenseOptionDTO(
+                item_id=current.item_id,
+                item_name=current.item_name,
+                item_unit=current.item_unit,
+                total_quantity=current.total_quantity + option.quantity,
+            )
+        return KioskDispenseOptionsResult(options=tuple(aggregated.values()))
+
+    def resolve_dispense_slot_for_item(self, item_id: int) -> int:
+        if item_id <= 0:
+            raise ValidationError("item_id must be positive")
+        option = self.inventory_repository.resolve_available_dispense_option(item_id)
+        if option is None:
+            raise NotFoundError(f"No available dispense slot found for item: {item_id}")
+        return option.slot_id
 
     def list_bindings(self, slot_id: int | None = None, item_id: int | None = None) -> tuple[SlotBindingDTO, ...]:
         statement = select(SlotItemBinding)
