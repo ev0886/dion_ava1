@@ -12,6 +12,7 @@ from app.application.dto.startup import (
     RecoveryReadinessDTO,
     StartupReadinessDTO,
 )
+from app.demo_inventory_seed import DemoInventorySeedResult, DemoSeededSlotDTO
 from app.cli import main
 from app.domain.enums import HardwareEndpointType, StartupReadinessStatus
 from app.hardware.dto import HardwareHealthEntry, HardwareHealthSnapshot, HardwareOperationStatus
@@ -120,6 +121,19 @@ def test_recovery_scan_runs_and_prints_deterministic_summary(tmp_path: Path) -> 
     assert '"unfinished_operation_ids": []' in stdout
 
 
+def test_seed_demo_multi_slot_inventory_runs_and_prints_seeded_slots(monkeypatch) -> None:
+    monkeypatch.setattr("app.cli.create_bootstrapped_application_container", lambda _settings: _FakeSeedContainer())
+    monkeypatch.setattr("app.cli.seed_demo_multi_slot_inventory", _fake_seed_demo_multi_slot_inventory)
+
+    exit_code, stdout, stderr = _run_cli(["seed-demo-multi-slot-inventory"])
+
+    assert exit_code == 0
+    assert '"item_id": 1' in stdout
+    assert '"slot_code": "slot-p09-l05"' in stdout
+    assert '"slot_codes": [' in stdout
+    assert stderr == ""
+
+
 def test_cli_help_lists_operator_commands() -> None:
     exit_code, stdout, stderr = _run_cli(["--help"])
 
@@ -127,6 +141,7 @@ def test_cli_help_lists_operator_commands() -> None:
     assert "startup-check" in stdout
     assert "hardware-health" in stdout
     assert "recovery-scan" in stdout
+    assert "seed-demo-multi-slot-inventory" in stdout
     assert stderr == ""
 
 
@@ -189,6 +204,34 @@ class _FakeHardwareContainer:
 
     def close(self) -> None:
         return None
+
+
+@dataclass(slots=True)
+class _FakeSeedContainer:
+    session: object | None = None
+
+    def __post_init__(self) -> None:
+        self.session = object()
+
+    def close(self) -> None:
+        return None
+
+
+def _fake_seed_demo_multi_slot_inventory(_session, *, item_id: int) -> DemoInventorySeedResult:
+    return DemoInventorySeedResult(
+        item_id=item_id,
+        slot_codes=("slot-p09-l05",),
+        seeded_slots=(
+            DemoSeededSlotDTO(
+                slot_id=140,
+                slot_code="slot-p09-l05",
+                drum_position=9,
+                board_address=0,
+                lock_number=5,
+                quantity=1,
+            ),
+        ),
+    )
 
 
 def _run_cli(argv: list[str]) -> tuple[int, str, str]:

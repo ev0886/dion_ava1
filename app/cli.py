@@ -4,6 +4,7 @@ import argparse
 import sys
 
 from app.application.composition import ApplicationContainer, create_bootstrapped_application_container
+from app.demo_inventory_seed import DEMO_SEED_ITEM_ID, seed_demo_multi_slot_inventory
 from app.domain.enums import StartupReadinessStatus
 from app.runtime import add_common_settings_arguments, render_json, settings_from_args
 
@@ -16,6 +17,11 @@ def build_parser() -> argparse.ArgumentParser:
     subparsers.add_parser("startup-check", help="Run startup readiness checks")
     subparsers.add_parser("hardware-health", help="Ping hardware endpoints and print availability")
     subparsers.add_parser("recovery-scan", help="Scan unfinished operations and open recovery cases")
+    seed_demo_inventory = subparsers.add_parser(
+        "seed-demo-multi-slot-inventory",
+        help="Seed deterministic demo inventory for one item across 10 fixed drum positions",
+    )
+    seed_demo_inventory.add_argument("--item-id", type=int, default=DEMO_SEED_ITEM_ID)
 
     export_plan = subparsers.add_parser("export-plan")
     export_plan.add_argument("--requested-by-user-id", type=int, required=True)
@@ -71,6 +77,11 @@ def _dispatch(args: argparse.Namespace, container: ApplicationContainer) -> int:
             ),
         }
         print(render_json(summary))
+        return 0
+
+    if args.command == "seed-demo-multi-slot-inventory":
+        result = seed_demo_multi_slot_inventory(container.session, item_id=args.item_id)
+        print(render_json(result))
         return 0
 
     if args.command == "export-plan":
