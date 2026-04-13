@@ -36,6 +36,34 @@
     savingUserIds: new Set(),
   };
 
+  const displayLabels = {
+    system: {
+      ok: "OK",
+      degraded: "\u041e\u0433\u0440\u0430\u043d\u0438\u0447\u0435\u043d\u043d\u0430\u044f \u0433\u043e\u0442\u043e\u0432\u043d\u043e\u0441\u0442\u044c",
+      ready: "\u0413\u043e\u0442\u043e\u0432\u043e",
+      not_ready: "\u041d\u0435 \u0433\u043e\u0442\u043e\u0432\u043e",
+      real: "\u0420\u0435\u0430\u043b\u044c\u043d\u044b\u0439",
+      "stub-real": "Stub-real",
+      mock: "Mock",
+      development: "\u0420\u0430\u0437\u0440\u0430\u0431\u043e\u0442\u043a\u0430",
+      "production-like": "Production-like",
+    },
+    operationType: {
+      dispense: "\u0412\u044b\u0434\u0430\u0447\u0430",
+      return: "\u0412\u043e\u0437\u0432\u0440\u0430\u0442",
+      refill_item: "\u041f\u043e\u043f\u043e\u043b\u043d\u0435\u043d\u0438\u0435",
+    },
+    operationState: {
+      completed: "\u0417\u0430\u0432\u0435\u0440\u0448\u0435\u043d\u043e",
+      failed: "\u041e\u0448\u0438\u0431\u043a\u0430",
+      recovery_required: "\u0422\u0440\u0435\u0431\u0443\u0435\u0442\u0441\u044f \u0432\u043e\u0441\u0441\u0442\u0430\u043d\u043e\u0432\u043b\u0435\u043d\u0438\u0435",
+    },
+    policy: {
+      unlimited: "\u0411\u0435\u0437 \u043e\u0433\u0440\u0430\u043d\u0438\u0447\u0435\u043d\u0438\u0439",
+      once_per_day: "\u041e\u0434\u0438\u043d \u0440\u0430\u0437 \u0432 \u0434\u0435\u043d\u044c",
+    },
+  };
+
   function setStatus(kind, title, message) {
     elements.statusPanel.className = "status-panel";
     if (kind) {
@@ -70,6 +98,16 @@
     return String(value);
   }
 
+  function getDisplayLabel(group, value) {
+    if (value === null || value === undefined || value === "") {
+      return "n/a";
+    }
+    const rawValue = String(value);
+    return displayLabels[group] && displayLabels[group][rawValue]
+      ? displayLabels[group][rawValue]
+      : rawValue;
+  }
+
   function renderSystemStatus() {
     const systemStatus = state.systemStatus;
     if (!systemStatus) {
@@ -82,10 +120,10 @@
       return;
     }
 
-    elements.systemHealthStatus.textContent = formatSystemValue(systemStatus.health_status);
-    elements.systemReadinessStatus.textContent = formatSystemValue(systemStatus.readiness_status);
-    elements.systemHardwareProvider.textContent = formatSystemValue(systemStatus.hardware_provider);
-    elements.systemAppEnvironment.textContent = formatSystemValue(systemStatus.app_environment);
+    elements.systemHealthStatus.textContent = getDisplayLabel("system", systemStatus.health_status);
+    elements.systemReadinessStatus.textContent = getDisplayLabel("system", systemStatus.readiness_status);
+    elements.systemHardwareProvider.textContent = getDisplayLabel("system", systemStatus.hardware_provider);
+    elements.systemAppEnvironment.textContent = getDisplayLabel("system", systemStatus.app_environment);
     elements.systemAppName.textContent = formatSystemValue(systemStatus.app_name);
     elements.systemApiBind.textContent =
       formatSystemValue(systemStatus.api_host) + ":" + formatSystemValue(systemStatus.api_port);
@@ -96,7 +134,15 @@
     const policyOptions = config.supportedPolicies
       .map(function (policy) {
         const selected = user.dispense_restriction_policy === policy ? "selected" : "";
-        return '<option value="' + escapeHtml(policy) + '" ' + selected + ">" + escapeHtml(policy) + "</option>";
+        return (
+          '<option value="' +
+          escapeHtml(policy) +
+          '" ' +
+          selected +
+          ">" +
+          escapeHtml(getDisplayLabel("policy", policy)) +
+          "</option>"
+        );
       })
       .join("");
 
@@ -201,10 +247,10 @@
       escapeHtml(formatDateTime(operation.started_at)) +
       "</td>" +
       "<td>" +
-      escapeHtml(operation.operation_type || "n/a") +
+      escapeHtml(getDisplayLabel("operationType", operation.operation_type)) +
       "</td>" +
       '<td><span class="status-chip">' +
-      escapeHtml(operation.operation_state || "n/a") +
+      escapeHtml(getDisplayLabel("operationState", operation.operation_state)) +
       "</span></td>" +
       "<td>" +
       escapeHtml(buildUserLabel(operation)) +
