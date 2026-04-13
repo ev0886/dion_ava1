@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from pydantic import ValidationError
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
 
@@ -19,6 +20,7 @@ from app.application.session_service import OperationSessionService
 from app.bootstrap import bootstrap
 from app.config import AppSettings, get_settings
 from app.hardware import HardwareBundle, create_hardware_bundle
+from app.hardware.transport_config import DrumHardwareEndpointTransportConfig
 from app.persistence.repositories.inventory import InventoryRepository
 from app.persistence.repositories.logs import AuditLogRepository, EventLogRepository
 from app.persistence.repositories.operations import OperationRepository, OperationSessionRepository
@@ -85,6 +87,7 @@ def build_repositories(session: Session) -> RepositoryBundle:
 
 def build_services(
     *,
+    settings: AppSettings,
     session: Session,
     repositories: RepositoryBundle,
     hardware: HardwareBundle,
@@ -102,7 +105,11 @@ def build_services(
         auth=auth_service,
         inventory=inventory_service,
         operation_sessions=operation_session_service,
-        dispense=DispenseOperationService(repositories.operations, repositories.inventory),
+        dispense=DispenseOperationService(
+            repositories.operations,
+            repositories.inventory,
+            post_move_unlock_delay_ms=_resolve_dispense_post_move_unlock_delay_ms(settings),
+        ),
         return_ops=ReturnOperationService(repositories.operations, repositories.inventory),
         refill=RefillOperationService(
             repositories.operations,
@@ -139,7 +146,7 @@ def build_application_container(
 ) -> ApplicationContainer:
     repositories = build_repositories(session)
     hardware = create_hardware_bundle(settings)
-    services = build_services(session=session, repositories=repositories, hardware=hardware)
+    services = build_services(settings=settings, session=session, repositories=repositories, hardware=hardware)
     return ApplicationContainer(
         settings=settings,
         engine=engine,
@@ -162,3 +169,16 @@ def create_bootstrapped_application_container(settings: AppSettings | None = Non
         session_factory=session_factory,
         session=session,
     )
+
+
+def _resolve_dispense_post_move_unlock_delay_ms(settings: AppSettings) -> int:
+    raw_drum_config = settings.hardware_real_endpoints.get("drum_controller")
+    if raw_drum_config is None:
+        return 0
+
+    try:
+        drum_config = DrumHardwareEndpointTransportConfig.model_validate(raw_drum_config)
+    except ValidationError:
+        return 0
+
+    return drum_config.protocol.post_move_unlock_delay_ms

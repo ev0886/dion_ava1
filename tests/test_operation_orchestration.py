@@ -82,6 +82,50 @@ def test_successful_dispense_flow_with_mock_hardware(session_factory: sessionmak
         assert operation.qty_confirmed == 2
 
 
+def test_dispense_zero_post_move_unlock_delay_does_not_sleep(session_factory: sessionmaker[Session]) -> None:
+    with session_factory() as session:
+        ids = _seed_catalog(session, starting_quantity=5)
+        sleep_calls: list[float] = []
+        service = DispenseOperationService(
+            OperationRepository(session),
+            InventoryRepository(session),
+            post_move_unlock_delay_ms=0,
+            _sleep=sleep_calls.append,
+        )
+
+        result = service.execute(
+            DispenseRequest(user_id=ids.user_id, item_id=ids.item_id, slot_id=ids.slot_id, quantity=1),
+            _hardware_facade(),
+        )
+
+        assert result.operation_state is OperationState.COMPLETED
+        assert sleep_calls == []
+
+
+def test_dispense_configured_post_move_unlock_delay_runs_between_move_and_unlock(
+    session_factory: sessionmaker[Session],
+) -> None:
+    with session_factory() as session:
+        ids = _seed_catalog(session, starting_quantity=5)
+        call_order: list[str] = []
+        sleep_calls: list[float] = []
+        service = DispenseOperationService(
+            OperationRepository(session),
+            InventoryRepository(session),
+            post_move_unlock_delay_ms=1500,
+            _sleep=lambda seconds: (sleep_calls.append(seconds), call_order.append("sleep")),
+        )
+
+        result = service.execute(
+            DispenseRequest(user_id=ids.user_id, item_id=ids.item_id, slot_id=ids.slot_id, quantity=1),
+            _RecordingHardwareFacade(call_order),
+        )
+
+        assert result.operation_state is OperationState.COMPLETED
+        assert sleep_calls == [1.5]
+        assert call_order == ["move", "sleep", "unlock"]
+
+
 def test_successful_return_flow_with_mock_hardware(session_factory: sessionmaker[Session]) -> None:
     with session_factory() as session:
         ids = _seed_catalog(session, starting_quantity=1)
@@ -414,3 +458,17 @@ def _hardware_facade(drum_mode: MockHardwareMode = MockHardwareMode.SUCCESS) -> 
         lock_controller=MockLockAdapter(lock_states={(1, 1): LockState.LOCKED}),
         rfid_reader=MockRfidAdapter(),
     )
+
+
+class _RecordingHardwareFacade:
+    def __init__(self, call_order: list[str]) -> None:
+        self._call_order = call_order
+        self._delegate = _hardware_facade()
+
+    def move_drum_to_position(self, position: int):
+        self._call_order.append("move")
+        return self._delegate.move_drum_to_position(position)
+
+    def unlock_lock(self, board_address: int, lock_number: int):
+        self._call_order.append("unlock")
+        return self._delegate.unlock_lock(board_address, lock_number)

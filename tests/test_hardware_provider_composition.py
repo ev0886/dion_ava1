@@ -260,8 +260,39 @@ def test_real_endpoint_config_summary_reports_unexpected_keys_and_targets(tmp_pa
     assert lock_entry.target == "/dev/ttyUSB1"
 
 
-def _serial_endpoint_config(*, code: str, driver_name: str, port: str) -> dict[str, object]:
-    return {
+def test_real_mode_composition_passes_post_move_unlock_delay_into_dispense_service(tmp_path: Path) -> None:
+    settings = AppSettings(
+        data_dir=tmp_path,
+        sqlite_filename="real_dispense_delay.sqlite3",
+        alembic_config_path=Path("alembic.ini"),
+        hardware_provider=HardwareProvider.REAL,
+        hardware_real_endpoints={
+            "drum_controller": _serial_endpoint_config(
+                code="drum-1",
+                driver_name="drum-driver",
+                port="COM1",
+                post_move_unlock_delay_ms=1500,
+            ),
+            "lock_controller": _lock_serial_endpoint_config(code="lock-1", driver_name="lock-driver", port="COM2"),
+            "rfid_reader": _serial_endpoint_config(code="rfid-1", driver_name="rfid-driver", port="COM2"),
+        },
+    )
+
+    container = create_bootstrapped_application_container(settings)
+    try:
+        assert container.services.dispense.post_move_unlock_delay_ms == 1500
+    finally:
+        container.close()
+
+
+def _serial_endpoint_config(
+    *,
+    code: str,
+    driver_name: str,
+    port: str,
+    post_move_unlock_delay_ms: int | None = None,
+) -> dict[str, object]:
+    config = {
         "endpoint": {
             "code": code,
             "driver_name": driver_name,
@@ -281,6 +312,9 @@ def _serial_endpoint_config(*, code: str, driver_name: str, port: str) -> dict[s
             "stop_bits": 1,
         },
     }
+    if post_move_unlock_delay_ms is not None:
+        config["protocol"] = {"post_move_unlock_delay_ms": post_move_unlock_delay_ms}
+    return config
 
 
 def _lock_serial_endpoint_config(*, code: str, driver_name: str, port: str, board_address: int = 0) -> dict[str, object]:

@@ -103,6 +103,7 @@ class DrumControllerProtocolSettings(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     move_completion_timeout_ms: int = Field(default=30000, ge=1, le=60000)
+    post_move_unlock_delay_ms: int = Field(default=0, ge=0, le=60000)
 
 
 class LockHardwareEndpointTransportConfig(BaseModel):
@@ -173,6 +174,7 @@ def real_hardware_endpoints_example() -> dict[str, object]:
             },
             "protocol": {
                 "move_completion_timeout_ms": 30000,
+                "post_move_unlock_delay_ms": 0,
             },
             "transport": {
                 "transport": "serial",

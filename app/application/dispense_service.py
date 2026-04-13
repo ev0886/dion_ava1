@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass, field
+from time import sleep
 
 from app.application.dto.operations import (
     CreateOperationCommand,
@@ -28,6 +30,8 @@ from app.persistence.repositories.operations import OperationRepository
 class DispenseOperationService:
     operation_repository: OperationRepository
     inventory_repository: InventoryRepository
+    post_move_unlock_delay_ms: int = 0
+    _sleep: Callable[[float], None] = field(default=sleep, repr=False)
     _recorder: OperationRecorder = field(init=False, repr=False)
     _inventory_mutation: InventoryMutationService = field(init=False, repr=False)
 
@@ -105,6 +109,7 @@ class DispenseOperationService:
             self._transition(operation, OperationState.POSITIONING_REQUESTED, "Drum positioning requested")
             move_result = hardware_facade.move_drum_to_position(slot.drum_position)
             self._record_positioning_success(operation, move_result)
+            self._apply_post_move_unlock_delay()
 
             self._transition(operation, OperationState.UNLOCK_REQUESTED, "Slot unlock requested")
             unlock_result = hardware_facade.unlock_lock(slot.board_address, slot.lock_number)
@@ -239,6 +244,11 @@ class DispenseOperationService:
             hardware_context=context,
         )
         self._transition(operation, OperationState.UNLOCK_COMPLETED, "Slot unlock completed")
+
+    def _apply_post_move_unlock_delay(self) -> None:
+        if self.post_move_unlock_delay_ms <= 0:
+            return
+        self._sleep(self.post_move_unlock_delay_ms / 1000)
 
     def _handle_hardware_error(self, operation: Operation, error: HardwareError) -> None:
         self._recorder.record_hardware_failure(
