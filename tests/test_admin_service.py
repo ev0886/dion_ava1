@@ -97,6 +97,30 @@ def test_import_users_csv_rejects_duplicate_user_code_in_same_payload(
         assert str(exc_info.value) == "CSV row 3: duplicate user_code user-2 in import file"
 
 
+def test_import_users_csv_rejects_header_mismatch_with_expected_and_received_header(
+    session_factory: sessionmaker[Session],
+) -> None:
+    with session_factory() as session:
+        _seed_import_duplicate_rfid_domain(session)
+        service = AdminUserService(UserRepository(session))
+
+        csv_payload = "\n".join(
+            (
+                "user_code,full_name,rfid_uid,role_code,dispense_restriction_policy,unexpected_column",
+                "user-2,User Two,,user,once_per_day,extra",
+            )
+        )
+
+        with pytest.raises(ValidationError) as exc_info:
+            service.import_users_csv(csv_payload)
+
+        assert str(exc_info.value) == (
+            "CSV header mismatch. Expected: "
+            "user_code,full_name,role_code,rfid_uid,dispense_restriction_policy. "
+            "Got: user_code,full_name,rfid_uid,role_code,dispense_restriction_policy,unexpected_column"
+        )
+
+
 @pytest.mark.parametrize(
     ("row_text", "expected_detail"),
     (

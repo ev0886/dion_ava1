@@ -30,6 +30,7 @@ class AdminUserService:
         "rfid_uid",
         "dispense_restriction_policy",
     )
+    _CSV_HEADER_TEXT = ",".join(_CSV_COLUMNS)
 
     def __init__(self, user_repository: UserRepository) -> None:
         self.user_repository = user_repository
@@ -168,8 +169,9 @@ class AdminUserService:
 
         fieldnames = [fieldname.strip() for fieldname in reader.fieldnames]
         if tuple(fieldnames) != cls._CSV_COLUMNS:
+            received_header = ",".join(fieldnames)
             raise ValidationError(
-                "CSV columns must be exactly: user_code, full_name, role_code, rfid_uid, dispense_restriction_policy"
+                f"CSV header mismatch. Expected: {cls._CSV_HEADER_TEXT}. Got: {received_header}"
             )
 
         rows: list[_ImportedUserRow] = []

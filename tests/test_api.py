@@ -575,6 +575,35 @@ def test_admin_user_import_rejects_duplicate_user_code_in_same_payload(tmp_path:
     ]
 
 
+def test_admin_user_import_rejects_header_mismatch_with_expected_and_received_header(tmp_path: Path) -> None:
+    app = create_app(_settings(tmp_path, "api_admin_import_header_mismatch.sqlite3"))
+    _seed_base_domain(app)
+
+    csv_payload = "\n".join(
+        (
+            "user_code,full_name,rfid_uid,role_code,dispense_restriction_policy,unexpected_column",
+            "user-2,User Two,,user,once_per_day,extra",
+        )
+    )
+
+    with TestClient(app) as client:
+        response = client.post(
+            "/admin/users/import",
+            content=csv_payload.encode("utf-8"),
+            headers={"content-type": "text/csv; charset=utf-8"},
+        )
+
+    assert response.status_code == 400
+    assert response.json() == {
+        "error": "validation_error",
+        "detail": (
+            "CSV header mismatch. Expected: "
+            "user_code,full_name,role_code,rfid_uid,dispense_restriction_policy. "
+            "Got: user_code,full_name,rfid_uid,role_code,dispense_restriction_policy,unexpected_column"
+        ),
+    }
+
+
 @pytest.mark.parametrize(
     ("row_text", "expected_detail"),
     (
