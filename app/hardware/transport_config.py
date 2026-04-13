@@ -173,8 +173,8 @@ def real_hardware_endpoints_example() -> dict[str, object]:
                 },
             },
             "protocol": {
-                "move_completion_timeout_ms": 30000,
-                "post_move_unlock_delay_ms": 0,
+                "move_completion_timeout_ms": 35000,
+                "post_move_unlock_delay_ms": 3000,
             },
             "transport": {
                 "transport": "serial",

@@ -36,9 +36,79 @@ python -m app.cli startup-check
 - `DION_SQLITE_FILENAME`: SQLite database filename inside `DION_DATA_DIR`.
 - `DION_ALEMBIC_CONFIG_PATH`: Alembic configuration file path.
 - `DION_HARDWARE_PROVIDER`: `mock`, `stub-real`, or `real`.
-- `DION_HARDWARE_REAL_ENDPOINTS`: JSON object for transport-specific endpoint values already supported by the hardware layer.
+- `DION_HARDWARE_REAL_ENDPOINTS`: JSON object for transport-specific endpoint values already supported by the hardware layer. For the current Raspberry Pi real-hardware baseline, keep `drum_controller.protocol.move_completion_timeout_ms=35000` and `drum_controller.protocol.post_move_unlock_delay_ms=3000`.
 - `DION_API_HOST`: bind address for `python -m app.api` and `dion-api`.
 - `DION_API_PORT`: bind port for `python -m app.api` and `dion-api`.
+
+Example real-hardware endpoints JSON:
+
+```json
+{
+  "drum_controller": {
+    "endpoint": {
+      "code": "drum-1",
+      "driver_name": "drum-driver",
+      "enabled": true,
+      "timeouts": {
+        "connect_timeout_ms": 1000,
+        "read_timeout_ms": 1000,
+        "write_timeout_ms": 1000
+      }
+    },
+    "protocol": {
+      "move_completion_timeout_ms": 35000,
+      "post_move_unlock_delay_ms": 3000
+    },
+    "transport": {
+      "transport": "serial",
+      "port": "/dev/serial/by-path/platform-1000110000.pcie-pci-0001:01:00.0-usb-0:1.2:1.0-port0",
+      "baudrate": 9600,
+      "data_bits": 8,
+      "parity": "none",
+      "stop_bits": 1
+    }
+  },
+  "lock_controller": {
+    "endpoint": {
+      "code": "lock-1",
+      "driver_name": "lock-driver",
+      "enabled": true,
+      "timeouts": {
+        "connect_timeout_ms": 1000,
+        "read_timeout_ms": 1000,
+        "write_timeout_ms": 1000
+      }
+    },
+    "protocol": {
+      "board_address": 0
+    },
+    "transport": {
+      "transport": "serial",
+      "port": "/dev/serial/by-path/platform-1000110000.pcie-pci-0001:01:00.0-usb-0:1.1:1.0-port0",
+      "baudrate": 19200,
+      "data_bits": 8,
+      "parity": "none",
+      "stop_bits": 1
+    }
+  },
+  "rfid_reader": {
+    "endpoint": {
+      "code": "rfid-1",
+      "driver_name": "rfid-driver",
+      "enabled": true,
+      "timeouts": {
+        "connect_timeout_ms": 1000,
+        "read_timeout_ms": 1000,
+        "write_timeout_ms": 1000
+      }
+    },
+    "transport": {
+      "transport": "serial",
+      "port": "/dev/ttyACM0"
+    }
+  }
+}
+```
 
 ## Installed entry points
 
