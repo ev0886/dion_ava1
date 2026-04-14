@@ -177,6 +177,37 @@ body {
   margin: 0.55rem 0 0.3rem;
 }
 
+.usb-status-panel {
+  margin-top: 0.55rem;
+  padding: 0.55rem 0.65rem;
+  border-radius: 0.9rem;
+  background: var(--panel-strong);
+  display: grid;
+  gap: 0.16rem;
+}
+
+.usb-status-label {
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.usb-status-panel strong,
+.usb-status-panel p {
+  margin: 0;
+}
+
+.usb-status-panel strong {
+  font-size: 0.95rem;
+}
+
+.usb-status-panel p {
+  font-size: 0.82rem;
+  color: var(--muted);
+  line-height: 1.2;
+}
+
 .action-button {
   min-height: 3.15rem;
   padding: 0.65rem 0.8rem;

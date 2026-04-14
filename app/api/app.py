@@ -62,6 +62,10 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
     def ui_admin():
         return render_admin_page(app.state.settings)
 
+    @app.get("/local/usb/status")
+    def local_usb_status(container: ApplicationContainer = Depends(get_application_container)) -> JSONResponse:
+        return JSONResponse(container.services.usb_storage.get_status_payload())
+
     @app.get("/admin/users")
     def admin_list_users(container: ApplicationContainer = Depends(get_application_container)) -> JSONResponse:
         return JSONResponse({"users": to_api_payload(container.services.admin_users.list_users())})

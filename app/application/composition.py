@@ -17,6 +17,7 @@ from app.application.return_service import ReturnOperationService
 from app.application.service_mode_service import ServiceModeService
 from app.application.startup_service import StartupOrchestrationService
 from app.application.session_service import OperationSessionService
+from app.application.usb_storage_service import UsbStorageDiscoveryService
 from app.bootstrap import bootstrap
 from app.config import AppSettings, get_settings
 from app.hardware import HardwareBundle, create_hardware_bundle
@@ -57,6 +58,7 @@ class ServiceBundle:
     service_mode: ServiceModeService
     exports: ExportService
     startup: StartupOrchestrationService
+    usb_storage: UsbStorageDiscoveryService
 
 
 @dataclass(slots=True)
@@ -139,6 +141,7 @@ def build_services(
             audit_log_repository=repositories.audit_logs,
         ),
         startup=startup_service,
+        usb_storage=UsbStorageDiscoveryService(),
     )
 
 

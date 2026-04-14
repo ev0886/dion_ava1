@@ -8,6 +8,8 @@
     idleReturnChip: document.getElementById("idle-return-chip"),
     dispenseTarget: document.getElementById("dispense-target"),
     inventoryQuantity: document.getElementById("inventory-quantity"),
+    usbStatusTitle: document.getElementById("usb-status-title"),
+    usbStatusDetail: document.getElementById("usb-status-detail"),
     optionCountPill: document.getElementById("option-count-pill"),
     optionsEmptyState: document.getElementById("options-empty-state"),
     dispenseOptions: document.getElementById("dispense-options"),
@@ -182,6 +184,42 @@
 
   function describeOption(option) {
     return option.item_name + " | qty " + option.total_quantity;
+  }
+
+  function renderUsbStatus(payload) {
+    if (!elements.usbStatusTitle || !elements.usbStatusDetail) {
+      return;
+    }
+
+    if (payload && payload.usb_available) {
+      elements.usbStatusTitle.textContent = "\u0055\u0053\u0042-\u043d\u043e\u0441\u0438\u0442\u0435\u043b\u044c \u043e\u0431\u043d\u0430\u0440\u0443\u0436\u0435\u043d";
+      elements.usbStatusDetail.textContent = payload.mount_path
+        ? "\u041f\u0443\u0442\u044c: " + payload.mount_path
+        : "\u0422\u043e\u0447\u043a\u0430 \u043c\u043e\u043d\u0442\u0438\u0440\u043e\u0432\u0430\u043d\u0438\u044f \u043d\u0435 \u0443\u043a\u0430\u0437\u0430\u043d\u0430.";
+      return;
+    }
+
+    elements.usbStatusTitle.textContent = "\u0055\u0053\u0042-\u043d\u043e\u0441\u0438\u0442\u0435\u043b\u044c \u043d\u0435 \u043e\u0431\u043d\u0430\u0440\u0443\u0436\u0435\u043d";
+    elements.usbStatusDetail.textContent =
+      "\u041f\u043e\u0434\u043a\u043b\u044e\u0447\u0438\u0442\u0435 USB-\u043d\u043e\u0441\u0438\u0442\u0435\u043b\u044c \u043a Raspberry Pi \u0438 \u0434\u043e\u0436\u0434\u0438\u0442\u0435\u0441\u044c \u0435\u0433\u043e \u043c\u043e\u043d\u0442\u0438\u0440\u043e\u0432\u0430\u043d\u0438\u044f.";
+  }
+
+  async function refreshUsbStatus() {
+    if (!config.usbStatusEndpoint) {
+      return;
+    }
+
+    try {
+      const { response, payload } = await readJson(config.usbStatusEndpoint, { method: "GET" });
+      if (!response.ok) {
+        throw new Error(payload.detail || "USB status endpoint returned an error.");
+      }
+      renderUsbStatus(payload);
+    } catch (error) {
+      elements.usbStatusTitle.textContent = "\u0055\u0053\u0042-\u0441\u0442\u0430\u0442\u0443\u0441 \u043d\u0435\u0434\u043e\u0441\u0442\u0443\u043f\u0435\u043d";
+      elements.usbStatusDetail.textContent =
+        "\u041d\u0435 \u0443\u0434\u0430\u043b\u043e\u0441\u044c \u043f\u043e\u043b\u0443\u0447\u0438\u0442\u044c \u0441\u0442\u0430\u0442\u0443\u0441 USB-\u043d\u043e\u0441\u0438\u0442\u0435\u043b\u044f.";
+    }
   }
 
   function renderSelectedOption() {
@@ -400,5 +438,6 @@
   elements.resetButton.addEventListener("click", resetToIdle);
 
   resetToIdle();
+  refreshUsbStatus();
   refreshOptions();
 })();
