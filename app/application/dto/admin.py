@@ -47,6 +47,23 @@ class AdminRecentOperationDTO:
 
 
 @dataclass(frozen=True, slots=True)
+class AdminOperationExportRowDTO:
+    operation_id: int
+    started_at: datetime | None
+    finished_at: datetime | None
+    operation_type: OperationType
+    operation_state: OperationState
+    user_code: str | None
+    user_full_name: str | None
+    item_name: str | None
+    quantity: int | None
+    slot_code: str | None
+    result: str | None
+    error_code: str | None
+    error_message: str | None
+
+
+@dataclass(frozen=True, slots=True)
 class AdminSystemStatusDTO:
     health_status: str
     readiness_status: StartupReadinessStatus

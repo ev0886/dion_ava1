@@ -15,6 +15,9 @@
     userTableBody: document.getElementById("user-table-body"),
     problemOperationsTableBody: document.getElementById("problem-operations-table-body"),
     operationsTableBody: document.getElementById("operations-table-body"),
+    operationsExportDateFrom: document.getElementById("operations-export-date-from"),
+    operationsExportDateTo: document.getElementById("operations-export-date-to"),
+    operationsExportButton: document.getElementById("operations-export-button"),
     importFile: document.getElementById("import-file"),
     importTextarea: document.getElementById("import-textarea"),
     loadExampleButton: document.getElementById("load-example-button"),
@@ -32,6 +35,7 @@
     operations: [],
     systemStatus: null,
     isLoading: false,
+    isExportingOperations: false,
     isImporting: false,
     savingUserIds: new Set(),
   };
@@ -314,6 +318,9 @@
 
   function syncControls() {
     elements.refreshButton.disabled = state.isLoading;
+    elements.operationsExportButton.disabled = state.isLoading || state.isExportingOperations;
+    elements.operationsExportDateFrom.disabled = state.isExportingOperations;
+    elements.operationsExportDateTo.disabled = state.isExportingOperations;
     elements.importButton.disabled = state.isLoading || state.isImporting;
     elements.loadExampleButton.disabled = state.isImporting;
     elements.importFile.disabled = state.isImporting;
@@ -324,6 +331,29 @@
       const userId = row ? Number(row.dataset.userId) : 0;
       button.disabled = state.isLoading || state.savingUserIds.has(userId);
     });
+  }
+
+  function buildOperationsExportUrl() {
+    const dateFrom = elements.operationsExportDateFrom.value;
+    const dateTo = elements.operationsExportDateTo.value;
+    if (!dateFrom || !dateTo) {
+      throw new Error("Укажите date_from и date_to для export CSV.");
+    }
+
+    const params = new URLSearchParams({
+      date_from: dateFrom,
+      date_to: dateTo,
+    });
+    return config.exportOperationsEndpoint + "?" + params.toString();
+  }
+
+  function downloadFile(url) {
+    const link = document.createElement("a");
+    link.href = url;
+    link.rel = "noopener";
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
   }
 
   async function readImportCsvText() {
@@ -505,11 +535,30 @@
     }
   }
 
+  async function exportOperations() {
+    state.isExportingOperations = true;
+    syncControls();
+
+    try {
+      const exportUrl = buildOperationsExportUrl();
+      setStatus("success", "Экспорт CSV", "Запускаю выгрузку операций за выбранный период.");
+      downloadFile(exportUrl);
+    } catch (error) {
+      setStatus("error", "Ошибка export CSV", String(error));
+    } finally {
+      state.isExportingOperations = false;
+      syncControls();
+    }
+  }
+
   elements.refreshButton.addEventListener("click", function () {
     void loadAdminData();
   });
   elements.loadExampleButton.addEventListener("click", function () {
     loadExampleCsv();
+  });
+  elements.operationsExportButton.addEventListener("click", function () {
+    void exportOperations();
   });
   if (elements.downloadExampleLink && config.importExampleCsvAssetUrl) {
     elements.downloadExampleLink.href = config.importExampleCsvAssetUrl;

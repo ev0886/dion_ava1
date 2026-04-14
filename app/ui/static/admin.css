@@ -156,6 +156,19 @@ body {
   gap: 0.85rem;
 }
 
+.export-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
+  gap: 0.85rem;
+  align-items: end;
+}
+
+.export-actions {
+  display: grid;
+  gap: 0.35rem;
+  justify-items: start;
+}
+
 .field-block {
   display: grid;
   gap: 0.35rem;

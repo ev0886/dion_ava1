@@ -2,10 +2,11 @@ from __future__ import annotations
 
 import csv
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from io import StringIO
 
 from app.application.dto.admin import (
+    AdminOperationExportRowDTO,
     AdminRecentOperationDTO,
     AdminSystemStatusDTO,
     AdminUserImportResultDTO,
@@ -264,6 +265,22 @@ class AdminUserService:
 
 
 class AdminOperationService:
+    _CSV_COLUMNS = (
+        "operation_id",
+        "started_at",
+        "finished_at",
+        "operation_type",
+        "operation_state",
+        "user_code",
+        "user_full_name",
+        "item_name",
+        "quantity",
+        "slot_code",
+        "result",
+        "error_code",
+        "error_message",
+    )
+
     def __init__(self, operation_repository: OperationRepository) -> None:
         self.operation_repository = operation_repository
 
@@ -272,6 +289,36 @@ class AdminOperationService:
 
     def list_problem_operations(self, *, limit: int = 20) -> list[AdminRecentOperationDTO]:
         return self.operation_repository.list_problem_for_admin(limit=limit)
+
+    def export_operations_csv(self, *, date_from: date, date_to: date) -> str:
+        if date_from > date_to:
+            raise ValidationError("date_from must be less than or equal to date_to")
+
+        rows = self.operation_repository.list_for_admin_export(date_from=date_from, date_to=date_to)
+        output = StringIO()
+        writer = csv.writer(output, lineterminator="\n")
+        writer.writerow(self._CSV_COLUMNS)
+        for row in rows:
+            writer.writerow(self._csv_row_values(row))
+        return output.getvalue()
+
+    @staticmethod
+    def _csv_row_values(row: AdminOperationExportRowDTO) -> tuple[object, ...]:
+        return (
+            row.operation_id,
+            row.started_at.isoformat() if row.started_at is not None else "",
+            row.finished_at.isoformat() if row.finished_at is not None else "",
+            row.operation_type.value,
+            row.operation_state.value,
+            row.user_code or "",
+            row.user_full_name or "",
+            row.item_name or "",
+            row.quantity if row.quantity is not None else "",
+            row.slot_code or "",
+            row.result or "",
+            row.error_code or "",
+            row.error_message or "",
+        )
 
 
 class AdminSystemStatusService:

@@ -43,6 +43,7 @@ def render_admin_page(settings: AppSettings) -> HTMLResponse:
         "listUsersEndpoint": "/admin/users",
         "problemOperationsEndpoint": "/admin/operations/problem",
         "recentOperationsEndpoint": "/admin/operations/recent",
+        "exportOperationsEndpoint": "/admin/operations/export",
         "exportUsersEndpoint": "/admin/users/export",
         "updateUserEndpointBase": "/admin/users",
         "importUsersEndpoint": "/admin/users/import",

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from contextlib import asynccontextmanager
-
+from datetime import date
 from pathlib import Path
 
 from fastapi import Depends, FastAPI, Request
@@ -73,6 +73,21 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
     @app.get("/admin/operations/problem")
     def admin_list_problem_operations(container: ApplicationContainer = Depends(get_application_container)) -> JSONResponse:
         return JSONResponse({"operations": to_api_payload(container.services.admin_operations.list_problem_operations())})
+
+    @app.get("/admin/operations/export")
+    def admin_export_operations(
+        date_from: date,
+        date_to: date,
+        container: ApplicationContainer = Depends(get_application_container),
+    ) -> Response:
+        return Response(
+            content=container.services.admin_operations.export_operations_csv(
+                date_from=date_from,
+                date_to=date_to,
+            ).encode("utf-8-sig"),
+            media_type="text/csv; charset=utf-8",
+            headers={"content-disposition": 'attachment; filename="admin-operations-export.csv"'},
+        )
 
     @app.get("/admin/system/status")
     def admin_system_status(container: ApplicationContainer = Depends(get_application_container)) -> JSONResponse:

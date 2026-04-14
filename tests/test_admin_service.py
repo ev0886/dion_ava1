@@ -1,14 +1,14 @@
 from __future__ import annotations
 
 from collections.abc import Iterator
-from datetime import datetime
+from datetime import date, datetime
 from pathlib import Path
 
 import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
-from app.application.admin_service import AdminUserService
+from app.application.admin_service import AdminOperationService, AdminUserService
 from app.application.dto.admin import AdminRecentOperationDTO
 from app.application.exceptions import ValidationError
 from app.domain.enums import DispenseRestrictionPolicy, ItemStatus, OperationState, OperationType, RoleCode, SlotStatus, SlotType, UserStatus
@@ -414,6 +414,120 @@ def test_list_problem_operations_for_admin_returns_failed_and_recovery_required_
                 slot_code="slot-1",
             ),
         ]
+
+
+def test_export_operations_csv_filters_inclusive_date_range_and_emits_expected_columns(
+    session_factory: sessionmaker[Session],
+) -> None:
+    with session_factory() as session:
+        _seed_import_duplicate_rfid_domain(session)
+        item = Item(
+            item_group_id=None,
+            sku="item-1",
+            name="Item One",
+            description=None,
+            unit="pcs",
+            return_allowed=True,
+            min_level=0,
+            status=ItemStatus.ACTIVE,
+        )
+        slot = Slot(
+            code="slot-1",
+            slot_type=SlotType.UNIVERSAL,
+            drum_position=1,
+            board_address=1,
+            lock_number=1,
+            capacity=10,
+            status=SlotStatus.ACTIVE,
+        )
+        session.add_all((item, slot))
+        session.flush()
+
+        session.add_all(
+            (
+                Operation(
+                    session_id=None,
+                    operation_type=OperationType.DISPENSE,
+                    operation_state=OperationState.COMPLETED,
+                    user_id=1,
+                    item_id=item.id,
+                    slot_id=slot.id,
+                    qty_requested=1,
+                    qty_confirmed=1,
+                    result="ok",
+                    error_code=None,
+                    error_message=None,
+                    hardware_context_json={},
+                    business_context_json={},
+                    started_at=datetime(2026, 4, 13, 8, 0, 0),
+                    finished_at=datetime(2026, 4, 13, 8, 5, 0),
+                ),
+                Operation(
+                    session_id=None,
+                    operation_type=OperationType.RETURN,
+                    operation_state=OperationState.FAILED,
+                    user_id=2,
+                    item_id=item.id,
+                    slot_id=slot.id,
+                    qty_requested=2,
+                    qty_confirmed=None,
+                    result="hardware_error",
+                    error_code="lock_timeout",
+                    error_message="Door lock timeout",
+                    hardware_context_json={},
+                    business_context_json={},
+                    started_at=datetime(2026, 4, 14, 9, 0, 0),
+                    finished_at=datetime(2026, 4, 14, 9, 10, 0),
+                ),
+                Operation(
+                    session_id=None,
+                    operation_type=OperationType.REFILL_ITEM,
+                    operation_state=OperationState.COMPLETED,
+                    user_id=2,
+                    item_id=item.id,
+                    slot_id=slot.id,
+                    qty_requested=4,
+                    qty_confirmed=4,
+                    result="ok",
+                    error_code=None,
+                    error_message=None,
+                    hardware_context_json={},
+                    business_context_json={},
+                    started_at=datetime(2026, 4, 15, 7, 0, 0),
+                    finished_at=datetime(2026, 4, 15, 7, 20, 0),
+                ),
+            )
+        )
+        session.commit()
+
+        exported_csv = AdminOperationService(OperationRepository(session)).export_operations_csv(
+            date_from=date(2026, 4, 14),
+            date_to=date(2026, 4, 14),
+        )
+
+        assert exported_csv == "\n".join(
+            (
+                "operation_id,started_at,finished_at,operation_type,operation_state,user_code,user_full_name,item_name,quantity,slot_code,result,error_code,error_message",
+                f"2,2026-04-14T09:00:00,2026-04-14T09:10:00,return,failed,operator-1,Operator One,Item One,2,slot-1,hardware_error,lock_timeout,Door lock timeout",
+                "",
+            )
+        )
+
+
+def test_export_operations_csv_rejects_reversed_date_range(
+    session_factory: sessionmaker[Session],
+) -> None:
+    with session_factory() as session:
+        _seed_import_duplicate_rfid_domain(session)
+        service = AdminOperationService(OperationRepository(session))
+
+        with pytest.raises(ValidationError) as exc_info:
+            service.export_operations_csv(
+                date_from=date(2026, 4, 15),
+                date_to=date(2026, 4, 14),
+            )
+
+        assert str(exc_info.value) == "date_from must be less than or equal to date_to"
 
 
 def _seed_import_duplicate_rfid_domain(session: Session) -> None:

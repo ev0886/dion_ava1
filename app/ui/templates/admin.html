@@ -26,6 +26,29 @@
     <section class="panel">
       <div class="panel-heading">
         <div>
+          <p class="eyebrow">Операции</p>
+          <h2>Экспорт операций в CSV</h2>
+        </div>
+      </div>
+      <div class="export-grid">
+        <label class="field-block" for="operations-export-date-from">
+          <span class="field-label">date_from</span>
+          <input id="operations-export-date-from" class="inline-input" type="date">
+        </label>
+        <label class="field-block" for="operations-export-date-to">
+          <span class="field-label">date_to</span>
+          <input id="operations-export-date-to" class="inline-input" type="date">
+        </label>
+        <div class="export-actions">
+          <button id="operations-export-button" class="secondary-button" type="button">Экспорт CSV</button>
+          <p class="row-note">Диапазон по дням. Если дата не указана, export не запускается.</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-heading">
+        <div>
           <p class="eyebrow">Система</p>
           <h2>Статус backend</h2>
         </div>

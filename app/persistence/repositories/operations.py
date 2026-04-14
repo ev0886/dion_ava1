@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime, time, timedelta
 
 from sqlalchemy import and_, func, or_, select
 
-from app.application.dto.admin import AdminRecentOperationDTO
+from app.application.dto.admin import AdminOperationExportRowDTO, AdminRecentOperationDTO
 from app.domain.enums import OperationState, OperationType
 from app.persistence.models import Item, Operation, OperationSession, OperationStateHistory, Slot, User
 from app.persistence.repositories.base import Repository
@@ -135,6 +135,74 @@ class OperationRepository(Repository):
                 slot_code=slot_code,
             )
             for operation_id, started_at, operation_type, operation_state, user_code, full_name, item_name, qty_confirmed, qty_requested, slot_code in rows
+        ]
+
+    def list_for_admin_export(
+        self,
+        *,
+        date_from: date,
+        date_to: date,
+    ) -> list[AdminOperationExportRowDTO]:
+        range_start = datetime.combine(date_from, time.min)
+        range_end = datetime.combine(date_to + timedelta(days=1), time.min)
+        anchor_timestamp = func.coalesce(Operation.started_at, Operation.finished_at)
+        rows = self.session.execute(
+            select(
+                Operation.id,
+                Operation.started_at,
+                Operation.finished_at,
+                Operation.operation_type,
+                Operation.operation_state,
+                User.user_code,
+                User.full_name,
+                Item.name,
+                Operation.qty_confirmed,
+                Operation.qty_requested,
+                Slot.code,
+                Operation.result,
+                Operation.error_code,
+                Operation.error_message,
+            )
+            .outerjoin(User, User.id == Operation.user_id)
+            .outerjoin(Item, Item.id == Operation.item_id)
+            .outerjoin(Slot, Slot.id == Operation.slot_id)
+            .where(anchor_timestamp.is_not(None))
+            .where(anchor_timestamp >= range_start)
+            .where(anchor_timestamp < range_end)
+            .order_by(anchor_timestamp.asc(), Operation.id.asc())
+        ).all()
+        return [
+            AdminOperationExportRowDTO(
+                operation_id=operation_id,
+                started_at=started_at,
+                finished_at=finished_at,
+                operation_type=operation_type,
+                operation_state=operation_state,
+                user_code=user_code,
+                user_full_name=full_name,
+                item_name=item_name,
+                quantity=qty_confirmed if qty_confirmed is not None else qty_requested,
+                slot_code=slot_code,
+                result=result,
+                error_code=error_code,
+                error_message=error_message,
+            )
+            for (
+                operation_id,
+                started_at,
+                finished_at,
+                operation_type,
+                operation_state,
+                user_code,
+                full_name,
+                item_name,
+                qty_confirmed,
+                qty_requested,
+                slot_code,
+                result,
+                error_code,
+                error_message,
+            ) in rows
         ]
 
     def _admin_operation_list_statement(

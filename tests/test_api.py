@@ -118,6 +118,8 @@ def test_ui_admin_page_serves_user_management_config(tmp_path: Path) -> None:
     assert response.status_code == 200
     assert "Операции, требующие внимания" in response.text
     assert "Экспорт CSV" in response.text
+    assert "date_from" in response.text
+    assert "date_to" in response.text
     assert "Админка оператора MVP" in response.text
     assert "Импорт CSV" in response.text
     assert "Импортировать CSV" in response.text
@@ -130,12 +132,14 @@ def test_ui_admin_page_serves_user_management_config(tmp_path: Path) -> None:
     assert '"/admin/system/status"' in response.text
     assert '"/admin/operations/problem"' in response.text
     assert '"/admin/operations/recent"' in response.text
+    assert '"/admin/operations/export"' in response.text
     assert '"/admin/users/import"' in response.text
     assert '"/ui-assets/admin-users-import-example.csv"' in response.text
     assert '"once_per_day"' in response.text
     assert '"/admin/users/export"' in response.text
     assert '"problemOperationsEndpoint"' in response.text
     assert '"recentOperationsEndpoint"' in response.text
+    assert '"exportOperationsEndpoint"' in response.text
     assert '"exportUsersEndpoint"' in response.text
     assert '"importExampleCsvText"' in response.text
 
@@ -160,6 +164,8 @@ def test_ui_admin_static_assets_are_served(tmp_path: Path) -> None:
     assert response.status_code == 200
     assert "saveRow" in response.text
     assert "loadUsers" in response.text
+    assert "exportOperations" in response.text
+    assert "buildOperationsExportUrl" in response.text
     assert "loadExampleCsv" in response.text
     assert "loadSystemStatus" in response.text
     assert "systemStatusEndpoint" in response.text
@@ -568,6 +574,116 @@ def test_admin_problem_operations_endpoint_returns_failed_and_recovery_required_
                 "slot_code": "slot-1",
             },
         ]
+    }
+
+
+def test_admin_operations_export_endpoint_returns_csv_for_selected_inclusive_day_range(tmp_path: Path) -> None:
+    app = create_app(_settings(tmp_path, "api_admin_operations_export.sqlite3"))
+    _seed_base_domain(app)
+    _seed_unassigned_user(app)
+
+    with app.state.session_factory() as session:
+        session.add_all(
+            [
+                Operation(
+                    session_id=None,
+                    operation_type=OperationType.DISPENSE,
+                    operation_state=OperationState.COMPLETED,
+                    user_id=1,
+                    item_id=1,
+                    slot_id=1,
+                    qty_requested=1,
+                    qty_confirmed=1,
+                    result="ok",
+                    error_code=None,
+                    error_message=None,
+                    hardware_context_json={},
+                    business_context_json={},
+                    started_at=datetime(2026, 4, 13, 23, 59, 0),
+                    finished_at=datetime(2026, 4, 13, 23, 59, 30),
+                ),
+                Operation(
+                    session_id=None,
+                    operation_type=OperationType.RETURN,
+                    operation_state=OperationState.FAILED,
+                    user_id=2,
+                    item_id=1,
+                    slot_id=1,
+                    qty_requested=2,
+                    qty_confirmed=None,
+                    result="hardware_error",
+                    error_code="lock_timeout",
+                    error_message="Door lock timeout",
+                    hardware_context_json={},
+                    business_context_json={},
+                    started_at=datetime(2026, 4, 14, 0, 0, 0),
+                    finished_at=datetime(2026, 4, 14, 0, 1, 0),
+                ),
+                Operation(
+                    session_id=None,
+                    operation_type=OperationType.REFILL_ITEM,
+                    operation_state=OperationState.COMPLETED,
+                    user_id=2,
+                    item_id=1,
+                    slot_id=1,
+                    qty_requested=5,
+                    qty_confirmed=5,
+                    result="ok",
+                    error_code=None,
+                    error_message=None,
+                    hardware_context_json={},
+                    business_context_json={},
+                    started_at=datetime(2026, 4, 14, 23, 59, 59),
+                    finished_at=datetime(2026, 4, 15, 0, 5, 0),
+                ),
+                Operation(
+                    session_id=None,
+                    operation_type=OperationType.DISPENSE,
+                    operation_state=OperationState.FAILED,
+                    user_id=1,
+                    item_id=1,
+                    slot_id=1,
+                    qty_requested=3,
+                    qty_confirmed=None,
+                    result="hardware_error",
+                    error_code="late_error",
+                    error_message="Out of range row",
+                    hardware_context_json={},
+                    business_context_json={},
+                    started_at=datetime(2026, 4, 15, 0, 0, 0),
+                    finished_at=datetime(2026, 4, 15, 0, 10, 0),
+                ),
+            ]
+        )
+        session.commit()
+
+    with TestClient(app) as client:
+        response = client.get("/admin/operations/export?date_from=2026-04-14&date_to=2026-04-14")
+
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/csv; charset=utf-8")
+    assert response.headers["content-disposition"] == 'attachment; filename="admin-operations-export.csv"'
+    assert response.content.startswith(b"\xef\xbb\xbf")
+    assert response.content.decode("utf-8-sig") == "\n".join(
+        (
+            "operation_id,started_at,finished_at,operation_type,operation_state,user_code,user_full_name,item_name,quantity,slot_code,result,error_code,error_message",
+            "2,2026-04-14T00:00:00,2026-04-14T00:01:00,return,failed,operator-1,Operator One,Item One,2,slot-1,hardware_error,lock_timeout,Door lock timeout",
+            "3,2026-04-14T23:59:59,2026-04-15T00:05:00,refill_item,completed,operator-1,Operator One,Item One,5,slot-1,ok,,",
+            "",
+        )
+    )
+
+
+def test_admin_operations_export_endpoint_rejects_reversed_date_range(tmp_path: Path) -> None:
+    app = create_app(_settings(tmp_path, "api_admin_operations_export_invalid.sqlite3"))
+
+    with TestClient(app) as client:
+        response = client.get("/admin/operations/export?date_from=2026-04-15&date_to=2026-04-14")
+
+    assert response.status_code == 400
+    assert response.json() == {
+        "error": "validation_error",
+        "detail": "date_from must be less than or equal to date_to",
     }
 
 
