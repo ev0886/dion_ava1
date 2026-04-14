@@ -337,7 +337,7 @@
     const dateFrom = elements.operationsExportDateFrom.value;
     const dateTo = elements.operationsExportDateTo.value;
     if (!dateFrom || !dateTo) {
-      throw new Error("Укажите date_from и date_to для export CSV.");
+      throw new Error("Укажите даты «с» и «по» для экспорта CSV.");
     }
 
     const params = new URLSearchParams({
@@ -401,7 +401,7 @@
     try {
       const { response, payload } = await readJson(config.systemStatusEndpoint, { method: "GET" });
       if (!response.ok) {
-        throw new Error(payload.detail || "Failed to load system status.");
+        throw new Error(payload.detail || "Не удалось загрузить статус системы.");
       }
       state.systemStatus = payload;
       renderSystemStatus();
@@ -431,7 +431,7 @@
     try {
       const { response, payload } = await readJson(config.problemOperationsEndpoint, { method: "GET" });
       if (!response.ok) {
-        throw new Error(payload.detail || "Failed to load problem operations.");
+        throw new Error(payload.detail || "Не удалось загрузить проблемные операции.");
       }
       state.problemOperations = Array.isArray(payload.operations) ? payload.operations : [];
       renderProblemOperations();
@@ -544,7 +544,7 @@
       setStatus("success", "Экспорт CSV", "Запускаю выгрузку операций за выбранный период.");
       downloadFile(exportUrl);
     } catch (error) {
-      setStatus("error", "Ошибка export CSV", String(error));
+      setStatus("error", "Ошибка экспорта CSV", String(error));
     } finally {
       state.isExportingOperations = false;
       syncControls();

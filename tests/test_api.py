@@ -118,8 +118,10 @@ def test_ui_admin_page_serves_user_management_config(tmp_path: Path) -> None:
     assert response.status_code == 200
     assert "Операции, требующие внимания" in response.text
     assert "Экспорт CSV" in response.text
-    assert "date_from" in response.text
-    assert "date_to" in response.text
+    assert "Дата с" in response.text
+    assert "Дата по" in response.text
+    assert "Диапазон по дням. Если дата не указана, экспорт не запускается." in response.text
+    assert 'class="table-wrap table-wrap-scroll"' in response.text
     assert "Админка оператора MVP" in response.text
     assert "Импорт CSV" in response.text
     assert "Импортировать CSV" in response.text
@@ -173,6 +175,8 @@ def test_ui_admin_static_assets_are_served(tmp_path: Path) -> None:
     assert "created_count" in response.text
     assert "updated_count" in response.text
     assert "total_rows" in response.text
+    assert "Укажите даты «с» и «по» для экспорта CSV." in response.text
+    assert "Ошибка экспорта CSV" in response.text
     assert "getDisplayLabel" in response.text
     assert 'name="is_active"' in response.text
     assert "active-chip" not in response.text

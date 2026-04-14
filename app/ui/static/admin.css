@@ -179,7 +179,6 @@ body {
   font-size: 0.82rem;
   font-weight: 700;
   letter-spacing: 0.04em;
-  text-transform: uppercase;
 }
 
 .inline-textarea {
@@ -196,6 +195,11 @@ body {
 
 .table-wrap {
   overflow-x: auto;
+}
+
+.table-wrap-scroll {
+  max-height: 24rem;
+  overflow-y: auto;
 }
 
 .user-table {

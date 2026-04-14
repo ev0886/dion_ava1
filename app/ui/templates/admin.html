@@ -32,16 +32,16 @@
       </div>
       <div class="export-grid">
         <label class="field-block" for="operations-export-date-from">
-          <span class="field-label">date_from</span>
+          <span class="field-label">Дата с</span>
           <input id="operations-export-date-from" class="inline-input" type="date">
         </label>
         <label class="field-block" for="operations-export-date-to">
-          <span class="field-label">date_to</span>
+          <span class="field-label">Дата по</span>
           <input id="operations-export-date-to" class="inline-input" type="date">
         </label>
         <div class="export-actions">
           <button id="operations-export-button" class="secondary-button" type="button">Экспорт CSV</button>
-          <p class="row-note">Диапазон по дням. Если дата не указана, export не запускается.</p>
+          <p class="row-note">Диапазон по дням. Если дата не указана, экспорт не запускается.</p>
         </div>
       </div>
     </section>
@@ -91,7 +91,7 @@
         </div>
       </div>
       <p class="panel-note">Только проблемные состояния: failed и recovery_required.</p>
-      <div class="table-wrap">
+      <div class="table-wrap table-wrap-scroll">
         <table class="operations-table">
           <thead>
             <tr>
@@ -120,7 +120,7 @@
           <h2>Последние действия системы</h2>
         </div>
       </div>
-      <div class="table-wrap">
+      <div class="table-wrap table-wrap-scroll">
         <table class="operations-table">
           <thead>
             <tr>
@@ -197,7 +197,7 @@
         </div>
         <button id="refresh-button" class="secondary-button" type="button">Обновить</button>
       </div>
-      <div class="table-wrap">
+      <div class="table-wrap table-wrap-scroll">
         <table class="user-table">
           <thead>
             <tr>
