@@ -5,6 +5,7 @@ import pytest
 from app.config import AppSettings, HardwareProvider
 from app.hardware import (
     DrumPositionResult,
+    HardwareBusyError,
     HardwareFailureError,
     HardwareOperationStatus,
     HardwareTimeoutError,
@@ -15,7 +16,7 @@ from app.hardware import (
 
 
 def test_real_drum_adapter_ping_success_with_fake_transport() -> None:
-    adapter = RealDrumAdapter(config=_drum_config(), transport=_FakeTransport([b"PONG\n"]))
+    adapter = RealDrumAdapter(config=_drum_config(), transport=_FakeTransport([bytes.fromhex("24 00 04 C5")]))
 
     result = adapter.ping()
 
@@ -24,22 +25,51 @@ def test_real_drum_adapter_ping_success_with_fake_transport() -> None:
 
 
 def test_real_drum_adapter_get_position_success() -> None:
-    adapter = RealDrumAdapter(config=_drum_config(), transport=_FakeTransport([b"POSITION:4\n"]))
+    transport = _FakeTransport([bytes.fromhex("24 00 04 C5")])
+    adapter = RealDrumAdapter(config=_drum_config(), transport=transport)
 
     result = adapter.get_position()
 
     assert isinstance(result, DrumPositionResult)
     assert result.ok is True
     assert result.position == 4
+    assert transport.request_payloads == [bytes.fromhex("12 00 00 F7")]
+    assert transport.sent_payloads == [bytes.fromhex("30 D5")]
 
 
 def test_real_drum_adapter_move_to_position_success() -> None:
-    adapter = RealDrumAdapter(config=_drum_config(), transport=_FakeTransport([b"MOVED:7\n"]))
+    transport = _FakeTransport([], sequence_responses=[bytes.fromhex("21 AA AA C4"), bytes.fromhex("25 C0")])
+    adapter = RealDrumAdapter(config=_drum_config(), transport=transport)
 
     result = adapter.move_to_position(7)
 
     assert result.ok is True
     assert result.position == 7
+    assert transport.sequence_payloads == [[bytes.fromhex("11 00 07 F3"), bytes.fromhex("30 D5")]]
+    assert transport.sequence_timeout_calls == [(100, [100, 35000])]
+    assert transport.sequence_frame_gap_timeout_calls == [20]
+    assert transport.request_payloads == []
+
+
+def test_real_drum_adapter_move_to_position_busy_maps_to_busy_error() -> None:
+    adapter = RealDrumAdapter(
+        config=_drum_config(),
+        transport=_FakeTransport([], sequence_responses=[bytes.fromhex("22 AA AA C7"), bytes.fromhex("25 C0")]),
+    )
+
+    with pytest.raises(HardwareBusyError, match="busy"):
+        adapter.move_to_position(7)
+
+
+def test_real_drum_adapter_move_to_position_uses_drum_specific_completion_timeout() -> None:
+    transport = _FakeTransport([], sequence_responses=[bytes.fromhex("21 AA AA C4"), bytes.fromhex("25 C0")])
+    adapter = RealDrumAdapter(config=_drum_config(move_completion_timeout_ms=45000), transport=transport)
+
+    result = adapter.move_to_position(3)
+
+    assert result.ok is True
+    assert transport.sequence_timeout_calls == [(100, [100, 45000])]
+    assert transport.sequence_frame_gap_timeout_calls == [20]
 
 
 def test_real_drum_adapter_malformed_response_returns_safe_failure() -> None:
@@ -71,7 +101,12 @@ def test_real_provider_composition_still_works_with_operational_drum_transport()
 
     bundle = create_hardware_bundle(
         settings,
-        transport_overrides={"drum_controller": _FakeTransport([b"PONG\n", b"POSITION:2\n", b"MOVED:5\n"])},
+        transport_overrides={
+            "drum_controller": _FakeTransport(
+                [bytes.fromhex("24 00 02 C3"), bytes.fromhex("24 00 02 C3")],
+                sequence_responses=[bytes.fromhex("21 AA AA C4"), bytes.fromhex("25 C0")],
+            )
+        },
     )
 
     ping_result = bundle.drum_controller.ping()
@@ -85,14 +120,41 @@ def test_real_provider_composition_still_works_with_operational_drum_transport()
 
 
 class _FakeTransport:
-    def __init__(self, responses: list[object]) -> None:
+    def __init__(self, responses: list[object], *, sequence_responses: list[object] | None = None) -> None:
         self._responses = list(responses)
+        self._sequence_responses = list(sequence_responses or [])
+        self.request_payloads: list[bytes] = []
+        self.sent_payloads: list[bytes] = []
+        self.sequence_payloads: list[list[bytes]] = []
+        self.sequence_timeout_calls: list[tuple[int | None, list[int] | None]] = []
+        self.sequence_frame_gap_timeout_calls: list[int | None] = []
 
     def request(self, payload: bytes, *, timeout_ms: int | None = None) -> bytes:
+        self.request_payloads.append(payload)
         if not self._responses:
             raise AssertionError("No fake responses remain.")
         response = self._responses.pop(0)
         return response  # type: ignore[return-value]
+
+    def send(self, payload: bytes) -> None:
+        self.sent_payloads.append(payload)
+
+    def request_sequence(
+        self,
+        payloads: list[bytes],
+        *,
+        timeout_ms: int | None = None,
+        response_timeouts_ms: list[int] | None = None,
+        frame_gap_timeout_ms: int | None = None,
+    ) -> list[bytes]:
+        self.sequence_payloads.append(list(payloads))
+        self.sequence_timeout_calls.append((timeout_ms, None if response_timeouts_ms is None else list(response_timeouts_ms)))
+        self.sequence_frame_gap_timeout_calls.append(frame_gap_timeout_ms)
+        if len(self._sequence_responses) < len(payloads):
+            raise AssertionError("Not enough fake sequence responses remain.")
+        responses = self._sequence_responses[: len(payloads)]
+        del self._sequence_responses[: len(payloads)]
+        return responses  # type: ignore[return-value]
 
 
 class _RaisingTransport:
@@ -102,16 +164,40 @@ class _RaisingTransport:
     def request(self, payload: bytes, *, timeout_ms: int | None = None) -> bytes:
         raise self._error
 
+    def send(self, payload: bytes) -> None:
+        raise self._error
 
-def _drum_config():
-    from app.hardware.transport_config import HardwareEndpointTransportConfig
+    def request_sequence(
+        self,
+        payloads: list[bytes],
+        *,
+        timeout_ms: int | None = None,
+        response_timeouts_ms: list[int] | None = None,
+        frame_gap_timeout_ms: int | None = None,
+    ) -> list[bytes]:
+        raise self._error
 
-    return HardwareEndpointTransportConfig.model_validate(
-        _serial_endpoint_config(code="drum-1", driver_name="drum-driver", port="COM7")
+
+def _drum_config(*, move_completion_timeout_ms: int = 35000):
+    from app.hardware.transport_config import DrumHardwareEndpointTransportConfig
+
+    return DrumHardwareEndpointTransportConfig.model_validate(
+        _serial_endpoint_config(
+            code="drum-1",
+            driver_name="drum-driver",
+            port="COM7",
+            move_completion_timeout_ms=move_completion_timeout_ms,
+        )
     )
 
 
-def _serial_endpoint_config(*, code: str, driver_name: str, port: str) -> dict[str, object]:
+def _serial_endpoint_config(
+    *,
+    code: str,
+    driver_name: str,
+    port: str,
+    move_completion_timeout_ms: int = 35000,
+) -> dict[str, object]:
     return {
         "endpoint": {
             "code": code,
@@ -122,6 +208,10 @@ def _serial_endpoint_config(*, code: str, driver_name: str, port: str) -> dict[s
                 "read_timeout_ms": 1000,
                 "write_timeout_ms": 1000,
             },
+        },
+        "protocol": {
+            "move_completion_timeout_ms": move_completion_timeout_ms,
+            "post_move_unlock_delay_ms": 1500,
         },
         "transport": {
             "transport": "serial",

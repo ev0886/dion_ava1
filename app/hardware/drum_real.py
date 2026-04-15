@@ -1,26 +1,39 @@
 from __future__ import annotations
 
 from app.domain.enums import HardwareEndpointType
+from app.hardware.drum_uart import (
+    DRUM_ANS1_ACCEPTED,
+    DRUM_ANS1_BUSY,
+    DRUM_ANS1_RESULT,
+    DRUM_ANS1_UNKNOWN,
+    DRUM_ANS2_ERR,
+    DRUM_ANS2_OK,
+    DRUM_CONF_OK,
+    DRUM_GETPOS,
+    DRUM_SETPOS,
+    DrumPacket,
+    build_long_packet,
+    build_short_packet,
+    parse_packet,
+    validate_position,
+)
 from app.hardware.dto import DrumPositionResult, HardwareOperationResult, HardwareOperationStatus
-from app.hardware.exceptions import HardwareFailureError
+from app.hardware.exceptions import HardwareBusyError, HardwareFailureError, HardwareTimeoutError, HardwareUnavailableError
 from app.hardware.real_adapter_base import RealHardwareAdapterBase
-from app.hardware.transport_config import HardwareEndpointTransportConfig
-from app.hardware.transports import SerialRequestResponseTransport, TcpRequestResponseTransport
+from app.hardware.transport_config import DrumHardwareEndpointTransportConfig
+from app.hardware.transports import SerialRequestResponseTransport
 
 
 class RealDrumAdapter(RealHardwareAdapterBase):
-    _PING_REQUEST = b"PING\n"
-    _GET_POSITION_REQUEST = b"GET_POSITION\n"
-    _MOVE_TEMPLATE = "MOVE {position}\n"
-    _PONG_RESPONSE = "PONG"
-    _POSITION_PREFIX = "POSITION:"
-    _MOVED_PREFIX = "MOVED:"
+    _MOVE_ACK_TIMEOUT_MS = 100
+    _DEFAULT_MOVE_COMPLETION_TIMEOUT_MS = 30000
+    _FRAME_INTER_BYTE_GAP_TIMEOUT_MS = 20
 
     def __init__(
         self,
         *,
-        config: HardwareEndpointTransportConfig | None,
-        transport: SerialRequestResponseTransport | TcpRequestResponseTransport | None,
+        config: DrumHardwareEndpointTransportConfig | None,
+        transport: SerialRequestResponseTransport | None,
         config_error: str | None = None,
     ) -> None:
         super().__init__(
@@ -31,24 +44,11 @@ class RealDrumAdapter(RealHardwareAdapterBase):
         )
 
     def ping(self) -> HardwareOperationResult:
-        response = self._send_request(self._PING_REQUEST, operation="ping")
-        if response != self._PONG_RESPONSE:
-            raise HardwareFailureError(
-                f"Drum controller returned unsupported ping response: {response!r}",
-                device_type=self.device_type,
-                operation="ping",
-            )
+        self._probe_position(operation="ping")
         return self._success_result()
 
     def get_position(self) -> DrumPositionResult:
-        response = self._send_request(self._GET_POSITION_REQUEST, operation="get_position")
-        if not response.startswith(self._POSITION_PREFIX):
-            raise HardwareFailureError(
-                f"Drum controller returned unsupported position response: {response!r}",
-                device_type=self.device_type,
-                operation="get_position",
-            )
-        position = self._parse_position(response.removeprefix(self._POSITION_PREFIX), operation="get_position")
+        position = self._probe_position(operation="get_position")
         return DrumPositionResult(
             device_type=self.device_type,
             status=HardwareOperationStatus.SUCCESS,
@@ -57,39 +57,123 @@ class RealDrumAdapter(RealHardwareAdapterBase):
         )
 
     def move_to_position(self, position: int) -> DrumPositionResult:
-        if position < 0:
-            raise ValueError("position must be non-negative")
-        response = self._send_request(
-            self._MOVE_TEMPLATE.format(position=position).encode("ascii"),
-            operation="move_to_position",
-        )
-        if not response.startswith(self._MOVED_PREFIX):
-            raise HardwareFailureError(
-                f"Drum controller returned unsupported move response: {response!r}",
+        validated_position = validate_position(position)
+        first_response, second_response = self._move_setpos_sequence(validated_position)
+        if first_response.command == DRUM_ANS1_BUSY:
+            raise HardwareBusyError(
+                "Drum controller is busy",
                 device_type=self.device_type,
                 operation="move_to_position",
             )
-        actual_position = self._parse_position(response.removeprefix(self._MOVED_PREFIX), operation="move_to_position")
+        if first_response.command == DRUM_ANS1_UNKNOWN:
+            raise HardwareFailureError(
+                "Drum controller rejected SETPOS as unknown.",
+                device_type=self.device_type,
+                operation="move_to_position",
+            )
+        if first_response.command != DRUM_ANS1_ACCEPTED:
+            raise HardwareFailureError(
+                f"Drum controller returned unsupported SETPOS acknowledgement: {first_response.command:#04x}",
+                device_type=self.device_type,
+                operation="move_to_position",
+            )
+        if second_response.command == DRUM_ANS2_ERR:
+            raise HardwareFailureError(
+                "Drum controller reported SETPOS failure.",
+                device_type=self.device_type,
+                operation="move_to_position",
+            )
+        if second_response.command != DRUM_ANS2_OK:
+            raise HardwareFailureError(
+                f"Drum controller returned unsupported SETPOS completion: {second_response.command:#04x}",
+                device_type=self.device_type,
+                operation="move_to_position",
+            )
         return DrumPositionResult(
             device_type=self.device_type,
             status=HardwareOperationStatus.SUCCESS,
             ok=True,
-            position=actual_position,
+            position=validated_position,
         )
 
-    def _parse_position(self, value: str, *, operation: str) -> int:
-        try:
-            position = int(value.strip())
-        except ValueError as error:
-            raise HardwareFailureError(
-                f"Drum controller returned an invalid position: {value!r}",
-                device_type=self.device_type,
-                operation=operation,
-            ) from error
-        if position < 0:
-            raise HardwareFailureError(
-                f"Drum controller returned a negative position: {value!r}",
+    def _probe_position(self, *, operation: str) -> int:
+        response = parse_packet(self._send_binary_request(build_long_packet(DRUM_GETPOS, 0), operation=operation))
+        if response.command == DRUM_ANS1_BUSY:
+            raise HardwareBusyError(
+                "Drum controller is busy",
                 device_type=self.device_type,
                 operation=operation,
             )
+        if response.command != DRUM_ANS1_RESULT or response.argument is None:
+            raise HardwareFailureError(
+                f"Drum controller returned unsupported GETPOS response: {response.command:#04x}",
+                device_type=self.device_type,
+                operation=operation,
+            )
+        position = validate_position(response.argument)
+        self._send_confirmation(operation=operation)
         return position
+
+    def _send_confirmation(self, *, operation: str) -> None:
+        self._raise_if_unavailable(operation=operation)
+        assert self._transport is not None
+        transport_send = getattr(self._transport, "send", None)
+        if callable(transport_send):
+            try:
+                transport_send(build_short_packet(DRUM_CONF_OK))
+                return
+            except TimeoutError:
+                return
+            except OSError as error:
+                raise HardwareFailureError(
+                    f"Drum controller confirmation failed: {error}",
+                    device_type=self.device_type,
+                    operation=operation,
+                ) from error
+        try:
+            self._transport.request(build_short_packet(DRUM_CONF_OK), timeout_ms=50)
+        except TimeoutError:
+            return
+
+    def _move_setpos_sequence(self, position: int) -> tuple[DrumPacket, DrumPacket]:
+        payloads = [
+            build_long_packet(DRUM_SETPOS, position),
+            build_short_packet(DRUM_CONF_OK),
+        ]
+        self._raise_if_unavailable(operation="move_to_position")
+        assert self._transport is not None
+        request_sequence = getattr(self._transport, "request_sequence", None)
+        if callable(request_sequence):
+            ack_timeout_ms, completion_timeout_ms = self._move_response_timeouts_ms()
+            try:
+                raw_first_response, raw_second_response = request_sequence(
+                    payloads,
+                    timeout_ms=ack_timeout_ms,
+                    response_timeouts_ms=[ack_timeout_ms, completion_timeout_ms],
+                    frame_gap_timeout_ms=self._FRAME_INTER_BYTE_GAP_TIMEOUT_MS,
+                )
+            except TimeoutError as error:
+                raise HardwareTimeoutError(
+                    f"{self._device_label.capitalize()} transport request timed out: {error}",
+                    device_type=self.device_type,
+                    operation="move_to_position",
+                ) from error
+            except NotImplementedError:
+                raw_first_response = self._send_binary_request(payloads[0], operation="move_to_position")
+                raw_second_response = self._send_binary_request(payloads[1], operation="move_to_position")
+            except OSError as error:
+                raise HardwareUnavailableError(
+                    f"{self._device_label.capitalize()} transport request failed: {error}",
+                    device_type=self.device_type,
+                    operation="move_to_position",
+                ) from error
+        else:
+            raw_first_response = self._send_binary_request(payloads[0], operation="move_to_position")
+            raw_second_response = self._send_binary_request(payloads[1], operation="move_to_position")
+        return parse_packet(raw_first_response), parse_packet(raw_second_response)
+
+    def _move_response_timeouts_ms(self) -> tuple[int | None, int]:
+        completion_timeout_ms = self._DEFAULT_MOVE_COMPLETION_TIMEOUT_MS
+        if self._config is not None:
+            completion_timeout_ms = self._config.protocol.move_completion_timeout_ms
+        return self._MOVE_ACK_TIMEOUT_MS, completion_timeout_ms

@@ -38,6 +38,30 @@ def test_serial_transport_request_response_happy_path() -> None:
     assert response == b"PONG\n"
 
 
+def test_serial_transport_request_sequence_supports_binary_frames_and_per_response_timeouts() -> None:
+    transport = SerialTransport(
+        settings=SerialTransportSettings(
+            transport="serial",
+            port="COM7",
+            baudrate=9600,
+            data_bits=8,
+            parity="none",
+            stop_bits=1,
+        ),
+        timeouts=EndpointTimeoutSettings(connect_timeout_ms=1000, read_timeout_ms=1000, write_timeout_ms=1000),
+        serial_module_loader=lambda: _FakeSerialModule([bytes.fromhex("21 AA AA C4"), bytes.fromhex("25 C0")]),
+    )
+
+    responses = transport.request_sequence(
+        [bytes.fromhex("11 00 07 F3"), bytes.fromhex("30 D5")],
+        timeout_ms=100,
+        response_timeouts_ms=[100, 35000],
+        frame_gap_timeout_ms=20,
+    )
+
+    assert responses == [bytes.fromhex("21 AA AA C4"), bytes.fromhex("25 C0")]
+
+
 def test_tcp_transport_request_response_happy_path() -> None:
     fake_socket = _FakeSocket(response=b"UID:ABC123\n")
     transport = TcpTransport(
@@ -131,7 +155,7 @@ def test_real_readiness_can_become_healthy_when_rfid_lock_and_drum_transports_wo
             return _FakeTransport([b"PONG\n"])
         if config.endpoint.code == "lock-1":
             return _FakeTransport([b"PONG\n"])
-        return _FakeTransport([b"PONG\n"])
+        return _FakeTransport([bytes.fromhex("24 00 00 C1")])
 
     monkeypatch.setattr(hardware_factory, "_create_transport_client", fake_create_transport_client)
     monkeypatch.setattr(hardware_factory, "_create_rfid_transport_client", fake_create_transport_client)
@@ -170,6 +194,9 @@ class _FakeTransport:
             raise AssertionError("No fake responses remain.")
         return self._responses.pop(0)
 
+    def send(self, payload: bytes) -> None:
+        return None
+
 
 class _FakeSerialModule:
     def __init__(self, responses: list[bytes]) -> None:
@@ -183,6 +210,10 @@ class _FakeSerialConnection:
     def __init__(self, responses: list[bytes]) -> None:
         self._responses = responses
         self.writes: list[bytes] = []
+        self.timeout: float | None = None
+        self.flush_count = 0
+        self._current = b""
+        self.in_waiting = 0
 
     def reset_input_buffer(self) -> None:
         return None
@@ -192,11 +223,32 @@ class _FakeSerialConnection:
 
     def write(self, payload: bytes) -> None:
         self.writes.append(payload)
+        if not self._current and self._responses:
+            self._current = self._responses.pop(0)
+            self.in_waiting = len(self._current)
+
+    def flush(self) -> None:
+        self.flush_count += 1
+
+    def read(self, size: int = 1) -> bytes:
+        if not self._current:
+            self.in_waiting = 0
+            return b""
+        chunk = self._current[:size]
+        self._current = self._current[size:]
+        self.in_waiting = len(self._current)
+        return chunk
 
     def read_until(self, separator: bytes = b"\n") -> bytes:
-        if not self._responses:
-            return b""
-        return self._responses.pop(0)
+        chunks = bytearray()
+        while True:
+            chunk = self.read(1)
+            if not chunk:
+                break
+            chunks.extend(chunk)
+            if chunks.endswith(separator):
+                break
+        return bytes(chunks)
 
     def close(self) -> None:
         return None
