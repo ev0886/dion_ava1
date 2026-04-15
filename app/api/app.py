@@ -91,6 +91,16 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
             )
         )
 
+    @app.post("/local/usb/import/users")
+    def local_usb_import_users(
+        container: ApplicationContainer = Depends(get_application_container),
+    ) -> JSONResponse:
+        return JSONResponse(
+            to_api_payload(
+                container.services.local_usb_exports.import_users_csv()
+            )
+        )
+
     @app.get("/admin/users")
     def admin_list_users(container: ApplicationContainer = Depends(get_application_container)) -> JSONResponse:
         return JSONResponse({"users": to_api_payload(container.services.admin_users.list_users())})

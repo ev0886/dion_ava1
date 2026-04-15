@@ -334,6 +334,214 @@ def test_local_usb_users_export_endpoint_returns_success_payload_and_writes_file
     )
 
 
+def test_local_usb_users_import_service_blocks_when_usb_is_missing(tmp_path: Path) -> None:
+    admin_service, session = _build_admin_users_service(tmp_path, "usb_users_import_service_no_usb.sqlite3")
+    service = LocalUsbExportService(
+        usb_storage=_StubUsbStorage(
+            UsbStorageStatusDTO(
+                usb_available=False,
+                mount_path=None,
+                readable=False,
+                writable=False,
+            )
+        ),
+        admin_operations=AdminOperationService(OperationRepository(session)),
+        admin_users=admin_service,
+    )
+
+    try:
+        with pytest.raises(ValidationError) as exc_info:
+            service.import_users_csv()
+    finally:
+        session.close()
+
+    assert str(exc_info.value) == "USB-носитель не обнаружен. Импорт пользователей недоступен."
+
+
+def test_local_usb_users_import_service_blocks_when_users_csv_is_missing(tmp_path: Path) -> None:
+    admin_service, session = _build_admin_users_service(tmp_path, "usb_users_import_service_missing_file.sqlite3")
+    usb_mount = tmp_path / "media" / "operator" / "USB_DISK"
+    usb_mount.mkdir(parents=True)
+    service = LocalUsbExportService(
+        usb_storage=_StubUsbStorage(
+            UsbStorageStatusDTO(
+                usb_available=True,
+                mount_path=str(usb_mount),
+                readable=True,
+                writable=True,
+                device_name="sda1",
+            )
+        ),
+        admin_operations=AdminOperationService(OperationRepository(session)),
+        admin_users=admin_service,
+    )
+
+    try:
+        with pytest.raises(ValidationError) as exc_info:
+            service.import_users_csv()
+    finally:
+        session.close()
+
+    assert str(exc_info.value) == "На USB-носителе не найден файл users.csv в корне накопителя."
+
+
+def test_local_usb_users_import_service_reads_fixed_users_csv_and_returns_summary(tmp_path: Path) -> None:
+    admin_service, session = _build_admin_users_service(tmp_path, "usb_users_import_service_success.sqlite3")
+    usb_mount = tmp_path / "media" / "operator" / "USB_DISK"
+    usb_mount.mkdir(parents=True)
+    import_file = usb_mount / "users.csv"
+    import_file.write_text(
+        "\n".join(
+            (
+                "user_code,full_name,role_code,rfid_uid,dispense_restriction_policy",
+                "user-1,Updated User,user,11 22 aa bb,once_per_day",
+                "user-2,User Two,user,,unlimited",
+            )
+        ),
+        encoding="utf-8-sig",
+    )
+    service = LocalUsbExportService(
+        usb_storage=_StubUsbStorage(
+            UsbStorageStatusDTO(
+                usb_available=True,
+                mount_path=str(usb_mount),
+                readable=True,
+                writable=True,
+                device_name="sda1",
+            )
+        ),
+        admin_operations=AdminOperationService(OperationRepository(session)),
+        admin_users=admin_service,
+    )
+
+    try:
+        result = service.import_users_csv()
+        users = admin_service.list_users()
+    finally:
+        session.close()
+
+    assert result.success is True
+    assert result.file_name == "users.csv"
+    assert result.file_path == str(import_file)
+    assert result.mount_path == str(usb_mount)
+    assert result.created_count == 1
+    assert result.updated_count == 1
+    assert result.total_rows == 2
+    assert [user.user_code for user in users] == ["user-1", "operator-1", "user-2"]
+    imported_users = {user.user_code: user for user in users}
+    assert imported_users["user-1"].full_name == "Updated User"
+    assert imported_users["user-1"].rfid_uid == "1122AABB"
+    assert imported_users["user-1"].dispense_restriction_policy is DispenseRestrictionPolicy.ONCE_PER_DAY
+    assert imported_users["user-2"].full_name == "User Two"
+    assert imported_users["user-2"].dispense_restriction_policy is DispenseRestrictionPolicy.UNLIMITED
+
+
+def test_local_usb_users_import_endpoint_returns_expected_payload(tmp_path: Path, monkeypatch) -> None:
+    usb_mount = tmp_path / "media" / "operator" / "USB_DISK"
+    usb_mount.mkdir(parents=True)
+    import_file = usb_mount / "users.csv"
+    import_file.write_text(
+        "\n".join(
+            (
+                "user_code,full_name,role_code,rfid_uid,dispense_restriction_policy",
+                "user-1,Updated User,user,11 22 aa bb,once_per_day",
+                "user-2,User Two,user,,unlimited",
+            )
+        ),
+        encoding="utf-8-sig",
+    )
+    monkeypatch.setattr(
+        UsbStorageDiscoveryService,
+        "get_status",
+        lambda self: UsbStorageStatusDTO(
+            usb_available=True,
+            mount_path=str(usb_mount),
+            readable=True,
+            writable=True,
+            device_name="sda1",
+        ),
+    )
+    app = create_app(_settings(tmp_path, "api_local_usb_users_import.sqlite3"))
+    _seed_users_export_domain(app)
+
+    with TestClient(app) as client:
+        response = client.post("/local/usb/import/users", json={})
+        list_response = client.get("/admin/users")
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "success": True,
+        "file_path": str(import_file),
+        "file_name": "users.csv",
+        "mount_path": str(usb_mount),
+        "created_count": 1,
+        "updated_count": 1,
+        "total_rows": 2,
+    }
+    assert list_response.status_code == 200
+    assert list_response.json()["users"] == [
+        {
+            "user_id": 1,
+            "user_code": "user-1",
+            "full_name": "Updated User",
+            "status": "active",
+            "is_active": True,
+            "role_code": "user",
+            "rfid_uid": "1122AABB",
+            "dispense_restriction_policy": "once_per_day",
+        },
+        {
+            "user_id": 2,
+            "user_code": "operator-1",
+            "full_name": "Operator One",
+            "status": "active",
+            "is_active": True,
+            "role_code": "operator",
+            "rfid_uid": None,
+            "dispense_restriction_policy": "once_per_day",
+        },
+        {
+            "user_id": 3,
+            "user_code": "user-2",
+            "full_name": "User Two",
+            "status": "active",
+            "is_active": True,
+            "role_code": "user",
+            "rfid_uid": None,
+            "dispense_restriction_policy": "unlimited",
+        },
+    ]
+
+
+def test_local_usb_users_import_endpoint_returns_clear_error_when_users_csv_is_missing(
+    tmp_path: Path, monkeypatch
+) -> None:
+    usb_mount = tmp_path / "media" / "operator" / "USB_DISK"
+    usb_mount.mkdir(parents=True)
+    monkeypatch.setattr(
+        UsbStorageDiscoveryService,
+        "get_status",
+        lambda self: UsbStorageStatusDTO(
+            usb_available=True,
+            mount_path=str(usb_mount),
+            readable=True,
+            writable=True,
+            device_name="sda1",
+        ),
+    )
+    app = create_app(_settings(tmp_path, "api_local_usb_users_import_missing.sqlite3"))
+    _seed_users_export_domain(app)
+
+    with TestClient(app) as client:
+        response = client.post("/local/usb/import/users", json={})
+
+    assert response.status_code == 400
+    assert response.json() == {
+        "error": "validation_error",
+        "detail": "На USB-носителе не найден файл users.csv в корне накопителя.",
+    }
+
+
 def test_ui_mvp_page_and_asset_include_usb_status_wiring(tmp_path: Path) -> None:
     app = create_app(_settings(tmp_path, "api_ui_usb_status.sqlite3"))
 
@@ -345,12 +553,15 @@ def test_ui_mvp_page_and_asset_include_usb_status_wiring(tmp_path: Path) -> None
     assert '"usbStatusEndpoint": "/local/usb/status"' in page_response.text
     assert '"localUsbOperationsExportEndpoint": "/local/usb/export/operations"' in page_response.text
     assert '"localUsbUsersExportEndpoint": "/local/usb/export/users"' in page_response.text
+    assert '"localUsbUsersImportEndpoint": "/local/usb/import/users"' in page_response.text
     assert 'id="usb-status-title"' in page_response.text
     assert 'id="usb-status-detail"' in page_response.text
     assert 'id="usb-export-date-from"' in page_response.text
     assert 'id="usb-export-date-to"' in page_response.text
     assert 'id="usb-export-operations-button"' in page_response.text
     assert 'id="usb-export-users-button"' in page_response.text
+    assert 'id="usb-import-users-button"' in page_response.text
+    assert 'id="usb-users-import-result-detail"' in page_response.text
     assert 'id="usb-users-export-result-detail"' in page_response.text
     assert 'id="usb-export-result-detail"' in page_response.text
 
@@ -360,8 +571,10 @@ def test_ui_mvp_page_and_asset_include_usb_status_wiring(tmp_path: Path) -> None
     assert "usbStatusEndpoint" in asset_response.text
     assert "localUsbOperationsExportEndpoint" in asset_response.text
     assert "localUsbUsersExportEndpoint" in asset_response.text
+    assert "localUsbUsersImportEndpoint" in asset_response.text
     assert "exportOperationsToUsb" in asset_response.text
     assert "exportUsersToUsb" in asset_response.text
+    assert "importUsersFromUsb" in asset_response.text
     assert "initializeUsbExportForm" in asset_response.text
 
 

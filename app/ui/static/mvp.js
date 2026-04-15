@@ -20,6 +20,10 @@
     usersExportResult: document.getElementById("usb-users-export-result"),
     usersExportResultTitle: document.getElementById("usb-users-export-result-title"),
     usersExportResultDetail: document.getElementById("usb-users-export-result-detail"),
+    importUsersButton: document.getElementById("usb-import-users-button"),
+    usersImportResult: document.getElementById("usb-users-import-result"),
+    usersImportResultTitle: document.getElementById("usb-users-import-result-title"),
+    usersImportResultDetail: document.getElementById("usb-users-import-result-detail"),
     optionCountPill: document.getElementById("option-count-pill"),
     optionsEmptyState: document.getElementById("options-empty-state"),
     dispenseOptions: document.getElementById("dispense-options"),
@@ -83,6 +87,9 @@
     elements.exportOperationsButton.disabled = state.isBusy || !usbAvailable || !hasDates;
     if (elements.exportUsersButton) {
       elements.exportUsersButton.disabled = state.isBusy || !usbAvailable;
+    }
+    if (elements.importUsersButton) {
+      elements.importUsersButton.disabled = state.isBusy || !usbAvailable;
     }
   }
 
@@ -195,6 +202,24 @@
 
     elements.usersExportResultTitle.textContent = title;
     elements.usersExportResultDetail.textContent = detail;
+  }
+
+  function setUsbUsersImportResult(kind, title, detail) {
+    if (!elements.usersImportResult || !elements.usersImportResultTitle || !elements.usersImportResultDetail) {
+      return;
+    }
+
+    elements.usersImportResult.className = "usb-export-result";
+    if (kind === "success") {
+      elements.usersImportResult.classList.add("usb-export-result-success");
+    } else if (kind === "failure") {
+      elements.usersImportResult.classList.add("usb-export-result-failure");
+    } else {
+      elements.usersImportResult.classList.add("usb-export-result-neutral");
+    }
+
+    elements.usersImportResultTitle.textContent = title;
+    elements.usersImportResultDetail.textContent = detail;
   }
 
   function clearUser() {
@@ -422,6 +447,60 @@
     }
   }
 
+  async function importUsersFromUsb() {
+    if (!config.localUsbUsersImportEndpoint) {
+      return;
+    }
+
+    if (!state.usbStatus || !state.usbStatus.usb_available) {
+      setUsbUsersImportResult(
+        "failure",
+        "\u0055\u0053\u0042 \u043d\u0435 \u043d\u0430\u0439\u0434\u0435\u043d",
+        "\u041f\u043e\u0434\u043a\u043b\u044e\u0447\u0438\u0442\u0435 USB-\u043d\u043e\u0441\u0438\u0442\u0435\u043b\u044c \u0438 \u043f\u043e\u0432\u0442\u043e\u0440\u0438\u0442\u0435 \u0438\u043c\u043f\u043e\u0440\u0442."
+      );
+      syncUsbExportControls();
+      return;
+    }
+
+    setBusy(true);
+    setUsbUsersImportResult(
+      "neutral",
+      "\u0418\u043c\u043f\u043e\u0440\u0442 \u0432\u044b\u043f\u043e\u043b\u043d\u044f\u0435\u0442\u0441\u044f",
+      "\u041f\u043e\u0434\u043e\u0436\u0434\u0438\u0442\u0435, \u0447\u0438\u0442\u0430\u0435\u0442\u0441\u044f users.csv \u0441 USB-\u043d\u043e\u0441\u0438\u0442\u0435\u043b\u044f."
+    );
+
+    try {
+      const { response, payload } = await readJson(config.localUsbUsersImportEndpoint, {
+        method: "POST",
+        body: JSON.stringify({}),
+      });
+
+      if (!response.ok) {
+        throw new Error(payload.detail || "USB users import endpoint returned an error.");
+      }
+
+      setUsbUsersImportResult(
+        "success",
+        "\u0418\u043c\u043f\u043e\u0440\u0442 \u0437\u0430\u0432\u0435\u0440\u0448\u0435\u043d",
+        "users.csv: \u0441\u043e\u0437\u0434\u0430\u043d\u043e " +
+          payload.created_count +
+          ", \u043e\u0431\u043d\u043e\u0432\u043b\u0435\u043d\u043e " +
+          payload.updated_count +
+          ", \u0432\u0441\u0435\u0433\u043e \u0441\u0442\u0440\u043e\u043a " +
+          payload.total_rows
+      );
+    } catch (error) {
+      setUsbUsersImportResult(
+        "failure",
+        "\u041e\u0448\u0438\u0431\u043a\u0430 \u0438\u043c\u043f\u043e\u0440\u0442\u0430",
+        String(error)
+      );
+    } finally {
+      setBusy(false);
+      await refreshUsbStatus();
+    }
+  }
+
   function initializeUsbExportForm() {
     if (!elements.exportDateFrom || !elements.exportDateTo || !elements.exportOperationsButton) {
       return;
@@ -435,6 +514,9 @@
     elements.exportOperationsButton.addEventListener("click", exportOperationsToUsb);
     if (elements.exportUsersButton) {
       elements.exportUsersButton.addEventListener("click", exportUsersToUsb);
+    }
+    if (elements.importUsersButton) {
+      elements.importUsersButton.addEventListener("click", importUsersFromUsb);
     }
     syncUsbExportControls();
   }

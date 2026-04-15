@@ -26,3 +26,14 @@ class UsbUsersExportResultDTO:
     file_path: str
     file_name: str
     mount_path: str
+
+
+@dataclass(frozen=True, slots=True)
+class UsbUsersImportResultDTO:
+    success: bool
+    file_path: str
+    file_name: str
+    mount_path: str
+    created_count: int
+    updated_count: int
+    total_rows: int

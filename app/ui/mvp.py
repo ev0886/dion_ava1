@@ -28,6 +28,7 @@ def render_mvp_page(settings: AppSettings) -> HTMLResponse:
         "usbStatusEndpoint": "/local/usb/status",
         "localUsbOperationsExportEndpoint": "/local/usb/export/operations",
         "localUsbUsersExportEndpoint": "/local/usb/export/users",
+        "localUsbUsersImportEndpoint": "/local/usb/import/users",
         "autoResetTimeoutMs": 15000,
         "dispenseQuantity": 1,
     }

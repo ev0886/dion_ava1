@@ -47,7 +47,12 @@ from app.application.dto.startup import (
     RecoveryReadinessDTO,
     StartupReadinessDTO,
 )
-from app.application.dto.usb_storage import UsbOperationsExportResultDTO, UsbStorageStatusDTO, UsbUsersExportResultDTO
+from app.application.dto.usb_storage import (
+    UsbOperationsExportResultDTO,
+    UsbStorageStatusDTO,
+    UsbUsersExportResultDTO,
+    UsbUsersImportResultDTO,
+)
 
 __all__ = [
     "AdminUserRecordDTO",
@@ -94,4 +99,5 @@ __all__ = [
     "UsbOperationsExportResultDTO",
     "UsbStorageStatusDTO",
     "UsbUsersExportResultDTO",
+    "UsbUsersImportResultDTO",
 ]

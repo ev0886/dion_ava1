@@ -4,13 +4,19 @@ from datetime import date
 from pathlib import Path
 
 from app.application.admin_service import AdminOperationService, AdminUserService
-from app.application.dto.usb_storage import UsbOperationsExportResultDTO, UsbUsersExportResultDTO
+from app.application.dto.usb_storage import (
+    UsbOperationsExportResultDTO,
+    UsbUsersExportResultDTO,
+    UsbUsersImportResultDTO,
+)
 from app.application.exceptions import ValidationError
 from app.application.time import utc_now
 from app.application.usb_storage_service import UsbStorageDiscoveryService
 
 
 class LocalUsbExportService:
+    _USERS_IMPORT_FILE_NAME = "users.csv"
+
     def __init__(
         self,
         *,
@@ -52,6 +58,24 @@ class LocalUsbExportService:
             mount_path=str(mount_path),
         )
 
+    def import_users_csv(self) -> UsbUsersImportResultDTO:
+        mount_path = self._resolve_readable_mount_path()
+        source_path = mount_path / self._USERS_IMPORT_FILE_NAME
+        if not source_path.exists() or not source_path.is_file():
+            raise ValidationError("На USB-носителе не найден файл users.csv в корне накопителя.")
+
+        csv_text = self._read_csv_from_mount_root(source_path=source_path)
+        result = self._admin_users.import_users_csv(csv_text)
+        return UsbUsersImportResultDTO(
+            success=True,
+            file_path=str(source_path),
+            file_name=self._USERS_IMPORT_FILE_NAME,
+            mount_path=str(mount_path),
+            created_count=result.created_count,
+            updated_count=result.updated_count,
+            total_rows=result.total_rows,
+        )
+
     def _resolve_writable_mount_path(self) -> Path:
         usb_status = self._usb_storage.get_status()
         if not usb_status.usb_available or not usb_status.mount_path:
@@ -73,6 +97,18 @@ class LocalUsbExportService:
             )
         return mount_path
 
+    def _resolve_readable_mount_path(self) -> Path:
+        usb_status = self._usb_storage.get_status()
+        if not usb_status.usb_available or not usb_status.mount_path:
+            raise ValidationError("USB-носитель не обнаружен. Импорт пользователей недоступен.")
+        if not usb_status.readable:
+            raise ValidationError("USB-носитель недоступен для чтения.")
+
+        mount_path = Path(usb_status.mount_path)
+        if not mount_path.exists() or not mount_path.is_dir():
+            raise ValidationError("Точка монтирования USB недоступна.")
+        return mount_path
+
     @staticmethod
     def _write_csv_to_mount_root(*, mount_path: Path, file_name: str, csv_text: str) -> Path:
         target_path = mount_path / file_name
@@ -85,3 +121,10 @@ class LocalUsbExportService:
             ) from exc
 
         return target_path
+
+    @staticmethod
+    def _read_csv_from_mount_root(*, source_path: Path) -> str:
+        try:
+            return source_path.read_text(encoding="utf-8-sig")
+        except OSError as exc:
+            raise ValidationError(f"Не удалось прочитать CSV с USB: {exc}") from exc
