@@ -27,6 +27,7 @@ def render_mvp_page(settings: AppSettings) -> HTMLResponse:
         "optionsEndpoint": "/inventory/kiosk-dispense-options",
         "usbStatusEndpoint": "/local/usb/status",
         "localUsbOperationsExportEndpoint": "/local/usb/export/operations",
+        "localUsbUsersExportEndpoint": "/local/usb/export/users",
         "autoResetTimeoutMs": 15000,
         "dispenseQuantity": 1,
     }

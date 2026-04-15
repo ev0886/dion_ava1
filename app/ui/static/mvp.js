@@ -16,6 +16,10 @@
     exportResult: document.getElementById("usb-export-result"),
     exportResultTitle: document.getElementById("usb-export-result-title"),
     exportResultDetail: document.getElementById("usb-export-result-detail"),
+    exportUsersButton: document.getElementById("usb-export-users-button"),
+    usersExportResult: document.getElementById("usb-users-export-result"),
+    usersExportResultTitle: document.getElementById("usb-users-export-result-title"),
+    usersExportResultDetail: document.getElementById("usb-users-export-result-detail"),
     optionCountPill: document.getElementById("option-count-pill"),
     optionsEmptyState: document.getElementById("options-empty-state"),
     dispenseOptions: document.getElementById("dispense-options"),
@@ -77,6 +81,9 @@
     elements.exportDateFrom.disabled = state.isBusy;
     elements.exportDateTo.disabled = state.isBusy;
     elements.exportOperationsButton.disabled = state.isBusy || !usbAvailable || !hasDates;
+    if (elements.exportUsersButton) {
+      elements.exportUsersButton.disabled = state.isBusy || !usbAvailable;
+    }
   }
 
   function updateStatusTone(tone) {
@@ -170,6 +177,24 @@
 
     elements.exportResultTitle.textContent = title;
     elements.exportResultDetail.textContent = detail;
+  }
+
+  function setUsbUsersExportResult(kind, title, detail) {
+    if (!elements.usersExportResult || !elements.usersExportResultTitle || !elements.usersExportResultDetail) {
+      return;
+    }
+
+    elements.usersExportResult.className = "usb-export-result";
+    if (kind === "success") {
+      elements.usersExportResult.classList.add("usb-export-result-success");
+    } else if (kind === "failure") {
+      elements.usersExportResult.classList.add("usb-export-result-failure");
+    } else {
+      elements.usersExportResult.classList.add("usb-export-result-neutral");
+    }
+
+    elements.usersExportResultTitle.textContent = title;
+    elements.usersExportResultDetail.textContent = detail;
   }
 
   function clearUser() {
@@ -348,6 +373,55 @@
     }
   }
 
+  async function exportUsersToUsb() {
+    if (!config.localUsbUsersExportEndpoint) {
+      return;
+    }
+
+    if (!state.usbStatus || !state.usbStatus.usb_available) {
+      setUsbUsersExportResult(
+        "failure",
+        "\u0055\u0053\u0042 \u043d\u0435 \u043d\u0430\u0439\u0434\u0435\u043d",
+        "\u041f\u043e\u0434\u043a\u043b\u044e\u0447\u0438\u0442\u0435 USB-\u043d\u043e\u0441\u0438\u0442\u0435\u043b\u044c \u0438 \u043f\u043e\u0432\u0442\u043e\u0440\u0438\u0442\u0435 \u0432\u044b\u0433\u0440\u0443\u0437\u043a\u0443."
+      );
+      syncUsbExportControls();
+      return;
+    }
+
+    setBusy(true);
+    setUsbUsersExportResult(
+      "neutral",
+      "\u042d\u043a\u0441\u043f\u043e\u0440\u0442 \u0432\u044b\u043f\u043e\u043b\u043d\u044f\u0435\u0442\u0441\u044f",
+      "\u041f\u043e\u0434\u043e\u0436\u0434\u0438\u0442\u0435, CSV \u043f\u043e\u043b\u044c\u0437\u043e\u0432\u0430\u0442\u0435\u043b\u0435\u0439 \u0437\u0430\u043f\u0438\u0441\u044b\u0432\u0430\u0435\u0442\u0441\u044f \u043d\u0430 USB-\u043d\u043e\u0441\u0438\u0442\u0435\u043b\u044c."
+    );
+
+    try {
+      const { response, payload } = await readJson(config.localUsbUsersExportEndpoint, {
+        method: "POST",
+        body: JSON.stringify({}),
+      });
+
+      if (!response.ok) {
+        throw new Error(payload.detail || "USB users export endpoint returned an error.");
+      }
+
+      setUsbUsersExportResult(
+        "success",
+        "\u042d\u043a\u0441\u043f\u043e\u0440\u0442 \u0437\u0430\u0432\u0435\u0440\u0448\u0435\u043d",
+        "\u0424\u0430\u0439\u043b \u0437\u0430\u043f\u0438\u0441\u0430\u043d: " + payload.file_path
+      );
+    } catch (error) {
+      setUsbUsersExportResult(
+        "failure",
+        "\u041e\u0448\u0438\u0431\u043a\u0430 \u044d\u043a\u0441\u043f\u043e\u0440\u0442\u0430",
+        String(error)
+      );
+    } finally {
+      setBusy(false);
+      await refreshUsbStatus();
+    }
+  }
+
   function initializeUsbExportForm() {
     if (!elements.exportDateFrom || !elements.exportDateTo || !elements.exportOperationsButton) {
       return;
@@ -359,6 +433,9 @@
     elements.exportDateFrom.addEventListener("input", syncUsbExportControls);
     elements.exportDateTo.addEventListener("input", syncUsbExportControls);
     elements.exportOperationsButton.addEventListener("click", exportOperationsToUsb);
+    if (elements.exportUsersButton) {
+      elements.exportUsersButton.addEventListener("click", exportUsersToUsb);
+    }
     syncUsbExportControls();
   }
 

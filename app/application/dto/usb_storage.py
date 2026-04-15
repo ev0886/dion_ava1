@@ -18,3 +18,11 @@ class UsbOperationsExportResultDTO:
     file_path: str
     file_name: str
     mount_path: str
+
+
+@dataclass(frozen=True, slots=True)
+class UsbUsersExportResultDTO:
+    success: bool
+    file_path: str
+    file_name: str
+    mount_path: str

@@ -150,6 +150,7 @@ def build_services(
         local_usb_exports=LocalUsbExportService(
             usb_storage=usb_storage_service,
             admin_operations=admin_operations_service,
+            admin_users=admin_users_service,
         ),
     )
 
