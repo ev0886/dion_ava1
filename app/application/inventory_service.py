@@ -2,9 +2,15 @@ from __future__ import annotations
 
 from sqlalchemy import select
 
-from app.application.dto.inventory import InventoryBalanceDTO, InventoryLookupResult, SlotBindingDTO
+from app.application.dto.inventory import (
+    InventoryBalanceDTO,
+    InventoryLookupResult,
+    ReplenishmentOptionDTO,
+    SlotBindingDTO,
+)
 from app.application.exceptions import ValidationError
-from app.persistence.models import InventoryBalance, SlotItemBinding
+from app.domain.enums import ItemStatus, SlotStatus
+from app.persistence.models import InventoryBalance, Item, Slot, SlotItemBinding
 from app.persistence.repositories.inventory import InventoryRepository
 
 
@@ -38,6 +44,46 @@ class InventoryService:
             statement = statement.where(SlotItemBinding.item_id == item_id)
         bindings = self.inventory_repository.session.execute(statement).scalars()
         return tuple(self._to_binding_dto(binding) for binding in bindings)
+
+    def list_replenishment_options(self) -> tuple[ReplenishmentOptionDTO, ...]:
+        statement = (
+            select(SlotItemBinding, Item, Slot, InventoryBalance)
+            .join(Item, Item.id == SlotItemBinding.item_id)
+            .join(Slot, Slot.id == SlotItemBinding.slot_id)
+            .outerjoin(
+                InventoryBalance,
+                (InventoryBalance.slot_id == SlotItemBinding.slot_id)
+                & (InventoryBalance.item_id == SlotItemBinding.item_id),
+            )
+            .where(
+                SlotItemBinding.is_active.is_(True),
+                Item.status == ItemStatus.ACTIVE,
+                Slot.status == SlotStatus.ACTIVE,
+            )
+            .order_by(Item.name.asc(), Slot.code.asc(), SlotItemBinding.id.asc())
+        )
+        rows = self.inventory_repository.session.execute(statement)
+        return tuple(
+            ReplenishmentOptionDTO(
+                item_id=item.id,
+                item_name=item.name,
+                item_sku=item.sku,
+                item_unit=item.unit,
+                item_min_level=item.min_level,
+                slot_id=slot.id,
+                slot_code=slot.code,
+                slot_status=slot.status.value,
+                slot_type=slot.slot_type.value,
+                drum_position=slot.drum_position,
+                board_address=slot.board_address,
+                lock_number=slot.lock_number,
+                capacity=slot.capacity,
+                binding_type=binding.binding_type,
+                quantity=balance.quantity if balance is not None else 0,
+                updated_at=balance.updated_at if balance is not None else None,
+            )
+            for binding, item, slot, balance in rows
+        )
 
     @staticmethod
     def _validate_slot_item_ids(slot_id: int, item_id: int) -> None:

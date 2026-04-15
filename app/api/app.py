@@ -3,7 +3,7 @@ from __future__ import annotations
 from contextlib import asynccontextmanager
 
 from fastapi import Depends, FastAPI
-from fastapi.responses import JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 
 from app.api.dependencies import get_application_container
 from app.api.errors import register_exception_handlers
@@ -22,6 +22,7 @@ from app.application.dto.auth import AuthRequest
 from app.application.dto.operations import DispenseRequest, RefillRequest, ReturnRequest
 from app.bootstrap import bootstrap
 from app.config import AppSettings, get_settings
+from app.ui.mvp import render_admin_page, render_operator_page, render_user_page
 from app.persistence.session import create_session_factory, create_sqlalchemy_engine
 
 
@@ -65,6 +66,10 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
         )
         return JSONResponse(to_api_payload(dto))
 
+    @app.get("/inventory/replenishment-overview")
+    def replenishment_overview(container: ApplicationContainer = Depends(get_application_container)) -> JSONResponse:
+        return JSONResponse(to_api_payload({"options": container.services.inventory.list_replenishment_options()}))
+
     @app.get("/inventory/{slot_id}/{item_id}")
     def inventory_lookup(
         slot_id: int,
@@ -72,6 +77,22 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
         container: ApplicationContainer = Depends(get_application_container),
     ) -> JSONResponse:
         return JSONResponse(to_api_payload(container.services.inventory.lookup_inventory(slot_id=slot_id, item_id=item_id)))
+
+    @app.get("/ui/user", response_class=HTMLResponse)
+    def user_ui() -> HTMLResponse:
+        return render_user_page(app_settings)
+
+    @app.get("/ui/mvp", response_class=HTMLResponse)
+    def user_mvp_ui() -> HTMLResponse:
+        return render_user_page(app_settings)
+
+    @app.get("/ui/operator", response_class=HTMLResponse)
+    def operator_ui() -> HTMLResponse:
+        return render_operator_page(app_settings)
+
+    @app.get("/ui/admin", response_class=HTMLResponse)
+    def admin_ui() -> HTMLResponse:
+        return render_admin_page(app_settings)
 
     @app.post("/operations/dispense")
     def dispense_operation(

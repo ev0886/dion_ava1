@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>DION ABA1 User UI</title>
+  <style>
+    :root { color-scheme: light; --bg:#f4f1ea; --panel:#fffdf8; --ink:#1f2933; --muted:#66727f; --line:#d8cec0; --accent:#17624f; }
+    * { box-sizing:border-box; }
+    body { margin:0; font-family:Segoe UI, Arial, sans-serif; background:linear-gradient(180deg,#f8f4ed 0%,#ece5d9 100%); color:var(--ink); }
+    main { max-width:900px; margin:0 auto; padding:48px 24px; }
+    section { background:var(--panel); border:1px solid var(--line); border-radius:20px; padding:24px; box-shadow:0 18px 40px rgba(65,41,10,.08); }
+    h1 { margin:0 0 12px; font-size:2rem; }
+    p { margin:0; color:var(--muted); line-height:1.6; }
+    code { font-family:Consolas, monospace; }
+  </style>
+</head>
+<body>
+  <main>
+    <section>
+      <h1>User Workflow</h1>
+      <p>User-facing kiosk workflow remains isolated on <code>/ui/user</code> and the <code>/ui/mvp</code> alias.</p>
+    </section>
+  </main>
+  <script>window.DION_UI_CONFIG = __DION_UI_CONFIG__;</script>
+</body>
+</html>

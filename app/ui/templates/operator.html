@@ -1,0 +1,515 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>DION ABA1 Operator Replenishment</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg-a: #f1ecdf;
+      --bg-b: #e6dcc8;
+      --panel: rgba(255, 251, 244, 0.92);
+      --panel-strong: #fffdf9;
+      --ink: #1d2b34;
+      --muted: #60707b;
+      --line: #d9cfbf;
+      --accent: #1a6a57;
+      --accent-soft: #e2f0ea;
+      --danger: #9f2f2f;
+      --danger-soft: #f9e1e1;
+      --ok: #226245;
+      --ok-soft: #e1f0e7;
+      --shadow: 0 20px 40px rgba(66, 45, 17, 0.10);
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: Segoe UI, Arial, sans-serif;
+      color: var(--ink);
+      background:
+        radial-gradient(circle at top left, rgba(255,255,255,.55), transparent 28%),
+        linear-gradient(160deg, var(--bg-a), var(--bg-b));
+    }
+    main {
+      max-width: 1320px;
+      margin: 0 auto;
+      padding: 28px 20px 36px;
+    }
+    .shell {
+      display: grid;
+      gap: 18px;
+      grid-template-columns: minmax(0, 1.5fr) minmax(320px, 0.9fr);
+      align-items: start;
+    }
+    .hero, .panel {
+      border: 1px solid var(--line);
+      border-radius: 22px;
+      background: var(--panel);
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(16px);
+    }
+    .hero { padding: 24px; }
+    .hero h1 { margin: 0 0 8px; font-size: clamp(1.8rem, 2.5vw, 2.7rem); }
+    .hero p { margin: 0; max-width: 70ch; color: var(--muted); line-height: 1.55; }
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 12px;
+      margin-top: 18px;
+    }
+    .stat {
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      padding: 14px 16px;
+      background: rgba(255,255,255,.45);
+    }
+    .stat small { display: block; color: var(--muted); margin-bottom: 6px; }
+    .stat strong { font-size: 1.4rem; }
+    .panel { padding: 18px; }
+    .panel h2 { margin: 0 0 10px; font-size: 1.15rem; }
+    .toolbar {
+      display: flex;
+      gap: 12px;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 14px;
+      flex-wrap: wrap;
+    }
+    .search {
+      width: min(360px, 100%);
+      padding: 12px 14px;
+      border-radius: 14px;
+      border: 1px solid var(--line);
+      background: var(--panel-strong);
+      color: var(--ink);
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      overflow: hidden;
+      border-radius: 16px;
+      background: var(--panel-strong);
+    }
+    th, td {
+      padding: 12px 14px;
+      border-bottom: 1px solid #ece3d6;
+      text-align: left;
+      vertical-align: top;
+      font-size: 0.95rem;
+    }
+    th { color: var(--muted); font-weight: 600; font-size: 0.83rem; text-transform: uppercase; letter-spacing: 0.04em; }
+    tr:last-child td { border-bottom: 0; }
+    tr.is-selected { background: #eef6f2; }
+    tr[role="button"] { cursor: pointer; }
+    .muted { color: var(--muted); }
+    .stack { display: grid; gap: 14px; }
+    .selection {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+    .card {
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      padding: 14px;
+      background: var(--panel-strong);
+      min-height: 112px;
+    }
+    .card strong { display: block; margin-bottom: 8px; font-size: 1rem; }
+    .card p { margin: 0; color: var(--muted); line-height: 1.45; }
+    label { display: block; margin-bottom: 6px; font-size: 0.9rem; color: var(--muted); }
+    select, input {
+      width: 100%;
+      padding: 12px 14px;
+      border-radius: 14px;
+      border: 1px solid var(--line);
+      background: var(--panel-strong);
+      color: var(--ink);
+      font: inherit;
+    }
+    .form-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+    .actions {
+      display: flex;
+      gap: 12px;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+    }
+    button {
+      border: 0;
+      border-radius: 14px;
+      padding: 13px 18px;
+      font: inherit;
+      font-weight: 600;
+      background: var(--accent);
+      color: white;
+      cursor: pointer;
+    }
+    button:disabled { opacity: 0.6; cursor: wait; }
+    .status {
+      border-radius: 16px;
+      padding: 14px;
+      border: 1px solid var(--line);
+      background: #f8f4ec;
+      color: var(--ink);
+      white-space: pre-wrap;
+      line-height: 1.45;
+    }
+    .status.ok { background: var(--ok-soft); border-color: #bfd9ca; color: var(--ok); }
+    .status.error { background: var(--danger-soft); border-color: #e2bbbb; color: var(--danger); }
+    .empty {
+      padding: 32px 18px;
+      text-align: center;
+      color: var(--muted);
+      border: 1px dashed var(--line);
+      border-radius: 16px;
+      background: rgba(255,255,255,.4);
+    }
+    @media (max-width: 980px) {
+      .shell, .selection, .form-grid, .stats { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <section class="hero">
+      <h1>Operator Replenishment</h1>
+      <p>Review active item-slot bindings, select the target cell, and record replenishment without leaving the operator workflow.</p>
+      <div class="stats">
+        <div class="stat"><small>Active bindings</small><strong id="stat-bindings">0</strong></div>
+        <div class="stat"><small>Low stock rows</small><strong id="stat-low">0</strong></div>
+        <div class="stat"><small>Selected balance</small><strong id="stat-balance">-</strong></div>
+      </div>
+    </section>
+
+    <div class="shell" style="margin-top: 18px;">
+      <section class="panel">
+        <div class="toolbar">
+          <div>
+            <h2>Inventory Map</h2>
+            <div class="muted">Operator view of refillable item-slot pairs.</div>
+          </div>
+          <input id="search" class="search" type="search" placeholder="Filter by item, SKU, or slot">
+        </div>
+        <div id="table-wrap" class="empty">Loading replenishment data...</div>
+      </section>
+
+      <section class="panel stack">
+        <div>
+          <h2>Replenishment Action</h2>
+          <div class="muted">Use the selected row or choose values manually if needed.</div>
+        </div>
+
+        <div class="selection">
+          <article class="card">
+            <strong>Selected item</strong>
+            <p id="selected-item">Nothing selected.</p>
+          </article>
+          <article class="card">
+            <strong>Selected slot</strong>
+            <p id="selected-slot">Nothing selected.</p>
+          </article>
+        </div>
+
+        <form id="refill-form" class="stack">
+          <div>
+            <label for="operator-user-id">Operator user ID</label>
+            <input id="operator-user-id" name="operator_user_id" type="number" min="1" inputmode="numeric" required placeholder="e.g. 2001">
+          </div>
+
+          <div class="form-grid">
+            <div>
+              <label for="item-select">Item</label>
+              <select id="item-select" name="item_id" required></select>
+            </div>
+            <div>
+              <label for="slot-select">Slot</label>
+              <select id="slot-select" name="slot_id" required></select>
+            </div>
+          </div>
+
+          <div class="form-grid">
+            <div>
+              <label for="quantity-input">Replenishment quantity</label>
+              <input id="quantity-input" name="quantity" type="number" min="0" inputmode="numeric" required value="1">
+            </div>
+            <div>
+              <label for="mode-select">Mode</label>
+              <select id="mode-select" name="mode">
+                <option value="add">Add to current balance</option>
+                <option value="set">Set final balance</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="actions">
+            <div class="muted" id="submit-hint">Select an item-slot row to prefill the form.</div>
+            <button id="submit-button" type="submit">Submit replenishment</button>
+          </div>
+        </form>
+
+        <div id="status-box" class="status">Ready.</div>
+      </section>
+    </div>
+  </main>
+
+  <script>
+    window.DION_OPERATOR_UI_CONFIG = __DION_OPERATOR_UI_CONFIG__;
+
+    const config = window.DION_OPERATOR_UI_CONFIG;
+    const state = {
+      options: [],
+      selectedKey: null,
+      filteredOptions: [],
+    };
+
+    const elements = {
+      search: document.getElementById("search"),
+      tableWrap: document.getElementById("table-wrap"),
+      itemSelect: document.getElementById("item-select"),
+      slotSelect: document.getElementById("slot-select"),
+      quantityInput: document.getElementById("quantity-input"),
+      modeSelect: document.getElementById("mode-select"),
+      operatorUserId: document.getElementById("operator-user-id"),
+      refillForm: document.getElementById("refill-form"),
+      selectedItem: document.getElementById("selected-item"),
+      selectedSlot: document.getElementById("selected-slot"),
+      statusBox: document.getElementById("status-box"),
+      submitButton: document.getElementById("submit-button"),
+      statBindings: document.getElementById("stat-bindings"),
+      statLow: document.getElementById("stat-low"),
+      statBalance: document.getElementById("stat-balance"),
+      submitHint: document.getElementById("submit-hint"),
+    };
+
+    elements.modeSelect.value = config.defaultRefillMode;
+
+    function rowKey(option) {
+      return `${option.item_id}:${option.slot_id}`;
+    }
+
+    function selectedOption() {
+      return state.options.find((option) => rowKey(option) === state.selectedKey) ?? null;
+    }
+
+    function setStatus(message, tone) {
+      elements.statusBox.textContent = message;
+      elements.statusBox.className = `status${tone ? ` ${tone}` : ""}`;
+    }
+
+    function updateStats() {
+      elements.statBindings.textContent = String(state.options.length);
+      elements.statLow.textContent = String(
+        state.options.filter((option) => option.quantity <= option.item_min_level).length
+      );
+      const option = selectedOption();
+      elements.statBalance.textContent = option ? `${option.quantity} ${option.item_unit}` : "-";
+    }
+
+    function optionLabel(option) {
+      return `${option.item_name} (${option.item_sku})`;
+    }
+
+    function slotLabel(option) {
+      return `${option.slot_code} · pos ${option.drum_position} · qty ${option.quantity}`;
+    }
+
+    function renderSelects() {
+      const uniqueItems = new Map();
+      state.options.forEach((option) => {
+        if (!uniqueItems.has(option.item_id)) {
+          uniqueItems.set(option.item_id, option);
+        }
+      });
+
+      elements.itemSelect.innerHTML = Array.from(uniqueItems.values())
+        .map((option) => `<option value="${option.item_id}">${optionLabel(option)}</option>`)
+        .join("");
+
+      if (!elements.itemSelect.value && uniqueItems.size) {
+        elements.itemSelect.value = String(Array.from(uniqueItems.keys())[0]);
+      }
+
+      renderSlotSelect();
+    }
+
+    function renderSlotSelect() {
+      const itemId = Number(elements.itemSelect.value);
+      const matchingOptions = state.options.filter((option) => option.item_id === itemId);
+      elements.slotSelect.innerHTML = matchingOptions
+        .map((option) => `<option value="${option.slot_id}">${slotLabel(option)}</option>`)
+        .join("");
+
+      const currentSelection = selectedOption();
+      if (currentSelection && currentSelection.item_id === itemId) {
+        elements.slotSelect.value = String(currentSelection.slot_id);
+      }
+    }
+
+    function renderSelectedCards() {
+      const option = selectedOption();
+      if (!option) {
+        elements.selectedItem.textContent = "Nothing selected.";
+        elements.selectedSlot.textContent = "Nothing selected.";
+        elements.submitHint.textContent = "Select an item-slot row to prefill the form.";
+        updateStats();
+        return;
+      }
+
+      elements.selectedItem.textContent = `${option.item_name} (${option.item_sku}) · min ${option.item_min_level} ${option.item_unit}`;
+      elements.selectedSlot.textContent = `${option.slot_code} · position ${option.drum_position} · current ${option.quantity} ${option.item_unit} · binding ${option.binding_type}`;
+      elements.submitHint.textContent = `Target slot ${option.slot_code} is ready for ${option.item_name}.`;
+      updateStats();
+    }
+
+    function renderTable() {
+      const query = elements.search.value.trim().toLowerCase();
+      state.filteredOptions = state.options.filter((option) => {
+        if (!query) {
+          return true;
+        }
+        return [
+          option.item_name,
+          option.item_sku,
+          option.slot_code,
+          option.binding_type,
+        ].some((value) => String(value).toLowerCase().includes(query));
+      });
+
+      if (!state.filteredOptions.length) {
+        elements.tableWrap.innerHTML = '<div class="empty">No matching item-slot pairs found.</div>';
+        return;
+      }
+
+      const rows = state.filteredOptions.map((option) => {
+        const key = rowKey(option);
+        const selectedClass = key === state.selectedKey ? "is-selected" : "";
+        return `
+          <tr role="button" data-row-key="${key}" class="${selectedClass}">
+            <td><strong>${option.item_name}</strong><div class="muted">${option.item_sku}</div></td>
+            <td>${option.slot_code}<div class="muted">pos ${option.drum_position}</div></td>
+            <td>${option.quantity} ${option.item_unit}</td>
+            <td>${option.capacity ?? "-"}</td>
+            <td>${option.binding_type}</td>
+            <td>${option.item_min_level}</td>
+          </tr>
+        `;
+      }).join("");
+
+      elements.tableWrap.innerHTML = `
+        <table>
+          <thead>
+            <tr>
+              <th>Item</th>
+              <th>Slot</th>
+              <th>Current Qty</th>
+              <th>Capacity</th>
+              <th>Binding</th>
+              <th>Min</th>
+            </tr>
+          </thead>
+          <tbody>${rows}</tbody>
+        </table>
+      `;
+
+      elements.tableWrap.querySelectorAll("[data-row-key]").forEach((row) => {
+        row.addEventListener("click", () => {
+          const key = row.getAttribute("data-row-key");
+          const option = state.options.find((entry) => rowKey(entry) === key);
+          if (!option) {
+            return;
+          }
+          state.selectedKey = key;
+          elements.itemSelect.value = String(option.item_id);
+          renderSlotSelect();
+          elements.slotSelect.value = String(option.slot_id);
+          renderSelectedCards();
+          renderTable();
+        });
+      });
+    }
+
+    function syncSelectionFromForm() {
+      const itemId = Number(elements.itemSelect.value);
+      const slotId = Number(elements.slotSelect.value);
+      const option = state.options.find((entry) => entry.item_id === itemId && entry.slot_id === slotId);
+      state.selectedKey = option ? rowKey(option) : null;
+      renderSelectedCards();
+      renderTable();
+    }
+
+    async function loadOverview() {
+      setStatus("Loading replenishment overview...", "");
+      const response = await fetch(config.overviewEndpoint);
+      const payload = await response.json();
+
+      if (!response.ok) {
+        throw new Error(payload.detail || "Failed to load replenishment overview");
+      }
+
+      state.options = payload.options || [];
+      renderSelects();
+      renderSelectedCards();
+      renderTable();
+      setStatus(`Loaded ${state.options.length} active item-slot pairs.`, "");
+    }
+
+    async function submitRefill(event) {
+      event.preventDefault();
+      elements.submitButton.disabled = true;
+      setStatus("Submitting replenishment operation...", "");
+
+      const payload = {
+        operator_user_id: Number(elements.operatorUserId.value),
+        item_id: Number(elements.itemSelect.value),
+        slot_id: Number(elements.slotSelect.value),
+        quantity: Number(elements.quantityInput.value),
+        mode: elements.modeSelect.value,
+      };
+
+      try {
+        const response = await fetch(config.refillEndpoint, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        const result = await response.json();
+
+        if (!response.ok) {
+          throw new Error(result.detail || "Refill operation failed");
+        }
+
+        const suffix = result.qty_confirmed != null ? `\nConfirmed quantity: ${result.qty_confirmed}` : "";
+        setStatus(
+          `Replenishment completed.\nOperation #${result.operation_id}\nSession #${result.session_id}\nState: ${result.operation_state}${suffix}`,
+          "ok"
+        );
+        await loadOverview();
+      } catch (error) {
+        setStatus(error.message || "Refill operation failed", "error");
+      } finally {
+        elements.submitButton.disabled = false;
+      }
+    }
+
+    elements.search.addEventListener("input", renderTable);
+    elements.itemSelect.addEventListener("change", () => {
+      renderSlotSelect();
+      syncSelectionFromForm();
+    });
+    elements.slotSelect.addEventListener("change", syncSelectionFromForm);
+    elements.refillForm.addEventListener("submit", submitRefill);
+
+    loadOverview().catch((error) => {
+      setStatus(error.message || "Failed to initialize operator workflow", "error");
+      elements.tableWrap.innerHTML = '<div class="empty">Operator inventory view is unavailable.</div>';
+    });
+  </script>
+</body>
+</html>

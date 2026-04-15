@@ -46,6 +46,67 @@ def test_auth_and_inventory_happy_path(tmp_path: Path) -> None:
     assert inventory_response.json()["balance"]["quantity"] == 5
 
 
+def test_ui_role_routes_render_and_mvp_alias_matches_user(tmp_path: Path) -> None:
+    app = create_app(_settings(tmp_path, "api_ui_routes.sqlite3"))
+
+    with TestClient(app) as client:
+        user_response = client.get("/ui/user")
+        alias_response = client.get("/ui/mvp")
+        operator_response = client.get("/ui/operator")
+        admin_response = client.get("/ui/admin")
+
+    assert user_response.status_code == 200
+    assert alias_response.status_code == 200
+    assert operator_response.status_code == 200
+    assert admin_response.status_code == 200
+    assert user_response.text == alias_response.text
+    assert "User Workflow" in user_response.text
+    assert "Operator Replenishment" in operator_response.text
+    assert "Admin Console" in admin_response.text
+
+
+def test_operator_replenishment_overview_lists_active_options(tmp_path: Path) -> None:
+    app = create_app(_settings(tmp_path, "api_replenishment_overview.sqlite3"))
+    _seed_operator_domain(app)
+
+    with TestClient(app) as client:
+        response = client.get("/inventory/replenishment-overview")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert len(payload["options"]) == 2
+    assert payload["options"][0]["item_name"] == "Filter Cartridge"
+    assert payload["options"][0]["quantity"] == 2
+    assert payload["options"][0]["slot_code"] == "slot-a1"
+
+
+def test_operator_refill_updates_balance_and_overview(tmp_path: Path) -> None:
+    app = create_app(_settings(tmp_path, "api_operator_refill.sqlite3"))
+    _seed_operator_domain(app)
+
+    with TestClient(app) as client:
+        refill_response = client.post(
+            "/operations/refill",
+            json={
+                "operator_user_id": 1,
+                "item_id": 1,
+                "slot_id": 1,
+                "quantity": 3,
+                "mode": "add",
+            },
+        )
+        overview_response = client.get("/inventory/replenishment-overview")
+
+    assert refill_response.status_code == 200
+    assert refill_response.json()["operation_state"] == "session_completed"
+    assert refill_response.json()["qty_confirmed"] == 3
+
+    assert overview_response.status_code == 200
+    options = overview_response.json()["options"]
+    replenished_option = next(option for option in options if option["item_id"] == 1 and option["slot_id"] == 1)
+    assert replenished_option["quantity"] == 5
+
+
 def test_dispense_operation_happy_path(tmp_path: Path) -> None:
     app = create_app(_settings(tmp_path, "api_dispense.sqlite3"))
     _seed_base_domain(app)
@@ -145,6 +206,92 @@ def _seed_base_domain(app) -> None:
             )
         )
         session.add(InventoryBalance(slot_id=slot.id, item_id=item.id, quantity=5))
+        session.commit()
+
+
+def _seed_operator_domain(app) -> None:
+    with app.state.session_factory() as session:
+        user_role = Role(code=RoleCode.USER, name="User")
+        operator_role = Role(code=RoleCode.OPERATOR, name="Operator")
+        session.add_all((user_role, operator_role))
+        session.flush()
+
+        operator = User(
+            role_id=operator_role.id,
+            user_code="operator-1",
+            full_name="Operator One",
+            status=UserStatus.ACTIVE,
+            is_active=True,
+        )
+        session.add(operator)
+
+        item_a = Item(
+            item_group_id=None,
+            sku="filter-01",
+            name="Filter Cartridge",
+            description=None,
+            unit="pcs",
+            return_allowed=False,
+            min_level=2,
+            status=ItemStatus.ACTIVE,
+        )
+        item_b = Item(
+            item_group_id=None,
+            sku="glove-02",
+            name="Work Gloves",
+            description=None,
+            unit="pairs",
+            return_allowed=True,
+            min_level=1,
+            status=ItemStatus.ACTIVE,
+        )
+        slot_a = Slot(
+            code="slot-a1",
+            slot_type=SlotType.UNIVERSAL,
+            drum_position=1,
+            board_address=1,
+            lock_number=1,
+            capacity=12,
+            status=SlotStatus.ACTIVE,
+        )
+        slot_b = Slot(
+            code="slot-b2",
+            slot_type=SlotType.UNIVERSAL,
+            drum_position=2,
+            board_address=1,
+            lock_number=2,
+            capacity=20,
+            status=SlotStatus.ACTIVE,
+        )
+        session.add_all((item_a, item_b, slot_a, slot_b))
+        session.flush()
+
+        session.add_all(
+            (
+                SlotItemBinding(
+                    slot_id=slot_a.id,
+                    item_id=item_a.id,
+                    binding_type=BindingType.PRIMARY,
+                    is_active=True,
+                    valid_from=None,
+                    valid_to=None,
+                ),
+                SlotItemBinding(
+                    slot_id=slot_b.id,
+                    item_id=item_b.id,
+                    binding_type=BindingType.RETURN,
+                    is_active=True,
+                    valid_from=None,
+                    valid_to=None,
+                ),
+            )
+        )
+        session.add_all(
+            (
+                InventoryBalance(slot_id=slot_a.id, item_id=item_a.id, quantity=2),
+                InventoryBalance(slot_id=slot_b.id, item_id=item_b.id, quantity=7),
+            )
+        )
         session.commit()
 
 
