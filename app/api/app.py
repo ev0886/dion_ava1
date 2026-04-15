@@ -1,13 +1,16 @@
 from __future__ import annotations
 
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import Depends, FastAPI
 from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
 
 from app.api.dependencies import get_application_container
 from app.api.errors import register_exception_handlers
 from app.api.schemas import (
+    AuthReadAndResolveRfidRequest,
     AuthResolveRequest,
     DispenseOperationRequest,
     ExportCreateRequest,
@@ -43,6 +46,7 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
     app.state.engine = engine
     app.state.session_factory = session_factory
     register_exception_handlers(app)
+    app.mount("/ui-assets", StaticFiles(directory=Path(__file__).resolve().parent.parent / "ui" / "static"), name="ui-assets")
 
     @app.get("/health")
     def health() -> JSONResponse:
@@ -66,9 +70,26 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
         )
         return JSONResponse(to_api_payload(dto))
 
+    @app.post("/auth/read-and-resolve-rfid")
+    def auth_read_and_resolve_rfid(
+        payload: AuthReadAndResolveRfidRequest,
+        container: ApplicationContainer = Depends(get_application_container),
+    ) -> JSONResponse:
+        dto = container.services.auth.read_and_resolve_rfid(
+            hardware_facade=container.hardware.facade,
+            allowed_roles=payload.allowed_roles,
+        )
+        return JSONResponse(to_api_payload(dto))
+
     @app.get("/inventory/replenishment-overview")
     def replenishment_overview(container: ApplicationContainer = Depends(get_application_container)) -> JSONResponse:
         return JSONResponse(to_api_payload({"options": container.services.inventory.list_replenishment_options()}))
+
+    @app.get("/inventory/kiosk-dispense-options")
+    def kiosk_dispense_options(
+        container: ApplicationContainer = Depends(get_application_container),
+    ) -> JSONResponse:
+        return JSONResponse(to_api_payload(container.services.inventory.list_kiosk_dispense_options()))
 
     @app.get("/inventory/{slot_id}/{item_id}")
     def inventory_lookup(
@@ -99,11 +120,14 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
         payload: DispenseOperationRequest,
         container: ApplicationContainer = Depends(get_application_container),
     ) -> JSONResponse:
+        slot_id = payload.slot_id
+        if slot_id is None:
+            slot_id = container.services.inventory.resolve_dispense_slot_for_item(payload.item_id)
         dto = container.services.dispense.execute(
             DispenseRequest(
                 user_id=payload.user_id,
                 item_id=payload.item_id,
-                slot_id=payload.slot_id,
+                slot_id=slot_id,
                 quantity=payload.quantity,
                 session_id=payload.session_id,
             ),

@@ -33,6 +33,19 @@ class InventoryLookupResult:
 
 
 @dataclass(frozen=True, slots=True)
+class KioskDispenseOptionDTO:
+    item_id: int
+    item_name: str
+    item_unit: str
+    total_quantity: int
+
+
+@dataclass(frozen=True, slots=True)
+class KioskDispenseOptionsResult:
+    options: tuple[KioskDispenseOptionDTO, ...]
+
+
+@dataclass(frozen=True, slots=True)
 class ReplenishmentOptionDTO:
     item_id: int
     item_name: str

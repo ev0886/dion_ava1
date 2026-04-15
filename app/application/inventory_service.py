@@ -5,10 +5,12 @@ from sqlalchemy import select
 from app.application.dto.inventory import (
     InventoryBalanceDTO,
     InventoryLookupResult,
+    KioskDispenseOptionDTO,
+    KioskDispenseOptionsResult,
     ReplenishmentOptionDTO,
     SlotBindingDTO,
 )
-from app.application.exceptions import ValidationError
+from app.application.exceptions import NotFoundError, ValidationError
 from app.domain.enums import ItemStatus, SlotStatus
 from app.persistence.models import InventoryBalance, Item, Slot, SlotItemBinding
 from app.persistence.repositories.inventory import InventoryRepository
@@ -44,6 +46,34 @@ class InventoryService:
             statement = statement.where(SlotItemBinding.item_id == item_id)
         bindings = self.inventory_repository.session.execute(statement).scalars()
         return tuple(self._to_binding_dto(binding) for binding in bindings)
+
+    def list_kiosk_dispense_options(self) -> KioskDispenseOptionsResult:
+        aggregated: dict[int, KioskDispenseOptionDTO] = {}
+        for option in self.inventory_repository.list_available_dispense_options():
+            current = aggregated.get(option.item_id)
+            if current is None:
+                aggregated[option.item_id] = KioskDispenseOptionDTO(
+                    item_id=option.item_id,
+                    item_name=option.item_name,
+                    item_unit=option.item_unit,
+                    total_quantity=option.quantity,
+                )
+                continue
+            aggregated[option.item_id] = KioskDispenseOptionDTO(
+                item_id=current.item_id,
+                item_name=current.item_name,
+                item_unit=current.item_unit,
+                total_quantity=current.total_quantity + option.quantity,
+            )
+        return KioskDispenseOptionsResult(options=tuple(aggregated.values()))
+
+    def resolve_dispense_slot_for_item(self, item_id: int) -> int:
+        if item_id <= 0:
+            raise ValidationError("item_id must be positive")
+        for option in self.inventory_repository.list_available_dispense_options():
+            if option.item_id == item_id:
+                return option.slot_id
+        raise NotFoundError(f"No available dispense slot found for item: {item_id}")
 
     def list_replenishment_options(self) -> tuple[ReplenishmentOptionDTO, ...]:
         statement = (

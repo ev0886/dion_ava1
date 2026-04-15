@@ -1,27 +1,103 @@
 <!doctype html>
-<html lang="en">
+<html lang="ru">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>DION ABA1 Admin UI</title>
-  <style>
-    :root { color-scheme: light; --bg:#f4f1ea; --panel:#fffdf8; --ink:#1f2933; --muted:#66727f; --line:#d8cec0; --accent:#684b24; }
-    * { box-sizing:border-box; }
-    body { margin:0; font-family:Segoe UI, Arial, sans-serif; background:linear-gradient(180deg,#efe7da 0%,#f8f6f1 100%); color:var(--ink); }
-    main { max-width:980px; margin:0 auto; padding:48px 24px; }
-    section { background:var(--panel); border:1px solid var(--line); border-radius:20px; padding:24px; box-shadow:0 18px 40px rgba(65,41,10,.08); }
-    h1 { margin:0 0 12px; font-size:2rem; }
-    p { margin:0; color:var(--muted); line-height:1.6; }
-    code { font-family:Consolas, monospace; }
-  </style>
+  <title>DION ABA1 Admin Console</title>
+  <link rel="stylesheet" href="/ui-assets/admin.css">
 </head>
 <body>
-  <main>
-    <section>
-      <h1>Admin Console</h1>
-      <p>Admin tooling stays isolated on <code>/ui/admin</code>. This route is intentionally separate from the operator replenishment workflow.</p>
+  <main class="admin-shell">
+    <header class="hero">
+      <div>
+        <p class="eyebrow">DION ABA1</p>
+        <p class="eyebrow">Admin Console</p>
+        <h1>Административная рабочая область</h1>
+      </div>
+      <p class="hero-note">
+        Общие пользовательские и административные экраны снова возвращены в фирменный стиль. Операторское пополнение
+        остается на отдельном маршруте и не смешивается с этой зоной.
+      </p>
+    </header>
+
+    <section class="status-panel" id="status-panel" aria-live="polite">
+      <strong id="status-title">Готово</strong>
+      <p id="status-message">Панели администрирования подготовлены к локальному обслуживанию автомата.</p>
+    </section>
+
+    <section class="panel panel-grid">
+      <article class="admin-card">
+        <p class="eyebrow">Маршруты</p>
+        <h2>Разделение ролей</h2>
+        <ul class="detail-list">
+          <li><strong>/ui/user</strong> и <strong>/ui/mvp</strong> сохраняют сценарий выдачи.</li>
+          <li><strong>/ui/operator</strong> теперь изолирован под touch-first пополнение.</li>
+          <li><strong>/ui/admin</strong> остается отдельной административной зоной.</li>
+        </ul>
+      </article>
+      <article class="admin-card">
+        <p class="eyebrow">Смены</p>
+        <h2>Контур обслуживания</h2>
+        <p class="card-note">
+          Здесь остаются обзор системы, экспортные и сервисные действия. Они не должны дублировать операторский workflow
+          пополнения по четвертям барабана.
+        </p>
+      </article>
+      <article class="admin-card">
+        <p class="eyebrow">Статус</p>
+        <h2>Панель контроля</h2>
+        <dl class="metric-grid">
+          <div>
+            <dt>Визуальная система</dt>
+            <dd>Восстановлена</dd>
+          </div>
+          <div>
+            <dt>Operator UI</dt>
+            <dd>Отделен</dd>
+          </div>
+          <div>
+            <dt>Последнее обновление</dt>
+            <dd id="admin-last-sync">Сейчас</dd>
+          </div>
+        </dl>
+      </article>
+    </section>
+
+    <section class="panel">
+      <div class="panel-heading">
+        <div>
+          <p class="eyebrow">Навигация</p>
+          <h2>Что находится под рукой</h2>
+        </div>
+      </div>
+      <div class="table-wrap">
+        <table class="admin-table">
+          <thead>
+            <tr>
+              <th>Зона</th>
+              <th>Назначение</th>
+              <th>Основной акцент</th>
+            </tr>
+          </thead>
+          <tbody id="admin-route-table-body"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-heading">
+        <div>
+          <p class="eyebrow">Примечания</p>
+          <h2>Ограничения этой ветки</h2>
+        </div>
+      </div>
+      <div class="callout-grid" id="admin-callouts"></div>
     </section>
   </main>
-  <script>window.DION_ADMIN_UI_CONFIG = __DION_ADMIN_UI_CONFIG__;</script>
+
+  <script>
+    window.DION_ADMIN_UI_CONFIG = __DION_ADMIN_UI_CONFIG__;
+  </script>
+  <script src="/ui-assets/admin.js"></script>
 </body>
 </html>

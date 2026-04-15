@@ -1,27 +1,129 @@
 <!doctype html>
-<html lang="en">
+<html lang="ru">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>DION ABA1 User UI</title>
-  <style>
-    :root { color-scheme: light; --bg:#f4f1ea; --panel:#fffdf8; --ink:#1f2933; --muted:#66727f; --line:#d8cec0; --accent:#17624f; }
-    * { box-sizing:border-box; }
-    body { margin:0; font-family:Segoe UI, Arial, sans-serif; background:linear-gradient(180deg,#f8f4ed 0%,#ece5d9 100%); color:var(--ink); }
-    main { max-width:900px; margin:0 auto; padding:48px 24px; }
-    section { background:var(--panel); border:1px solid var(--line); border-radius:20px; padding:24px; box-shadow:0 18px 40px rgba(65,41,10,.08); }
-    h1 { margin:0 0 12px; font-size:2rem; }
-    p { margin:0; color:var(--muted); line-height:1.6; }
-    code { font-family:Consolas, monospace; }
-  </style>
+  <link rel="stylesheet" href="/ui-assets/mvp.css">
 </head>
 <body>
-  <main>
-    <section>
-      <h1>User Workflow</h1>
-      <p>User-facing kiosk workflow remains isolated on <code>/ui/user</code> and the <code>/ui/mvp</code> alias.</p>
+  <main class="app-shell">
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">DION ABA1</p>
+        <p class="eyebrow">User Workflow</p>
+        <h1>Готово к выдаче</h1>
+      </div>
+      <div class="topbar-meta">
+        <div class="meta-chip">
+          <span class="meta-label">Выбрано</span>
+          <strong id="dispense-target">Выберите товар</strong>
+        </div>
+        <div class="meta-chip">
+          <span class="meta-label">Варианты</span>
+          <strong id="inventory-quantity">Загрузка...</strong>
+        </div>
+      </div>
+    </header>
+
+    <section class="status-panel status-neutral" id="status-panel" aria-live="polite">
+      <div class="status-header">
+        <div>
+          <span class="status-label">Состояние автомата</span>
+          <strong id="machine-state">Ожидание</strong>
+        </div>
+        <span id="idle-return-chip" class="idle-return-chip hidden">Скоро сброс</span>
+      </div>
+      <p id="status-message">Готово для следующего пользователя. Приложите карту и начните авторизацию.</p>
+    </section>
+
+    <section class="main-layout">
+      <section class="card action-card">
+        <h2>Сценарий пользователя</h2>
+        <div class="actions primary-actions">
+          <button id="start-auth-button" class="action-button action-button-primary" type="button">
+            Начать RFID-сканирование
+          </button>
+          <button id="reset-button" class="action-button action-button-secondary" type="button">
+            Сброс
+          </button>
+        </div>
+        <p class="hint">Нажмите старт, приложите карту, затем выполните выдачу.</p>
+      </section>
+
+      <section class="card user-section">
+        <div class="section-heading">
+          <h2>Сессия выдачи</h2>
+          <span id="user-state-pill" class="state-pill">Ожидание</span>
+        </div>
+        <div id="user-card" class="user-card user-card-empty">
+          <p class="user-placeholder">Нет активной пользовательской сессии.</p>
+          <dl class="user-details hidden" id="user-details">
+            <div>
+              <dt>Имя</dt>
+              <dd id="user-name"></dd>
+            </div>
+            <div>
+              <dt>Код пользователя</dt>
+              <dd id="user-code"></dd>
+            </div>
+            <div>
+              <dt>ID пользователя</dt>
+              <dd id="user-id"></dd>
+            </div>
+            <div>
+              <dt>Роль</dt>
+              <dd id="user-role"></dd>
+            </div>
+            <div>
+              <dt>RFID UID</dt>
+              <dd id="rfid-uid"></dd>
+            </div>
+          </dl>
+        </div>
+        <div class="option-section">
+          <div class="section-heading">
+            <h2>Товары в наличии</h2>
+            <span id="option-count-pill" class="state-pill">0 доступно</span>
+          </div>
+          <p id="options-empty-state" class="options-empty-state">Загрузка доступных остатков.</p>
+          <div id="dispense-options" class="dispense-options" aria-label="Доступные варианты выдачи"></div>
+        </div>
+        <button id="dispense-button" class="action-button action-button-primary" type="button" disabled>
+          Выдать выбранный товар
+        </button>
+      </section>
+
+      <section class="card result-card">
+        <div class="section-heading">
+          <h2>Результат операции</h2>
+          <span id="result-state-pill" class="state-pill">Ожидание</span>
+        </div>
+        <div id="result-panel" class="result-panel result-neutral">
+          <p id="result-title">Операций пока не было.</p>
+          <p id="result-detail">Здесь появится результат последней выдачи.</p>
+        </div>
+        <dl class="result-metrics">
+          <div>
+            <dt>Состояние</dt>
+            <dd id="operation-state">n/a</dd>
+          </div>
+          <div>
+            <dt>Кол-во</dt>
+            <dd id="confirmed-qty">n/a</dd>
+          </div>
+          <div>
+            <dt>Ошибка</dt>
+            <dd id="error-code">n/a</dd>
+          </div>
+        </dl>
+      </section>
     </section>
   </main>
-  <script>window.DION_UI_CONFIG = __DION_UI_CONFIG__;</script>
+
+  <script>
+    window.DION_UI_CONFIG = __DION_UI_CONFIG__;
+  </script>
+  <script src="/ui-assets/mvp.js"></script>
 </body>
 </html>
