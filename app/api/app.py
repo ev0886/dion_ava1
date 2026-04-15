@@ -16,6 +16,7 @@ from app.api.schemas import (
     AuthResolveRequest,
     DispenseOperationRequest,
     ExportCreateRequest,
+    LocalUsbOperationsExportRequest,
     RefillOperationRequest,
     ReturnOperationRequest,
     ServiceModeFinishRequest,
@@ -65,6 +66,20 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
     @app.get("/local/usb/status")
     def local_usb_status(container: ApplicationContainer = Depends(get_application_container)) -> JSONResponse:
         return JSONResponse(container.services.usb_storage.get_status_payload())
+
+    @app.post("/local/usb/export/operations")
+    def local_usb_export_operations(
+        payload: LocalUsbOperationsExportRequest,
+        container: ApplicationContainer = Depends(get_application_container),
+    ) -> JSONResponse:
+        return JSONResponse(
+            to_api_payload(
+                container.services.local_usb_exports.export_operations_csv(
+                    date_from=payload.date_from,
+                    date_to=payload.date_to,
+                )
+            )
+        )
 
     @app.get("/admin/users")
     def admin_list_users(container: ApplicationContainer = Depends(get_application_container)) -> JSONResponse:

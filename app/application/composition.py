@@ -11,6 +11,7 @@ from app.application.auth_service import AuthService
 from app.application.dispense_service import DispenseOperationService
 from app.application.export_service import ExportService
 from app.application.inventory_service import InventoryService
+from app.application.local_usb_export_service import LocalUsbExportService
 from app.application.recovery_service import RecoveryService
 from app.application.refill_service import RefillOperationService
 from app.application.return_service import ReturnOperationService
@@ -59,6 +60,7 @@ class ServiceBundle:
     exports: ExportService
     startup: StartupOrchestrationService
     usb_storage: UsbStorageDiscoveryService
+    local_usb_exports: LocalUsbExportService
 
 
 @dataclass(slots=True)
@@ -109,9 +111,12 @@ def build_services(
         hardware_facade=hardware.facade,
         recovery_service=recovery_service,
     )
+    admin_users_service = AdminUserService(repositories.users)
+    admin_operations_service = AdminOperationService(repositories.operations)
+    usb_storage_service = UsbStorageDiscoveryService()
     return ServiceBundle(
-        admin_users=AdminUserService(repositories.users),
-        admin_operations=AdminOperationService(repositories.operations),
+        admin_users=admin_users_service,
+        admin_operations=admin_operations_service,
         admin_system_status=AdminSystemStatusService(startup_service),
         auth=auth_service,
         inventory=inventory_service,
@@ -141,7 +146,11 @@ def build_services(
             audit_log_repository=repositories.audit_logs,
         ),
         startup=startup_service,
-        usb_storage=UsbStorageDiscoveryService(),
+        usb_storage=usb_storage_service,
+        local_usb_exports=LocalUsbExportService(
+            usb_storage=usb_storage_service,
+            admin_operations=admin_operations_service,
+        ),
     )
 
 

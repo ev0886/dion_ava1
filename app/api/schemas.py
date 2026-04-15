@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import date
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict
@@ -62,6 +63,11 @@ class ExportCreateRequest(ApiModel):
     destination_type: str = "filesystem"
     destination_path: str = "var/exports"
     comment: str | None = None
+
+
+class LocalUsbOperationsExportRequest(ApiModel):
+    date_from: date
+    date_to: date
 
 
 class AdminUserUpdateRequest(ApiModel):

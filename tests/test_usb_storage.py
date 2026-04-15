@@ -1,12 +1,24 @@
 from __future__ import annotations
 
+from datetime import date, datetime
 from pathlib import Path
 
+import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy import create_engine
+from sqlalchemy.orm import Session, sessionmaker
 
 from app.api import create_app
+from app.application.admin_service import AdminOperationService
+from app.application.dto.usb_storage import UsbStorageStatusDTO
+from app.application.exceptions import ValidationError
+from app.application.local_usb_export_service import LocalUsbExportService
 from app.application.usb_storage_service import UsbStorageDiscoveryService
 from app.config import AppSettings
+from app.domain.enums import DispenseRestrictionPolicy, ItemStatus, OperationState, OperationType, RoleCode, SlotStatus, SlotType, UserStatus
+from app.persistence.base import Base
+from app.persistence.models import Item, Operation, Role, Slot, User
+from app.persistence.repositories.operations import OperationRepository
 
 
 def test_usb_storage_service_returns_not_available_when_no_candidate_mount_is_present(tmp_path: Path) -> None:
@@ -78,6 +90,140 @@ def test_local_usb_status_endpoint_returns_expected_payload(tmp_path: Path, monk
     }
 
 
+def test_local_usb_operations_export_service_blocks_when_usb_is_missing(tmp_path: Path) -> None:
+    admin_service, session = _build_admin_operations_service(tmp_path, "usb_export_service_no_usb.sqlite3")
+    service = LocalUsbExportService(
+        usb_storage=_StubUsbStorage(
+            UsbStorageStatusDTO(
+                usb_available=False,
+                mount_path=None,
+                readable=False,
+                writable=False,
+            )
+        ),
+        admin_operations=admin_service,
+    )
+
+    try:
+        with pytest.raises(ValidationError) as exc_info:
+            service.export_operations_csv(date_from=date(2026, 4, 14), date_to=date(2026, 4, 14))
+    finally:
+        session.close()
+
+    assert str(exc_info.value) == (
+        "USB-\u043d\u043e\u0441\u0438\u0442\u0435\u043b\u044c \u043d\u0435 \u043e\u0431\u043d\u0430\u0440\u0443\u0436\u0435\u043d. "
+        "\u042d\u043a\u0441\u043f\u043e\u0440\u0442 \u043d\u0435\u0434\u043e\u0441\u0442\u0443\u043f\u0435\u043d."
+    )
+
+
+def test_local_usb_operations_export_service_writes_csv_file_to_usb_mount(tmp_path: Path) -> None:
+    admin_service, session = _build_admin_operations_service(tmp_path, "usb_export_service_write.sqlite3")
+    usb_mount = tmp_path / "media" / "operator" / "USB_DISK"
+    usb_mount.mkdir(parents=True)
+    service = LocalUsbExportService(
+        usb_storage=_StubUsbStorage(
+            UsbStorageStatusDTO(
+                usb_available=True,
+                mount_path=str(usb_mount),
+                readable=True,
+                writable=True,
+                device_name="sda1",
+            )
+        ),
+        admin_operations=admin_service,
+    )
+
+    try:
+        result = service.export_operations_csv(date_from=date(2026, 4, 14), date_to=date(2026, 4, 14))
+    finally:
+        session.close()
+
+    exported_path = Path(result.file_path)
+    assert result.success is True
+    assert result.file_name == "dion-operations-20260414-20260414.csv"
+    assert result.mount_path == str(usb_mount)
+    assert exported_path == usb_mount / "dion-operations-20260414-20260414.csv"
+    assert exported_path.read_text(encoding="utf-8-sig") == "\n".join(
+        (
+            "operation_id,started_at,finished_at,operation_type,operation_state,user_code,user_full_name,item_name,quantity,slot_code,result,error_code,error_message",
+            "1,2026-04-14T09:00:00,2026-04-14T09:10:00,dispense,completed,user-1,User One,Item One,1,slot-1,ok,,",
+            "",
+        )
+    )
+
+
+def test_local_usb_operations_export_endpoint_returns_success_payload_and_writes_file(
+    tmp_path: Path, monkeypatch
+) -> None:
+    usb_mount = tmp_path / "media" / "operator" / "USB_DISK"
+    usb_mount.mkdir(parents=True)
+    monkeypatch.setattr(
+        UsbStorageDiscoveryService,
+        "get_status",
+        lambda self: UsbStorageStatusDTO(
+            usb_available=True,
+            mount_path=str(usb_mount),
+            readable=True,
+            writable=True,
+            device_name="sda1",
+        ),
+    )
+    app = create_app(_settings(tmp_path, "api_local_usb_operations_export.sqlite3"))
+    _seed_operations_export_domain(app)
+
+    with TestClient(app) as client:
+        response = client.post(
+            "/local/usb/export/operations",
+            json={"date_from": "2026-04-14", "date_to": "2026-04-14"},
+        )
+
+    exported_path = usb_mount / "dion-operations-20260414-20260414.csv"
+    assert response.status_code == 200
+    assert response.json() == {
+        "success": True,
+        "file_path": str(exported_path),
+        "file_name": "dion-operations-20260414-20260414.csv",
+        "mount_path": str(usb_mount),
+    }
+    assert exported_path.read_text(encoding="utf-8-sig") == "\n".join(
+        (
+            "operation_id,started_at,finished_at,operation_type,operation_state,user_code,user_full_name,item_name,quantity,slot_code,result,error_code,error_message",
+            "1,2026-04-14T09:00:00,2026-04-14T09:10:00,dispense,completed,user-1,User One,Item One,1,slot-1,ok,,",
+            "",
+        )
+    )
+
+
+def test_local_usb_operations_export_endpoint_blocks_when_usb_is_missing(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setattr(
+        UsbStorageDiscoveryService,
+        "get_status",
+        lambda self: UsbStorageStatusDTO(
+            usb_available=False,
+            mount_path=None,
+            readable=False,
+            writable=False,
+        ),
+    )
+    app = create_app(_settings(tmp_path, "api_local_usb_operations_export_no_usb.sqlite3"))
+    _seed_operations_export_domain(app)
+
+    with TestClient(app) as client:
+        response = client.post(
+            "/local/usb/export/operations",
+            json={"date_from": "2026-04-14", "date_to": "2026-04-14"},
+        )
+
+    assert response.status_code == 400
+    assert response.json() == {
+        "error": "validation_error",
+        "detail": (
+            "USB-\u043d\u043e\u0441\u0438\u0442\u0435\u043b\u044c \u043d\u0435 \u043e\u0431\u043d\u0430\u0440\u0443\u0436\u0435\u043d. "
+            "\u042d\u043a\u0441\u043f\u043e\u0440\u0442 \u043d\u0435\u0434\u043e\u0441\u0442\u0443\u043f\u0435\u043d."
+        ),
+    }
+
+
 def test_ui_mvp_page_and_asset_include_usb_status_wiring(tmp_path: Path) -> None:
     app = create_app(_settings(tmp_path, "api_ui_usb_status.sqlite3"))
 
@@ -87,13 +233,21 @@ def test_ui_mvp_page_and_asset_include_usb_status_wiring(tmp_path: Path) -> None
 
     assert page_response.status_code == 200
     assert '"usbStatusEndpoint": "/local/usb/status"' in page_response.text
+    assert '"localUsbOperationsExportEndpoint": "/local/usb/export/operations"' in page_response.text
     assert 'id="usb-status-title"' in page_response.text
     assert 'id="usb-status-detail"' in page_response.text
+    assert 'id="usb-export-date-from"' in page_response.text
+    assert 'id="usb-export-date-to"' in page_response.text
+    assert 'id="usb-export-operations-button"' in page_response.text
+    assert 'id="usb-export-result-detail"' in page_response.text
 
     assert asset_response.status_code == 200
     assert "refreshUsbStatus" in asset_response.text
     assert "renderUsbStatus" in asset_response.text
     assert "usbStatusEndpoint" in asset_response.text
+    assert "localUsbOperationsExportEndpoint" in asset_response.text
+    assert "exportOperationsToUsb" in asset_response.text
+    assert "initializeUsbExportForm" in asset_response.text
 
 
 def _settings(tmp_path: Path, sqlite_filename: str) -> AppSettings:
@@ -102,3 +256,85 @@ def _settings(tmp_path: Path, sqlite_filename: str) -> AppSettings:
         sqlite_filename=sqlite_filename,
         alembic_config_path=Path("alembic.ini"),
     )
+
+
+class _StubUsbStorage:
+    def __init__(self, status: UsbStorageStatusDTO) -> None:
+        self._status = status
+
+    def get_status(self) -> UsbStorageStatusDTO:
+        return self._status
+
+
+def _build_admin_operations_service(tmp_path: Path, sqlite_filename: str) -> tuple[AdminOperationService, Session]:
+    engine = create_engine(
+        f"sqlite:///{(tmp_path / sqlite_filename).resolve()}",
+        future=True,
+        connect_args={"check_same_thread": False},
+    )
+    Base.metadata.create_all(bind=engine)
+    session_factory = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
+    session = session_factory()
+    _seed_operations_export_domain_for_session(session)
+    return AdminOperationService(OperationRepository(session)), session
+
+
+def _seed_operations_export_domain(app) -> None:
+    with app.state.session_factory() as session:
+        _seed_operations_export_domain_for_session(session)
+
+
+def _seed_operations_export_domain_for_session(session: Session) -> None:
+    role = Role(code=RoleCode.USER, name="User")
+    session.add(role)
+    session.flush()
+
+    user = User(
+        role_id=role.id,
+        user_code="user-1",
+        full_name="User One",
+        status=UserStatus.ACTIVE,
+        dispense_restriction_policy=DispenseRestrictionPolicy.UNLIMITED,
+        is_active=True,
+    )
+    item = Item(
+        item_group_id=None,
+        sku="item-1",
+        name="Item One",
+        description=None,
+        unit="pcs",
+        return_allowed=True,
+        min_level=0,
+        status=ItemStatus.ACTIVE,
+    )
+    slot = Slot(
+        code="slot-1",
+        slot_type=SlotType.UNIVERSAL,
+        drum_position=1,
+        board_address=1,
+        lock_number=1,
+        capacity=10,
+        status=SlotStatus.ACTIVE,
+    )
+    session.add_all((user, item, slot))
+    session.flush()
+    session.add(
+        Operation(
+            session_id=None,
+            operation_type=OperationType.DISPENSE,
+            operation_state=OperationState.COMPLETED,
+            user_id=user.id,
+            item_id=item.id,
+            slot_id=slot.id,
+            qty_requested=1,
+            qty_confirmed=1,
+            result="ok",
+            error_code=None,
+            error_message=None,
+            hardware_context_json={},
+            business_context_json={},
+            started_at=datetime(2026, 4, 14, 9, 0, 0),
+            finished_at=datetime(2026, 4, 14, 9, 10, 0),
+        )
+    )
+    session.commit()

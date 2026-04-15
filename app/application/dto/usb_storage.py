@@ -10,3 +10,11 @@ class UsbStorageStatusDTO:
     readable: bool
     writable: bool
     device_name: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class UsbOperationsExportResultDTO:
+    success: bool
+    file_path: str
+    file_name: str
+    mount_path: str

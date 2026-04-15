@@ -208,6 +208,84 @@ body {
   line-height: 1.2;
 }
 
+.usb-export-panel {
+  margin-top: 0.55rem;
+  display: grid;
+  gap: 0.5rem;
+  padding: 0.65rem;
+  border-radius: 0.95rem;
+  background: #ffffff;
+  border: 1px solid var(--border);
+}
+
+.usb-export-title {
+  margin: 0;
+  font-size: 0.95rem;
+}
+
+.usb-export-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.5rem;
+}
+
+.usb-export-field {
+  display: grid;
+  gap: 0.22rem;
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+
+.usb-export-field input {
+  width: 100%;
+  min-height: 2.45rem;
+  padding: 0.45rem 0.55rem;
+  border: 1px solid var(--border);
+  border-radius: 0.75rem;
+  background: #ffffff;
+  color: var(--text);
+  font: inherit;
+}
+
+.usb-export-result {
+  display: grid;
+  gap: 0.18rem;
+  padding: 0.55rem 0.6rem;
+  border-radius: 0.85rem;
+  border: 1px solid transparent;
+}
+
+.usb-export-result strong,
+.usb-export-result p {
+  margin: 0;
+}
+
+.usb-export-result strong {
+  font-size: 0.88rem;
+}
+
+.usb-export-result p {
+  font-size: 0.8rem;
+  line-height: 1.2;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+.usb-export-result-neutral {
+  background: #f4f4f4;
+  border-color: #cfcfcf;
+}
+
+.usb-export-result-success {
+  background: #eef7df;
+  border-color: #a7c96b;
+}
+
+.usb-export-result-failure {
+  background: #f5dfdc;
+  border-color: #d98d84;
+}
+
 .action-button {
   min-height: 3.15rem;
   padding: 0.65rem 0.8rem;
@@ -420,5 +498,9 @@ body {
 
   .action-button-secondary {
     min-width: 0;
+  }
+
+  .usb-export-fields {
+    grid-template-columns: 1fr;
   }
 }
