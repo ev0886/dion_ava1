@@ -29,7 +29,7 @@ from app.application.dto.operations import DispenseRequest, RefillRequest, Retur
 from app.bootstrap import bootstrap
 from app.config import AppSettings, get_settings
 from app.persistence.session import create_session_factory, create_sqlalchemy_engine
-from app.ui.mvp import render_admin_page, render_mvp_page
+from app.ui.mvp import render_admin_page, render_operator_page, render_user_page
 
 
 def create_app(settings: AppSettings | None = None) -> FastAPI:
@@ -55,9 +55,17 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
     def health() -> JSONResponse:
         return JSONResponse({"status": "ok"})
 
+    @app.get("/ui/user")
+    def ui_user():
+        return render_user_page(app.state.settings)
+
+    @app.get("/ui/operator")
+    def ui_operator():
+        return render_operator_page(app.state.settings)
+
     @app.get("/ui/mvp")
     def ui_mvp():
-        return render_mvp_page(app.state.settings)
+        return render_user_page(app.state.settings)
 
     @app.get("/ui/admin")
     def ui_admin():

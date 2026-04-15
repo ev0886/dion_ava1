@@ -89,24 +89,52 @@ def test_admin_system_status_endpoint_returns_health_readiness_and_runtime_setti
     }
 
 
-def test_ui_mvp_page_serves_configured_dispense_flow(tmp_path: Path) -> None:
+def test_ui_user_page_serves_configured_dispense_flow(tmp_path: Path) -> None:
     app = create_app(
         AppSettings(
             data_dir=tmp_path,
-            sqlite_filename="api_ui_mvp.sqlite3",
+            sqlite_filename="api_ui_user.sqlite3",
             alembic_config_path=Path("alembic.ini"),
         )
     )
 
     with TestClient(app) as client:
-        response = client.get("/ui/mvp")
+        response = client.get("/ui/user")
 
     assert response.status_code == 200
+    assert "User UI" in response.text
     assert "Начать RFID-сканирование" in response.text
     assert "Готово к выдаче" in response.text
+    assert '"uiRole": "user"' in response.text
     assert '"/inventory/kiosk-dispense-options"' in response.text
     assert '"dispenseQuantity": 1' in response.text
     assert '"autoResetTimeoutMs": 15000' in response.text
+
+
+def test_ui_operator_page_serves_role_foundation(tmp_path: Path) -> None:
+    app = create_app(_settings(tmp_path, "api_ui_operator.sqlite3"))
+
+    with TestClient(app) as client:
+        response = client.get("/ui/operator")
+
+    assert response.status_code == 200
+    assert "Operator UI" in response.text
+    assert "Operator Replenishment Screen" in response.text
+    assert "Replenishment workflow implementation is the next stage." in response.text
+    assert '"uiRole": "operator"' in response.text
+    assert '"refillWorkflowStatus": "planned"' in response.text
+
+
+def test_ui_mvp_route_remains_backward_compatible_alias_to_user_ui(tmp_path: Path) -> None:
+    app = create_app(_settings(tmp_path, "api_ui_mvp_alias.sqlite3"))
+
+    with TestClient(app) as client:
+        response = client.get("/ui/mvp")
+
+    assert response.status_code == 200
+    assert "User UI" in response.text
+    assert '"uiRole": "user"' in response.text
+    assert "Готово к выдаче" in response.text
 
 
 def test_ui_admin_page_serves_user_management_config(tmp_path: Path) -> None:
@@ -116,6 +144,7 @@ def test_ui_admin_page_serves_user_management_config(tmp_path: Path) -> None:
         response = client.get("/ui/admin")
 
     assert response.status_code == 200
+    assert "Admin UI" in response.text
     assert "Операции, требующие внимания" in response.text
     assert "Экспорт CSV" in response.text
     assert "Дата с" in response.text
@@ -144,6 +173,7 @@ def test_ui_admin_page_serves_user_management_config(tmp_path: Path) -> None:
     assert '"exportOperationsEndpoint"' in response.text
     assert '"exportUsersEndpoint"' in response.text
     assert '"importExampleCsvText"' in response.text
+    assert '"uiRole": "admin"' in response.text
 
 
 def test_ui_mvp_static_assets_are_served(tmp_path: Path) -> None:

@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>DION ABA1 Operator UI</title>
+  <link rel="stylesheet" href="/ui-assets/mvp.css">
+</head>
+<body>
+  <main class="app-shell">
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">DION ABA1</p>
+        <p class="eyebrow">Operator UI</p>
+        <h1>Operator Replenishment Screen</h1>
+      </div>
+      <div class="topbar-meta">
+        <div class="meta-chip">
+          <span class="meta-label">Role</span>
+          <strong>Operator</strong>
+        </div>
+        <div class="meta-chip">
+          <span class="meta-label">Status</span>
+          <strong>Foundation Only</strong>
+        </div>
+      </div>
+    </header>
+
+    <section class="status-panel status-neutral" aria-live="polite">
+      <div class="status-header">
+        <div>
+          <span class="status-label">Operator Route</span>
+          <strong id="machine-state">Inventory Replenishment</strong>
+        </div>
+      </div>
+      <p id="status-message">This screen is the dedicated operator UI foundation.</p>
+    </section>
+
+    <section class="main-layout">
+      <section class="card action-card">
+        <h2>Operator Replenishment Screen</h2>
+        <p class="hint">Dedicated route for slot replenishment work.</p>
+        <p>Replenishment workflow implementation is the next stage.</p>
+      </section>
+
+      <section class="card user-section">
+        <div class="section-heading">
+          <h2>Current Scope</h2>
+          <span class="state-pill">Route Ready</span>
+        </div>
+        <p>Role-specific routing is separated here without enabling auth gating or final refill flow yet.</p>
+      </section>
+
+      <section class="card result-card">
+        <div class="section-heading">
+          <h2>Config Hook</h2>
+          <span class="state-pill">operator</span>
+        </div>
+        <div class="result-panel result-neutral">
+          <p id="result-title">Operator UI foundation page</p>
+          <p id="result-detail">Use this route for future replenishment workflow work.</p>
+        </div>
+      </section>
+    </section>
+  </main>
+
+  <script>
+    window.DION_OPERATOR_UI_CONFIG = __DION_OPERATOR_UI_CONFIG__;
+  </script>
+</body>
+</html>

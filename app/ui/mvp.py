@@ -9,6 +9,7 @@ from app.config import AppSettings
 
 _UI_DIR = Path(__file__).resolve().parent
 _MVP_TEMPLATE_PATH = _UI_DIR / "templates" / "mvp.html"
+_OPERATOR_TEMPLATE_PATH = _UI_DIR / "templates" / "operator.html"
 _ADMIN_TEMPLATE_PATH = _UI_DIR / "templates" / "admin.html"
 _ADMIN_USERS_IMPORT_EXAMPLE_CSV = "\n".join(
     [
@@ -19,9 +20,10 @@ _ADMIN_USERS_IMPORT_EXAMPLE_CSV = "\n".join(
 )
 
 
-def render_mvp_page(settings: AppSettings) -> HTMLResponse:
+def render_user_page(settings: AppSettings) -> HTMLResponse:
     template = _MVP_TEMPLATE_PATH.read_text(encoding="utf-8")
     ui_config = {
+        "uiRole": "user",
         "authEndpoint": "/auth/read-and-resolve-rfid",
         "dispenseEndpoint": "/operations/dispense",
         "optionsEndpoint": "/inventory/kiosk-dispense-options",
@@ -40,9 +42,24 @@ def render_mvp_page(settings: AppSettings) -> HTMLResponse:
     )
 
 
+def render_operator_page(settings: AppSettings) -> HTMLResponse:
+    template = _OPERATOR_TEMPLATE_PATH.read_text(encoding="utf-8")
+    ui_config = {
+        "uiRole": "operator",
+        "refillWorkflowStatus": "planned",
+    }
+    return HTMLResponse(
+        template.replace(
+            "__DION_OPERATOR_UI_CONFIG__",
+            json.dumps(ui_config, ensure_ascii=True),
+        )
+    )
+
+
 def render_admin_page(settings: AppSettings) -> HTMLResponse:
     template = _ADMIN_TEMPLATE_PATH.read_text(encoding="utf-8")
     ui_config = {
+        "uiRole": "admin",
         "systemStatusEndpoint": "/admin/system/status",
         "listUsersEndpoint": "/admin/users",
         "problemOperationsEndpoint": "/admin/operations/problem",
