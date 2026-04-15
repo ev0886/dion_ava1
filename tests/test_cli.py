@@ -15,6 +15,7 @@ from app.application.dto.startup import (
 from app.cli import main
 from app.domain.enums import HardwareEndpointType, StartupReadinessStatus
 from app.hardware.dto import HardwareHealthEntry, HardwareHealthSnapshot, HardwareOperationStatus
+from app.hardware.rfid_debug import RfidDebugChunk, RfidSerialExchangeCapture
 
 
 def test_startup_check_returns_success_for_healthy_temp_environment(tmp_path: Path) -> None:
@@ -127,6 +128,44 @@ def test_cli_help_lists_operator_commands() -> None:
     assert "startup-check" in stdout
     assert "hardware-health" in stdout
     assert "recovery-scan" in stdout
+    assert "rfid-debug-exchange" in stdout
+    assert stderr == ""
+
+
+def test_rfid_debug_exchange_prints_capture_summary(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "app.cli._resolve_rfid_debug_config",
+        lambda settings: SimpleNamespace(
+            transport=SimpleNamespace(port="/dev/ttyACM0", baudrate=9600, data_bits=8, parity="none", stop_bits=1),
+            endpoint=SimpleNamespace(
+                timeouts=SimpleNamespace(connect_timeout_ms=1000, read_timeout_ms=1000, write_timeout_ms=1000)
+            ),
+        ),
+    )
+    monkeypatch.setattr(
+        "app.cli.capture_rfid_serial_exchange",
+        lambda **kwargs: RfidSerialExchangeCapture(
+            port="/dev/ttyACM0",
+            request_ascii="READ\n",
+            request_hex="524541440A",
+            max_chunks=4,
+            chunk_count=2,
+            combined_hex="524541440A5549443A3031323334350A",
+            combined_ascii="READ\nUID:012345\n",
+            combined_lines=("READ", "UID:012345"),
+            chunks=(
+                RfidDebugChunk(index=0, bytes_hex="524541440A", bytes_ascii="READ\n", lines=("READ",)),
+                RfidDebugChunk(index=1, bytes_hex="5549443A3031323334350A", bytes_ascii="UID:012345\n", lines=("UID:012345",)),
+            ),
+        ),
+    )
+
+    exit_code, stdout, stderr = _run_cli(["rfid-debug-exchange"])
+
+    assert exit_code == 0
+    assert '"combined_lines": [' in stdout
+    assert '"READ"' in stdout
+    assert '"UID:012345"' in stdout
     assert stderr == ""
 
 

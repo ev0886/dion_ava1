@@ -10,6 +10,7 @@ from app.hardware import (
     RealRfidAdapter,
     create_hardware_bundle,
 )
+from app.hardware.rfid_rusguard import RusGuardCardRead
 
 
 def test_real_rfid_adapter_ping_success_with_fake_transport() -> None:
@@ -137,7 +138,11 @@ def test_real_provider_composition_accepts_known_good_pi_rfid_shape_with_sdk_lib
 
     bundle = create_hardware_bundle(
         settings,
-        transport_overrides={"rfid_reader": _FakeTransport([b"PONG\n", b"UID:012345\n", b"CLEARED\n"])},
+        transport_overrides={
+            "rfid_reader": _FakeRusGuardTransport(
+                read_result=RusGuardCardRead(status_type=2, uid="012345", uid_size=7)
+            )
+        },
     )
 
     assert bundle.rfid_reader._config is not None
@@ -145,6 +150,43 @@ def test_real_provider_composition_accepts_known_good_pi_rfid_shape_with_sdk_lib
     assert bundle.rfid_reader.ping().ok is True
     assert bundle.rfid_reader.read_card().uid == "012345"
     assert bundle.rfid_reader.clear_buffer().ok is True
+
+
+def test_real_rfid_adapter_uses_sdk_transport_when_sdk_library_is_configured() -> None:
+    transport = _FakeRusGuardTransport(read_result=RusGuardCardRead(status_type=2, uid="01020304050607", uid_size=7))
+    adapter = RealRfidAdapter(
+        config=_rfid_config(
+            port="/dev/ttyACM0",
+            sdk_library="/opt/dion_ava1/vendor/rusguard/linux_arm64_release/librgsec.so",
+        ),
+        transport=transport,
+    )
+
+    ping_result = adapter.ping()
+    read_result = adapter.read_card()
+    clear_result = adapter.clear_buffer()
+
+    assert ping_result.ok is True
+    assert read_result.uid == "01020304050607"
+    assert clear_result.ok is True
+    assert transport.ping_calls == [1000]
+    assert transport.read_calls == [1000]
+
+
+def test_real_rfid_adapter_treats_partial_sdk_uid_as_no_card() -> None:
+    adapter = RealRfidAdapter(
+        config=_rfid_config(
+            port="/dev/ttyACM0",
+            sdk_library="/opt/dion_ava1/vendor/rusguard/linux_arm64_release/librgsec.so",
+        ),
+        transport=_FakeRusGuardTransport(read_result=RusGuardCardRead(status_type=2, uid="010203", uid_size=3)),
+    )
+
+    result = adapter.read_card()
+
+    assert result.ok is True
+    assert result.status is HardwareOperationStatus.NO_CARD
+    assert result.uid is None
 
 
 class _FakeTransport:
@@ -168,10 +210,26 @@ class _RaisingTransport:
         raise self._error
 
 
-def _rfid_config():
-    from app.hardware.transport_config import HardwareEndpointTransportConfig
+class _FakeRusGuardTransport:
+    def __init__(self, *, read_result: RusGuardCardRead) -> None:
+        self._read_result = read_result
+        self.ping_calls: list[int | None] = []
+        self.read_calls: list[int | None] = []
 
-    return HardwareEndpointTransportConfig.model_validate(_serial_endpoint_config(code="rfid-1", driver_name="rfid-driver", port="COM7"))
+    def ping(self, *, timeout_ms: int | None = None) -> None:
+        self.ping_calls.append(timeout_ms)
+
+    def read_card(self, *, timeout_ms: int | None = None) -> RusGuardCardRead:
+        self.read_calls.append(timeout_ms)
+        return self._read_result
+
+
+def _rfid_config(*, port: str = "COM7", sdk_library: str | None = None):
+    from app.hardware.transport_config import RfidHardwareEndpointTransportConfig
+
+    return RfidHardwareEndpointTransportConfig.model_validate(
+        _serial_endpoint_config(code="rfid-1", driver_name="rfid-driver", port=port, sdk_library=sdk_library)
+    )
 
 
 def _serial_endpoint_config(

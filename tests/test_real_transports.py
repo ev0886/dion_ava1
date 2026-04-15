@@ -11,6 +11,7 @@ from app.hardware import (
     HardwareTimeoutError,
     RealRfidAdapter,
     RealHardwareSettings,
+    RusGuardAcmStatusTransport,
     SerialTransport,
     TcpTransport,
     create_hardware_bundle,
@@ -112,7 +113,7 @@ def test_real_provider_bundle_accepts_exact_known_good_pi_runtime_config_shape()
 
     assert isinstance(bundle.drum_controller._transport, SerialTransport)
     assert isinstance(bundle.lock_controller._transport, SerialTransport)
-    assert isinstance(bundle.rfid_reader._transport, SerialTransport)
+    assert isinstance(bundle.rfid_reader._transport, RusGuardAcmStatusTransport)
     assert bundle.rfid_reader._config is not None
     assert bundle.rfid_reader._config.transport.sdk_library == "/opt/dion_ava1/vendor/rusguard/linux_arm64_release/librgsec.so"
 
@@ -133,6 +134,7 @@ def test_real_readiness_can_become_healthy_when_rfid_lock_and_drum_transports_wo
         return _FakeTransport([b"PONG\n"])
 
     monkeypatch.setattr(hardware_factory, "_create_transport_client", fake_create_transport_client)
+    monkeypatch.setattr(hardware_factory, "_create_rfid_transport_client", fake_create_transport_client)
 
     settings = AppSettings(
         data_dir=tmp_path,
@@ -230,7 +232,17 @@ def _rfid_config():
     )
 
 
-def _serial_endpoint_config(*, code: str, driver_name: str, port: str) -> dict[str, object]:
+def _serial_endpoint_config(*, code: str, driver_name: str, port: str, sdk_library: str | None = None) -> dict[str, object]:
+    transport: dict[str, object] = {
+        "transport": "serial",
+        "port": port,
+        "baudrate": 9600,
+        "data_bits": 8,
+        "parity": "none",
+        "stop_bits": 1,
+    }
+    if sdk_library is not None:
+        transport["sdk_library"] = sdk_library
     return {
         "endpoint": {
             "code": code,
@@ -242,14 +254,7 @@ def _serial_endpoint_config(*, code: str, driver_name: str, port: str) -> dict[s
                 "write_timeout_ms": 1000,
             },
         },
-        "transport": {
-            "transport": "serial",
-            "port": port,
-            "baudrate": 9600,
-            "data_bits": 8,
-            "parity": "none",
-            "stop_bits": 1,
-        },
+        "transport": transport,
     }
 
 

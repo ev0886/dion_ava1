@@ -4,7 +4,10 @@ import argparse
 import sys
 
 from app.application.composition import ApplicationContainer, create_bootstrapped_application_container
+from app.config import AppSettings
 from app.domain.enums import StartupReadinessStatus
+from app.hardware.rfid_debug import capture_rfid_serial_exchange
+from app.hardware.transport_config import RfidHardwareEndpointTransportConfig
 from app.runtime import add_common_settings_arguments, render_json, settings_from_args
 
 
@@ -32,13 +35,23 @@ def build_parser() -> argparse.ArgumentParser:
     service_mode_close.add_argument("--user-id", type=int, required=True)
     service_mode_close.add_argument("--comment", type=str, default=None)
 
+    rfid_debug_exchange = subparsers.add_parser("rfid-debug-exchange", help="Capture raw RFID serial exchange")
+    rfid_debug_exchange.add_argument("--request", type=str, default="READ\\n")
+    rfid_debug_exchange.add_argument("--max-chunks", type=int, default=4)
+
     return parser
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
-    settings = settings_from_args(args)
+    settings = settings_from_args(args) or AppSettings()
+    if args.command == "rfid-debug-exchange":
+        try:
+            return _dispatch_rfid_debug_exchange(args, settings)
+        except Exception as error:
+            print(f"ERROR: {error}", file=sys.stderr)
+            return 1
     container = create_bootstrapped_application_container(settings)
     try:
         return _dispatch(args, container)
@@ -104,6 +117,29 @@ def _dispatch(args: argparse.Namespace, container: ApplicationContainer) -> int:
         return 0
 
     raise ValueError(f"Unsupported command: {args.command}")
+
+
+def _dispatch_rfid_debug_exchange(args: argparse.Namespace, settings: AppSettings) -> int:
+    config = _resolve_rfid_debug_config(settings)
+    request = args.request.encode("utf-8").decode("unicode_escape").encode("ascii")
+    capture = capture_rfid_serial_exchange(
+        settings=config.transport,
+        timeouts=config.endpoint.timeouts,
+        request=request,
+        max_chunks=args.max_chunks,
+    )
+    print(render_json(capture))
+    return 0
+
+
+def _resolve_rfid_debug_config(settings: AppSettings) -> RfidHardwareEndpointTransportConfig:
+    raw_config = settings.hardware_real_endpoints.get("rfid_reader")
+    if raw_config is None:
+        raise ValueError("RFID reader real transport config is missing.")
+    config = RfidHardwareEndpointTransportConfig.model_validate(raw_config)
+    if not config.endpoint.enabled:
+        raise ValueError("RFID reader real endpoint is disabled.")
+    return config
 
 
 if __name__ == "__main__":

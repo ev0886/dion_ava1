@@ -29,6 +29,7 @@ from app.hardware.lock_mock import MockLockAdapter
 from app.hardware.lock_real import RealLockAdapter
 from app.hardware.lock_stub_real import StubRealLockAdapter
 from app.hardware.rfid_mock import MockRfidAdapter
+from app.hardware.rfid_rusguard import RusGuardAcmStatusTransport
 from app.hardware.rfid_real import RealRfidAdapter
 from app.hardware.rfid_stub_real import StubRealRfidAdapter
 from app.hardware.transport_config import (
@@ -75,6 +76,7 @@ __all__ = [
     "RealHardwareSettings",
     "RealLockAdapter",
     "RealRfidAdapter",
+    "RusGuardAcmStatusTransport",
     "RfidReadResult",
     "RfidReaderContract",
     "CommonEndpointSettings",
