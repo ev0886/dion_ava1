@@ -87,6 +87,8 @@ def test_ui_role_routes_render_and_mvp_alias_matches_user(tmp_path: Path) -> Non
     assert 'id="stage-strip"' in operator_response.text
     assert 'id="select-all-quarter-button"' in operator_response.text
     assert 'id="quarter-overview"' in operator_response.text
+    assert 'id="quarter-drum-grid"' in operator_response.text
+    assert 'id="prepare-button"' in operator_response.text
     assert "Поддержка RFID и политики выдачи" in admin_response.text
     assert "Операции, требующие внимания" in admin_response.text
     assert '"/admin/users"' in admin_response.text

@@ -257,32 +257,61 @@
       display: grid;
       gap: 12px;
     }
-    .sector-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-    .sector-card { background: #fff; }
-    .sector-head,
-    .cell-topline,
-    .cell-bottomline {
-      display: flex;
-      gap: 10px;
-      justify-content: space-between;
-      align-items: flex-start;
+    .quarter-drum-map {
+      padding: 14px;
+      border-radius: 20px;
+      border: 1px solid var(--line);
+      background: #fff;
+      display: grid;
+      gap: 12px;
     }
-    .sector-note {
+    .quarter-drum-head {
+      display: flex;
+      gap: 12px;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+    .quarter-drum-caption {
       color: var(--muted);
-      font-size: 0.84rem;
+      font-size: 0.88rem;
+      line-height: 1.32;
+    }
+    .quarter-drum-grid-wrap {
+      overflow-x: auto;
+      padding-bottom: 2px;
+    }
+    .quarter-drum-grid {
+      min-width: 100%;
+      display: grid;
+      grid-template-columns: repeat(8, minmax(0, 1fr));
+      gap: 8px;
+    }
+    .sector-label {
+      min-height: 34px;
+      border-radius: 14px;
+      border: 1px solid var(--line);
+      background: var(--panel-soft);
+      display: grid;
+      place-items: center;
+      font-size: 0.78rem;
+      font-weight: 800;
+      color: var(--muted);
     }
     .cell-button {
       width: 100%;
-      min-height: 138px;
-      padding: 14px;
-      border-radius: 22px;
+      min-height: 52px;
+      aspect-ratio: 1 / 1;
+      padding: 6px 4px;
+      border-radius: 16px;
       border: 2px solid var(--line);
-      background: var(--empty-soft);
+      background: #fff;
       color: var(--text);
       display: grid;
-      gap: 8px;
-      text-align: left;
-      align-content: start;
+      gap: 4px;
+      text-align: center;
+      align-content: center;
+      justify-items: center;
     }
     .cell-button.is-filled {
       background: linear-gradient(180deg, #8ccb3d 0%, var(--accent) 100%);
@@ -298,17 +327,17 @@
       color: var(--text);
     }
     .cell-code {
-      font-size: 1.12rem;
+      font-size: 0.88rem;
       font-weight: 800;
       line-height: 1.15;
     }
     .cell-position {
-      font-size: 0.9rem;
+      font-size: 0.68rem;
       opacity: 0.9;
     }
     .cell-item {
-      font-size: 0.95rem;
-      line-height: 1.3;
+      font-size: 0.68rem;
+      line-height: 1.2;
       font-weight: 700;
     }
     .cell-detail,
@@ -326,8 +355,10 @@
     .cell-state {
       background: rgba(255, 255, 255, 0.86);
       color: var(--text);
-      min-height: 30px;
-      font-size: 0.74rem;
+      min-height: 22px;
+      min-width: 22px;
+      padding: 2px 6px;
+      font-size: 0.62rem;
     }
     .cell-button.is-filled .cell-state {
       background: rgba(255, 255, 255, 0.18);
@@ -402,8 +433,7 @@
       .hero-grid,
       .summary-grid,
       .mini-metrics,
-      .selection-summary-grid,
-      .sector-grid {
+      .selection-summary-grid {
         grid-template-columns: 1fr;
       }
       .header-row,
@@ -502,7 +532,9 @@
           <button id="clear-quarter-button" class="helper-button" type="button">Очистить четверть</button>
         </div>
         <p id="quarter-summary" class="selection-copy">Загрузка карты пополнения...</p>
-        <div id="quarter-overview" class="quarter-overview" aria-live="polite"></div>
+        <div id="quarter-overview" class="quarter-overview" aria-live="polite">
+          <div id="quarter-drum-grid" class="quarter-drum-grid" hidden></div>
+        </div>
       </div>
     </section>
 
@@ -569,7 +601,7 @@
         </article>
       </div>
       <div class="action-row">
-        <button id="prepare-button" class="main-button" type="button" disabled>Подготовить к пополнению</button>
+        <button id="prepare-button" class="main-button" type="button" disabled>Пополнить</button>
         <button id="clear-selection-button" class="secondary-button" type="button">Сбросить выбор</button>
       </div>
       <div id="confirmation-panel" class="confirmation-panel">
@@ -606,6 +638,9 @@
     (function () {
       const config = window.DION_OPERATOR_UI_CONFIG;
       const QUARTER_COUNT = 4;
+      const SECTORS_PER_QUARTER = 8;
+      const ROWS_PER_QUARTER = 15;
+      const CELLS_PER_QUARTER = SECTORS_PER_QUARTER * ROWS_PER_QUARTER;
       const elements = {
         workflowState: document.getElementById("workflow-state"),
         quarterIndicator: document.getElementById("quarter-indicator"),
@@ -675,12 +710,14 @@
           .replace(/'/g, "&#39;");
       }
 
+      function quarterLabel(index) {
+        return (index + 1) + "/" + QUARTER_COUNT;
+      }
+
       function buildQuarterRanges() {
-        const maxPosition = Math.max(1, ...state.options.map((option) => option.drum_position || 0));
-        const span = Math.max(1, Math.ceil(maxPosition / QUARTER_COUNT));
         return Array.from({ length: QUARTER_COUNT }, (_, index) => {
-          const start = index * span + 1;
-          const end = index === QUARTER_COUNT - 1 ? Math.max(start, maxPosition) : start + span - 1;
+          const start = index * CELLS_PER_QUARTER + 1;
+          const end = start + CELLS_PER_QUARTER - 1;
           return { index, start, end };
         });
       }
@@ -698,10 +735,14 @@
           const cells = [];
           for (let position = range.start; position <= range.end; position += 1) {
             const option = (byPosition.get(position) || [])[0] || null;
+            const quarterOffset = position - range.start;
             cells.push({
               id: "cell-" + position,
               quarterIndex: range.index,
               position,
+              sectorIndex: quarterOffset % SECTORS_PER_QUARTER,
+              sectorNumber: quarterOffset % SECTORS_PER_QUARTER + 1,
+              rowNumber: Math.floor(quarterOffset / SECTORS_PER_QUARTER) + 1,
               option,
               filled: Boolean(option && option.quantity > 0)
             });
@@ -723,7 +764,7 @@
       }
 
       function formatCellIdentifier(cell) {
-        return "P" + cell.position + " / " + (cell.option ? cell.option.slot_code : "slot-free");
+        return "P" + cell.position + " / C" + cell.sectorNumber + " / Ряд " + cell.rowNumber + (cell.option ? " / " + cell.option.slot_code : "");
       }
 
       function clearPreparedState() {
@@ -750,9 +791,9 @@
       function renderStageStrip() {
         const activeIndex = state.preparedPlan || state.isConfirmed ? 2 : (selectedCells().length && selectedItem() ? 1 : 0);
         const stages = [
-          { title: "Vybor yacheek", copy: "Otmette odnu ili neskolko yacheek v aktivnoy chetverti." },
-          { title: "Podgotovka", copy: "Naznachte tovar i sformiruyte plan popolneniya." },
-          { title: "Podtverzhdenie", copy: state.isConfirmed ? "Plan podtverzhden tolko v interfeise." : "Proverte plan pered lokalnym podtverzhdeniem." }
+          { title: "Выбор", copy: "Отметьте одну или несколько ячеек в видимой четверти барабана." },
+          { title: "Подготовлено", copy: "Выберите товар и нажмите «Пополнить», чтобы подготовить план." },
+          { title: "Подтверждение", copy: state.isConfirmed ? "План подтверждён только в интерфейсе." : "После подготовки поверните барабан на эту четверть, загрузите товар и подтвердите." }
         ];
         elements.stageStrip.innerHTML = stages.map((stage, index) => {
           const classes = ["stage-card"];
@@ -769,7 +810,7 @@
       function renderQuarterTabs() {
         elements.quarterTabs.innerHTML = buildQuarterRanges().map((range) => {
           const activeClass = range.index === state.quarterIndex ? " is-active" : "";
-          return '<button class="quarter-button' + activeClass + '" data-quarter-index="' + range.index + '" type="button">Q' + (range.index + 1) + "</button>";
+          return '<button class="quarter-button' + activeClass + '" data-quarter-index="' + range.index + '" type="button">' + quarterLabel(range.index) + "</button>";
         }).join("");
         elements.quarterTabs.querySelectorAll("[data-quarter-index]").forEach((button) => {
           button.addEventListener("click", () => {
@@ -785,44 +826,40 @@
         const filledCount = quarterCells.filter((cell) => cell.filled).length;
         const emptyCount = quarterCells.length - filledCount;
         const selectedInQuarter = quarterCells.filter((cell) => state.selectedCellIds.has(cell.id)).length;
-        elements.quarterIndicator.textContent = "Q" + (state.quarterIndex + 1);
-        elements.quarterRangeLabel.textContent = "Positions " + current.start + "-" + current.end;
-        elements.quarterBadge.textContent = "Q" + (state.quarterIndex + 1);
-        elements.quarterCaption.textContent = "Quarter " + (state.quarterIndex + 1) + " / positions " + current.start + "-" + current.end;
+        elements.quarterIndicator.textContent = quarterLabel(state.quarterIndex);
+        elements.quarterRangeLabel.textContent = "Позиции " + current.start + "-" + current.end + " · 8 секторов × 15 рядов";
+        elements.quarterBadge.textContent = quarterLabel(state.quarterIndex);
+        elements.quarterCaption.textContent = "Четверть " + quarterLabel(state.quarterIndex) + " · позиции " + current.start + "-" + current.end;
         elements.quarterVisibleCount.textContent = String(quarterCells.length);
         elements.quarterFilledCount.textContent = String(filledCount);
         elements.quarterEmptyCount.textContent = String(emptyCount);
         elements.selectedCount.textContent = String(selectedInQuarter);
-        elements.selectedCountDetail.textContent = selectedInQuarter ? "Selected in this quarter: " + selectedInQuarter : "Nothing selected in this quarter";
-        elements.quarterSummary.textContent = "Quarter Q" + (state.quarterIndex + 1) + ": " + quarterCells.length + " cells, " + filledCount + " filled, " + emptyCount + " empty.";
+        elements.selectedCountDetail.textContent = selectedInQuarter ? "В этой четверти выбрано: " + selectedInQuarter : "В этой четверти пока ничего не выбрано";
+        elements.quarterSummary.textContent = "Четверть " + quarterLabel(state.quarterIndex) + ": видно " + quarterCells.length + " ячеек, заполнено " + filledCount + ", пусто " + emptyCount + ".";
       }
 
       function renderQuarterGridTouch() {
         const quarterCells = visibleQuarterCells();
         if (!quarterCells.length) {
-          elements.quarterOverview.innerHTML = '<div class="empty-state">No cells mapped for this quarter.</div>';
+          elements.quarterOverview.innerHTML = '<div class="empty-state">Для этой четверти нет карты ячеек.</div>';
           return;
         }
-        const splitIndex = Math.ceil(quarterCells.length / 2);
-        const groups = [
-          { title: "Sector A", cells: quarterCells.slice(0, splitIndex) },
-          { title: "Sector B", cells: quarterCells.slice(splitIndex) }
-        ].filter((group) => group.cells.length);
-        elements.quarterOverview.innerHTML = '<div class="sector-grid">' + groups.map((group) => {
-          return '<section class="sector-card"><div class="sector-head"><div><h3 class="sector-title">' + escapeHtml(group.title) + '</h3><p class="sector-note">' + escapeHtml(group.cells.map((cell) => "P" + cell.position).join(", ")) + '</p></div><div class="selection-chip">' + group.cells.length + ' cells</div></div><div class="cell-list">' + group.cells.map((cell) => {
-            const classes = ["cell-button", cell.filled ? "is-filled" : "is-empty"];
-            if (state.selectedCellIds.has(cell.id)) {
-              classes.push("is-selected");
-            }
-            const stateLabel = state.selectedCellIds.has(cell.id) ? "Selected" : (cell.filled ? "Filled" : "Empty");
-            const itemName = cell.option ? cell.option.item_name : "Free cell";
-            const detail = cell.option
-              ? cell.option.slot_code + " / qty " + cell.option.quantity + " " + cell.option.item_unit
-              : "No active binding, available for staging";
-            const bottomRight = cell.option && cell.option.capacity ? "Cap " + cell.option.capacity : "Cap n/a";
-            return '<button class="' + classes.join(" ") + '" data-cell-id="' + escapeHtml(cell.id) + '" type="button"><div class="cell-topline"><div><div class="cell-code">' + escapeHtml(cell.option ? cell.option.slot_code : "CELL-" + cell.position) + '</div><div class="cell-position">Position ' + cell.position + '</div></div><span class="cell-state">' + escapeHtml(stateLabel) + '</span></div><div class="cell-item">' + escapeHtml(itemName) + '</div><div class="cell-detail">' + escapeHtml(detail) + '</div><div class="cell-bottomline"><span class="pill">' + escapeHtml(cell.option ? cell.option.item_sku : "NO SKU") + '</span><span class="pill">' + escapeHtml(bottomRight) + "</span></div></button>";
-          }).join("") + "</div></section>";
-        }).join("") + "</div>";
+        const selectedInQuarter = quarterCells.filter((cell) => state.selectedCellIds.has(cell.id)).length;
+        const header = Array.from({ length: SECTORS_PER_QUARTER }, (_, index) => {
+          return '<div class="sector-label" data-sector-label="' + (index + 1) + '">Сектор ' + (index + 1) + "</div>";
+        }).join("");
+        const cellsMarkup = quarterCells.map((cell) => {
+          const classes = ["cell-button", cell.filled ? "is-filled" : "is-empty"];
+          const isSelected = state.selectedCellIds.has(cell.id);
+          if (isSelected) {
+            classes.push("is-selected");
+          }
+          const stateLabel = isSelected ? "Выбр." : (cell.filled ? "Зап." : "Пуст.");
+          const itemLabel = cell.option ? cell.option.item_name : "Свободно";
+          const codeLabel = cell.option ? cell.option.slot_code : "P" + cell.position;
+          return '<button class="' + classes.join(" ") + '" data-cell-id="' + escapeHtml(cell.id) + '" type="button" aria-label="' + escapeHtml("Позиция " + cell.position + ", сектор " + cell.sectorNumber + ", ряд " + cell.rowNumber + ", " + itemLabel) + '"><span class="cell-code">' + escapeHtml(codeLabel) + '</span><span class="cell-position">C' + cell.sectorNumber + ' · Р' + cell.rowNumber + '</span><span class="cell-state">' + escapeHtml(stateLabel) + "</span></button>";
+        }).join("");
+        elements.quarterOverview.innerHTML = '<section class="quarter-drum-map"><div class="quarter-drum-head"><div><h3 class="sector-title">Карта четверти ' + escapeHtml(quarterLabel(state.quarterIndex)) + '</h3><p class="quarter-drum-caption">Показывается одна четверть барабана: 8 секторов по ширине и 15 рядов по высоте. Выбор множественный.</p></div><div class="selection-chip">Выбрано: ' + selectedInQuarter + '</div></div><div class="quarter-drum-grid-wrap"><div id="quarter-drum-grid" class="quarter-drum-grid" role="grid">' + header + cellsMarkup + "</div></div></section>";
         elements.quarterOverview.querySelectorAll("[data-cell-id]").forEach((button) => {
           button.addEventListener("click", () => {
             const cellId = button.getAttribute("data-cell-id");
@@ -850,13 +887,13 @@
           }
         });
         if (!items.length) {
-          elements.itemList.innerHTML = '<div class="empty-state">No replenishment items available.</div>';
+          elements.itemList.innerHTML = '<div class="empty-state">Нет доступных товаров для пополнения.</div>';
           return;
         }
         elements.itemList.innerHTML = items.map((option) => {
           const activeClass = option.item_id === state.selectedItemId ? " is-active" : "";
-          const capacityLabel = option.capacity ? "capacity " + option.capacity : "capacity n/a";
-          return '<button class="item-button' + activeClass + '" data-item-id="' + option.item_id + '" type="button"><span class="item-name">' + escapeHtml(option.item_name) + '</span><span class="item-meta">' + escapeHtml(option.item_sku) + " / min " + option.item_min_level + " / " + escapeHtml(option.item_unit) + '</span><span class="item-meta">Base slot ' + escapeHtml(option.slot_code) + " / " + capacityLabel + "</span></button>";
+          const capacityLabel = option.capacity ? "вместимость " + option.capacity : "вместимость н/д";
+          return '<button class="item-button' + activeClass + '" data-item-id="' + option.item_id + '" type="button"><span class="item-name">' + escapeHtml(option.item_name) + '</span><span class="item-meta">' + escapeHtml(option.item_sku) + " · мин. остаток " + option.item_min_level + " · " + escapeHtml(option.item_unit) + '</span><span class="item-meta">Базовая ячейка ' + escapeHtml(option.slot_code) + " · " + capacityLabel + "</span></button>";
         }).join("");
         elements.itemList.querySelectorAll("[data-item-id]").forEach((button) => {
           button.addEventListener("click", () => {
@@ -870,39 +907,41 @@
       function renderSelectionSummaryTouch() {
         const cells = selectedCells().sort((left, right) => left.position - right.position);
         const item = selectedItem();
-        const quarterLabels = Array.from(new Set(cells.map((cell) => "Q" + (cell.quarterIndex + 1))));
-        const currentQuarterLabel = "Q" + (state.quarterIndex + 1);
-        elements.preparedItem.textContent = item ? item.item_name : "Not selected";
-        elements.preparedItemDetail.textContent = item ? item.item_sku + " / min " + item.item_min_level : "Choose an item after cell selection";
-        elements.selectedQuarterChip.textContent = "Quarter: " + (quarterLabels.length ? quarterLabels.join(", ") : "none");
-        elements.selectedCellsChip.textContent = "Cells: " + cells.length;
-        elements.selectedCellsLabel.textContent = cells.length ? cells.map(formatCellIdentifier).join(", ") : "Nothing selected";
-        elements.selectedQuarterLabel.textContent = quarterLabels.length ? quarterLabels.join(", ") + (quarterLabels.length === 1 && quarterLabels[0] === currentQuarterLabel ? " (active)" : "") : "No active selection";
-        elements.selectedItemLabel.textContent = item ? item.item_name + " (" + item.item_sku + ")" : "Choose an item";
-        elements.selectionGuidance.textContent = cells.length ? "Selected " + cells.length + " cells. Assign an item, then stage the refill plan." : "Choose one or more cells in the visible quarter, then pick the item to stage.";
-        elements.preparedQuarterLabel.textContent = state.preparedPlan ? state.preparedPlan.quarters.join(", ") : (cells.length ? quarterLabels.join(", ") : "Not staged");
+        const quarterLabels = Array.from(new Set(cells.map((cell) => quarterLabel(cell.quarterIndex))));
+        const currentQuarterLabel = quarterLabel(state.quarterIndex);
+        elements.preparedItem.textContent = item ? item.item_name : "Не выбран";
+        elements.preparedItemDetail.textContent = item ? item.item_sku + " · мин. остаток " + item.item_min_level : "Сначала выберите ячейки и товар";
+        elements.selectedQuarterChip.textContent = "Четверть: " + (quarterLabels.length ? quarterLabels.join(", ") : "нет");
+        elements.selectedCellsChip.textContent = "Ячеек: " + cells.length;
+        elements.selectedCellsLabel.textContent = cells.length ? cells.map(formatCellIdentifier).join(", ") : "Ничего не выбрано";
+        elements.selectedQuarterLabel.textContent = quarterLabels.length ? quarterLabels.join(", ") + (quarterLabels.length === 1 && quarterLabels[0] === currentQuarterLabel ? " (активна)" : "") : "Нет активного выбора";
+        elements.selectedItemLabel.textContent = item ? item.item_name + " (" + item.item_sku + ")" : "Выберите товар";
+        elements.selectionGuidance.textContent = state.preparedPlan
+          ? "План подготовлен. Следующий реальный шаг: поверните барабан на выбранную четверть, затем переходите к подтверждению."
+          : (cells.length ? "Выбраны ячейки. Теперь выберите товар и нажмите «Пополнить»." : "Выберите одну или несколько ячеек в видимой четверти, затем укажите товар.");
+        elements.preparedQuarterLabel.textContent = state.preparedPlan ? state.preparedPlan.quarters.join(", ") + " · повернуть барабан вручную" : (cells.length ? quarterLabels.join(", ") : "Не подготовлено");
         elements.preparedCountLabel.textContent = String(state.preparedPlan ? state.preparedPlan.cells.length : cells.length);
-        elements.preparedItemLabel.textContent = state.preparedPlan ? state.preparedPlan.item.item_name + " (" + state.preparedPlan.item.item_sku + ")" : (item ? item.item_name + " (" + item.item_sku + ")" : "Not selected");
+        elements.preparedItemLabel.textContent = state.preparedPlan ? state.preparedPlan.item.item_name + " (" + state.preparedPlan.item.item_sku + ")" : (item ? item.item_name + " (" + item.item_sku + ")" : "Не выбран");
         elements.prepareButton.disabled = !(cells.length && item);
       }
 
       function renderConfirmationTouch() {
         if (!state.preparedPlan) {
           elements.confirmationPanel.className = "confirmation-panel";
-          elements.confirmationQuarterChip.textContent = "Quarter: none";
-          elements.confirmationCountChip.textContent = "Cells: 0";
-          elements.confirmationCells.textContent = "Plan not staged yet";
-          elements.workflowState.textContent = selectedCells().length && selectedItem() ? "Stage 2: prepared to refill" : "Stage 1: selection";
+          elements.confirmationQuarterChip.textContent = "Четверть: нет";
+          elements.confirmationCountChip.textContent = "Ячеек: 0";
+          elements.confirmationCells.textContent = "План ещё не подготовлен";
+          elements.workflowState.textContent = selectedCells().length && selectedItem() ? "Шаг 2: готово к подготовке" : "Шаг 1: выбор ячеек";
           return;
         }
         elements.confirmationPanel.className = "confirmation-panel is-visible" + (state.isConfirmed ? " is-confirmed" : "");
-        elements.confirmationQuarterChip.textContent = "Quarter: " + state.preparedPlan.quarters.join(", ");
-        elements.confirmationCountChip.textContent = "Cells: " + state.preparedPlan.cells.length;
+        elements.confirmationQuarterChip.textContent = "Четверть: " + state.preparedPlan.quarters.join(", ");
+        elements.confirmationCountChip.textContent = "Ячеек: " + state.preparedPlan.cells.length;
         elements.confirmationCells.textContent = state.preparedPlan.cells.slice().sort((left, right) => left.position - right.position).map(formatCellIdentifier).join(", ");
         elements.confirmationCopy.textContent = state.isConfirmed
-          ? "The plan is confirmed in UI only. No drum command was sent in this branch."
-          : "Review the quarter, cell list, and chosen item before confirming this local refill plan.";
-        elements.workflowState.textContent = state.isConfirmed ? "Stage 3: confirmed" : "Stage 3: confirmation";
+          ? "План подтверждён только в интерфейсе. Команда на барабан и backend-операция в этой ветке не выполнялись."
+          : "Следующий реальный шаг: поверните барабан на эту четверть, физически загрузите товар в отмеченные ячейки и только потом нажмите подтверждение.";
+        elements.workflowState.textContent = state.isConfirmed ? "Шаг 3: подтверждено (UI-only)" : "Шаг 3: загрузите и подтвердите";
       }
 
       function renderQuarterSummary() {
@@ -1023,11 +1062,11 @@
         }
         state.preparedPlan = {
           cells,
-          quarters: Array.from(new Set(cells.map((cell) => "Q" + (cell.quarterIndex + 1)))),
+          quarters: Array.from(new Set(cells.map((cell) => quarterLabel(cell.quarterIndex)))),
           item
         };
         state.isConfirmed = false;
-        setStatus("Staged local refill plan for " + cells.length + " cells and item " + item.item_name + ".", "");
+        setStatus("План пополнения подготовлен: " + state.preparedPlan.quarters.join(", ") + ", " + cells.length + " ячеек, товар " + item.item_name + ". Следующий шаг: повернуть барабан вручную.", "");
         render();
       }
 
@@ -1036,7 +1075,7 @@
           return;
         }
         state.isConfirmed = true;
-        setStatus("Confirmed local plan for " + state.preparedPlan.cells.map((cell) => "P" + cell.position).join(", ") + ". No backend drum command was sent.", "");
+        setStatus("Подтверждение принято только в UI для позиций " + state.preparedPlan.cells.map((cell) => "P" + cell.position).join(", ") + ". Команда на барабан не отправлялась.", "");
         render();
       }
 
@@ -1044,26 +1083,26 @@
         state.selectedCellIds.clear();
         state.selectedItemId = null;
         clearPreparedState();
-        setStatus("Selection cleared. Choose a quarter, tap cells, and stage an item.", "");
+        setStatus("Выбор очищен. Откройте четверть, отметьте ячейки и подготовьте товар.", "");
         render();
       }
 
       async function loadOverview() {
-        setStatus("Loading replenishment overview...", "");
+        setStatus("Загрузка карты пополнения...", "");
         try {
           const response = await fetch(config.overviewEndpoint);
           const payload = await response.json();
           if (!response.ok) {
-            throw new Error(payload.detail || "Failed to load replenishment overview");
+            throw new Error(payload.detail || "Не удалось загрузить обзор пополнения");
           }
           state.options = Array.isArray(payload.options) ? payload.options : [];
           buildCells();
-          setStatus("Loaded " + state.options.length + " replenishment bindings for the operator layout.", "");
+          setStatus("Загружено " + state.options.length + " привязок пополнения для операторской карты.", "");
           render();
         } catch (error) {
-          elements.quarterOverview.innerHTML = '<div class="empty-state">Operator replenishment overview is unavailable.</div>';
-          elements.itemList.innerHTML = '<div class="empty-state">No item list available.</div>';
-          setStatus(error.message || "Failed to load replenishment overview", "error");
+          elements.quarterOverview.innerHTML = '<div class="empty-state">Операторская карта пополнения недоступна.</div>';
+          elements.itemList.innerHTML = '<div class="empty-state">Список товаров недоступен.</div>';
+          setStatus(error.message || "Не удалось загрузить обзор пополнения", "error");
         }
       }
 
@@ -1077,25 +1116,25 @@
       });
       elements.selectAllQuarterButton.addEventListener("click", () => {
         setSelectionForQuarter();
-        setStatus("Selected every visible cell in the active quarter.", "");
+        setStatus("Выбраны все ячейки в активной четверти.", "");
       });
       elements.selectEmptyQuarterButton.addEventListener("click", () => {
         setSelectionForQuarter((cell) => !cell.filled);
-        setStatus("Selected empty cells in the active quarter.", "");
+        setStatus("Выбраны пустые ячейки в активной четверти.", "");
       });
       elements.selectFilledQuarterButton.addEventListener("click", () => {
         setSelectionForQuarter((cell) => cell.filled);
-        setStatus("Selected filled cells in the active quarter.", "");
+        setStatus("Выбраны заполненные ячейки в активной четверти.", "");
       });
       elements.clearQuarterButton.addEventListener("click", () => {
         clearQuarterSelection();
-        setStatus("Cleared selection in the active quarter.", "");
+        setStatus("Выбор в активной четверти очищен.", "");
       });
       elements.prepareButton.addEventListener("click", prepareReplenishment);
       elements.confirmButton.addEventListener("click", confirmReplenishment);
       elements.cancelPrepareButton.addEventListener("click", () => {
         clearPreparedState();
-        setStatus("Returned to selection mode for further edits.", "");
+        setStatus("Возврат к редактированию выбора.", "");
         render();
       });
       elements.clearSelectionButton.addEventListener("click", clearSelection);
