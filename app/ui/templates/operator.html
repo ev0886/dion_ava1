@@ -287,31 +287,50 @@
       grid-template-columns: repeat(8, minmax(0, 1fr));
       gap: 8px;
     }
-    .sector-label {
-      min-height: 34px;
-      border-radius: 14px;
+    .sector-button {
+      min-height: 52px;
+      padding: 8px 6px;
+      border-radius: 16px;
       border: 1px solid var(--line);
       background: var(--panel-soft);
       display: grid;
-      place-items: center;
+      gap: 2px;
+      justify-items: center;
+      align-content: center;
+      text-align: center;
+      color: var(--text);
+    }
+    .sector-button.is-active {
+      border-color: var(--selected);
+      background: linear-gradient(180deg, #fffaf0 0%, var(--selected-soft) 100%);
+      box-shadow: 0 0 0 3px rgba(240, 185, 75, 0.18);
+    }
+    .sector-button:disabled {
+      opacity: 0.55;
+    }
+    .sector-name {
       font-size: 0.78rem;
       font-weight: 800;
+      line-height: 1.1;
+    }
+    .sector-meta {
+      font-size: 0.68rem;
+      line-height: 1.15;
       color: var(--muted);
     }
     .cell-button {
       width: 100%;
-      min-height: 52px;
+      min-height: 60px;
       aspect-ratio: 1 / 1;
-      padding: 6px 4px;
-      border-radius: 16px;
+      padding: 8px 6px;
+      border-radius: 18px;
       border: 2px solid var(--line);
       background: #fff;
       color: var(--text);
-      display: grid;
-      gap: 4px;
-      text-align: center;
-      align-content: center;
-      justify-items: center;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      position: relative;
     }
     .cell-button.is-filled {
       background: linear-gradient(180deg, #8ccb3d 0%, var(--accent) 100%);
@@ -326,19 +345,33 @@
       background: linear-gradient(180deg, #fffaf0 0%, var(--selected-soft) 100%);
       color: var(--text);
     }
-    .cell-code {
-      font-size: 0.88rem;
+    .cell-button.is-empty:hover {
+      border-color: var(--selected);
+    }
+    .cell-button::after {
+      content: "";
+      position: absolute;
+      top: 8px;
+      right: 8px;
+      width: 10px;
+      height: 10px;
+      border-radius: 999px;
+      background: var(--empty-soft);
+      border: 1px solid rgba(32, 32, 32, 0.12);
+    }
+    .cell-button.is-filled::after {
+      background: rgba(255, 255, 255, 0.92);
+      border-color: rgba(255, 255, 255, 0.48);
+    }
+    .cell-button.is-selected::after {
+      background: var(--selected);
+      border-color: rgba(141, 102, 24, 0.24);
+    }
+    .cell-number {
+      font-size: 1rem;
       font-weight: 800;
-      line-height: 1.15;
-    }
-    .cell-position {
-      font-size: 0.68rem;
-      opacity: 0.9;
-    }
-    .cell-item {
-      font-size: 0.68rem;
-      line-height: 1.2;
-      font-weight: 700;
+      line-height: 1;
+      letter-spacing: 0.02em;
     }
     .cell-detail,
     .item-meta {
@@ -347,23 +380,9 @@
       color: var(--muted);
     }
     .cell-button.is-filled .cell-detail,
-    .cell-button.is-filled .cell-position,
     .cell-button.is-filled .pill,
-    .cell-button.is-filled .item-meta {
+      .cell-button.is-filled .item-meta {
       color: rgba(255, 255, 255, 0.92);
-    }
-    .cell-state {
-      background: rgba(255, 255, 255, 0.86);
-      color: var(--text);
-      min-height: 22px;
-      min-width: 22px;
-      padding: 2px 6px;
-      font-size: 0.62rem;
-    }
-    .cell-button.is-filled .cell-state {
-      background: rgba(255, 255, 255, 0.18);
-      color: #fff;
-      border-color: rgba(255, 255, 255, 0.32);
     }
     .empty-state {
       min-height: 160px;
@@ -441,6 +460,23 @@
       .helper-row,
       .action-row,
       .confirmation-actions { align-items: stretch; }
+      .quarter-drum-map {
+        padding: 12px;
+      }
+      .quarter-drum-grid {
+        gap: 6px;
+      }
+      .sector-button {
+        min-height: 48px;
+        padding: 7px 4px;
+      }
+      .cell-button {
+        min-height: 54px;
+        border-radius: 16px;
+      }
+      .cell-number {
+        font-size: 0.94rem;
+      }
     }
   </style>
 </head>
@@ -759,6 +795,14 @@
         return state.cells.filter((cell) => cell.quarterIndex === state.quarterIndex);
       }
 
+      function quarterSectorCells(sectorIndex) {
+        return visibleQuarterCells().filter((cell) => cell.sectorIndex === sectorIndex);
+      }
+
+      function emptySectorCells(sectorIndex) {
+        return quarterSectorCells(sectorIndex).filter((cell) => !cell.filled);
+      }
+
       function selectedItem() {
         return state.options.find((option) => option.item_id === state.selectedItemId) || null;
       }
@@ -786,6 +830,24 @@
         });
         clearPreparedState();
         render();
+      }
+
+      function toggleSectorSelection(sectorIndex) {
+        const targetCells = emptySectorCells(sectorIndex);
+        if (!targetCells.length) {
+          return 0;
+        }
+        const allSelected = targetCells.every((cell) => state.selectedCellIds.has(cell.id));
+        targetCells.forEach((cell) => {
+          if (allSelected) {
+            state.selectedCellIds.delete(cell.id);
+          } else {
+            state.selectedCellIds.add(cell.id);
+          }
+        });
+        clearPreparedState();
+        render();
+        return allSelected ? -targetCells.length : targetCells.length;
       }
 
       function renderStageStrip() {
@@ -846,7 +908,17 @@
         }
         const selectedInQuarter = quarterCells.filter((cell) => state.selectedCellIds.has(cell.id)).length;
         const header = Array.from({ length: SECTORS_PER_QUARTER }, (_, index) => {
-          return '<div class="sector-label" data-sector-label="' + (index + 1) + '">Сектор ' + (index + 1) + "</div>";
+          const emptyCells = emptySectorCells(index);
+          const emptySelected = emptyCells.length && emptyCells.every((cell) => state.selectedCellIds.has(cell.id));
+          const classes = ["sector-button"];
+          if (emptySelected) {
+            classes.push("is-active");
+          }
+          const metaLabel = emptyCells.length ? "Свободно " + emptyCells.length : "Занято";
+          const actionLabel = emptyCells.length
+            ? (emptySelected ? "снять выбор пустых ячеек" : "выбрать все пустые ячейки")
+            : "пустых ячеек нет";
+          return '<button class="' + classes.join(" ") + '" data-sector-index="' + index + '" type="button" ' + (emptyCells.length ? "" : "disabled ") + 'aria-label="' + escapeHtml("Сектор " + (index + 1) + ": " + actionLabel) + '"><span class="sector-name">Сектор ' + (index + 1) + '</span><span class="sector-meta">' + escapeHtml(metaLabel) + "</span></button>";
         }).join("");
         const cellsMarkup = quarterCells.map((cell) => {
           const classes = ["cell-button", cell.filled ? "is-filled" : "is-empty"];
@@ -854,12 +926,21 @@
           if (isSelected) {
             classes.push("is-selected");
           }
-          const stateLabel = isSelected ? "Выбр." : (cell.filled ? "Зап." : "Пуст.");
           const itemLabel = cell.option ? cell.option.item_name : "Свободно";
-          const codeLabel = cell.option ? cell.option.slot_code : "P" + cell.position;
-          return '<button class="' + classes.join(" ") + '" data-cell-id="' + escapeHtml(cell.id) + '" type="button" aria-label="' + escapeHtml("Позиция " + cell.position + ", сектор " + cell.sectorNumber + ", ряд " + cell.rowNumber + ", " + itemLabel) + '"><span class="cell-code">' + escapeHtml(codeLabel) + '</span><span class="cell-position">C' + cell.sectorNumber + ' · Р' + cell.rowNumber + '</span><span class="cell-state">' + escapeHtml(stateLabel) + "</span></button>";
+          return '<button class="' + classes.join(" ") + '" data-cell-id="' + escapeHtml(cell.id) + '" type="button" aria-label="' + escapeHtml("Позиция " + cell.position + ", сектор " + cell.sectorNumber + ", ряд " + cell.rowNumber + ", " + itemLabel) + '"><span class="cell-number">' + cell.position + "</span></button>";
         }).join("");
-        elements.quarterOverview.innerHTML = '<section class="quarter-drum-map"><div class="quarter-drum-head"><div><h3 class="sector-title">Карта четверти ' + escapeHtml(quarterLabel(state.quarterIndex)) + '</h3><p class="quarter-drum-caption">Показывается одна четверть барабана: 8 секторов по ширине и 15 рядов по высоте. Выбор множественный.</p></div><div class="selection-chip">Выбрано: ' + selectedInQuarter + '</div></div><div class="quarter-drum-grid-wrap"><div id="quarter-drum-grid" class="quarter-drum-grid" role="grid">' + header + cellsMarkup + "</div></div></section>";
+        elements.quarterOverview.innerHTML = '<section class="quarter-drum-map"><div class="quarter-drum-head"><div><h3 class="sector-title">Карта четверти ' + escapeHtml(quarterLabel(state.quarterIndex)) + '</h3><p class="quarter-drum-caption">Показывается одна четверть барабана: 8 секторов по ширине и 15 рядов по высоте. Нажмите на заголовок сектора, чтобы быстро выбрать все пустые ячейки.</p></div><div class="selection-chip">Выбрано: ' + selectedInQuarter + '</div></div><div class="quarter-drum-grid-wrap"><div id="quarter-drum-grid" class="quarter-drum-grid" role="grid">' + header + cellsMarkup + "</div></div></section>";
+        elements.quarterOverview.querySelectorAll("[data-sector-index]").forEach((button) => {
+          button.addEventListener("click", () => {
+            const sectorIndex = Number(button.getAttribute("data-sector-index"));
+            const delta = toggleSectorSelection(sectorIndex);
+            if (delta > 0) {
+              setStatus("Выбраны все пустые ячейки сектора " + (sectorIndex + 1) + ".", "");
+            } else if (delta < 0) {
+              setStatus("Выбор пустых ячеек сектора " + (sectorIndex + 1) + " снят.", "");
+            }
+          });
+        });
         elements.quarterOverview.querySelectorAll("[data-cell-id]").forEach((button) => {
           button.addEventListener("click", () => {
             const cellId = button.getAttribute("data-cell-id");
