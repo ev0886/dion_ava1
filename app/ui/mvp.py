@@ -40,6 +40,7 @@ def render_operator_page(settings: AppSettings) -> HTMLResponse:
     ui_config = {
         "uiRole": "operator",
         "overviewEndpoint": "/inventory/replenishment-overview",
+        "startEndpoint": "/ui",
     }
     return HTMLResponse(template.replace("__DION_OPERATOR_UI_CONFIG__", json.dumps(ui_config, ensure_ascii=True)))
 

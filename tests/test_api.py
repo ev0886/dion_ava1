@@ -72,23 +72,37 @@ def test_ui_role_routes_render_and_mvp_alias_matches_user(tmp_path: Path) -> Non
     app = create_app(_settings(tmp_path, "api_ui_routes.sqlite3"))
 
     with TestClient(app) as client:
+        start_response = client.get("/ui")
         user_response = client.get("/ui/user")
         alias_response = client.get("/ui/mvp")
         operator_response = client.get("/ui/operator")
         admin_response = client.get("/ui/admin")
 
+    assert start_response.status_code == 200
     assert user_response.status_code == 200
     assert alias_response.status_code == 200
     assert operator_response.status_code == 200
     assert admin_response.status_code == 200
+    assert start_response.text == user_response.text
     assert user_response.text == alias_response.text
     assert "User Workflow" in user_response.text
-    assert "Operator Replenishment" in operator_response.text
-    assert 'id="stage-strip"' in operator_response.text
-    assert 'id="select-all-quarter-button"' in operator_response.text
+    assert "Operator Navigation" in operator_response.text
+    assert "Операторская навигация" in operator_response.text
+    assert 'id="withdraw-button"' in operator_response.text
+    assert 'id="refill-button"' in operator_response.text
+    assert 'id="exit-button"' in operator_response.text
+    assert 'id="exit-confirm-screen"' in operator_response.text
+    assert 'id="refill-item-screen"' in operator_response.text
+    assert 'id="item-picker-direct"' in operator_response.text
+    assert 'id="item-picker-select"' in operator_response.text
     assert 'id="quarter-overview"' in operator_response.text
     assert 'id="quarter-drum-grid"' in operator_response.text
-    assert 'id="prepare-button"' in operator_response.text
+    assert 'id="quarter-tabs"' in operator_response.text
+    assert 'id="selection-guidance"' in operator_response.text
+    assert 'id="prepare-button"' not in operator_response.text
+    assert 'id="stage-strip"' not in operator_response.text
+    assert 'id="item-list"' not in operator_response.text
+    assert 'id="confirmation-panel"' not in operator_response.text
     assert "Поддержка RFID и политики выдачи" in admin_response.text
     assert "Операции, требующие внимания" in admin_response.text
     assert '"/admin/users"' in admin_response.text

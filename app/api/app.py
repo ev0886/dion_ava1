@@ -105,6 +105,10 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
     def user_ui() -> HTMLResponse:
         return render_user_page(app_settings)
 
+    @app.get("/ui", response_class=HTMLResponse)
+    def start_ui() -> HTMLResponse:
+        return render_user_page(app_settings)
+
     @app.get("/ui/mvp", response_class=HTMLResponse)
     def user_mvp_ui() -> HTMLResponse:
         return render_user_page(app_settings)
