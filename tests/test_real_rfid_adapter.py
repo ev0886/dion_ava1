@@ -32,6 +32,28 @@ def test_real_rfid_adapter_read_card_success_with_fake_transport() -> None:
     assert result.is_duplicate is False
 
 
+def test_real_rfid_adapter_read_card_accepts_intermediate_read_token_before_uid() -> None:
+    adapter = RealRfidAdapter(config=_rfid_config(), transport=_FakeTransport([b"READ\n", b"UID:aa-bb cc\n"]))
+
+    result = adapter.read_card()
+
+    assert result.ok is True
+    assert result.status is HardwareOperationStatus.SUCCESS
+    assert result.uid == "AABBCC"
+    assert result.is_duplicate is False
+
+
+def test_real_rfid_adapter_read_card_accepts_multiline_read_prelude_before_uid() -> None:
+    adapter = RealRfidAdapter(config=_rfid_config(), transport=_FakeTransport([b"READ\nUID:aa-bb cc\n"]))
+
+    result = adapter.read_card()
+
+    assert result.ok is True
+    assert result.status is HardwareOperationStatus.SUCCESS
+    assert result.uid == "AABBCC"
+    assert result.is_duplicate is False
+
+
 def test_real_rfid_adapter_read_card_handles_no_card_response() -> None:
     adapter = RealRfidAdapter(config=_rfid_config(), transport=_FakeTransport([b"NO_CARD\n"]))
 
@@ -47,6 +69,13 @@ def test_real_rfid_adapter_malformed_response_raises_safe_failure() -> None:
     adapter = RealRfidAdapter(config=_rfid_config(), transport=_FakeTransport([123]))  # type: ignore[list-item]
 
     with pytest.raises(HardwareFailureError, match="malformed response"):
+        adapter.read_card()
+
+
+def test_real_rfid_adapter_unsupported_text_response_still_raises_safe_failure() -> None:
+    adapter = RealRfidAdapter(config=_rfid_config(), transport=_FakeTransport([b"READ\n", b"GARBAGE\n"]))
+
+    with pytest.raises(HardwareFailureError, match="unsupported read response"):
         adapter.read_card()
 
 

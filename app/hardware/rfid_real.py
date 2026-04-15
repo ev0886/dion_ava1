@@ -14,9 +14,11 @@ class RealRfidAdapter(RealHardwareAdapterBase):
     _READ_REQUEST = b"READ\n"
     _CLEAR_REQUEST = b"CLEAR\n"
     _PONG_RESPONSE = "PONG"
+    _READ_RESPONSE = "READ"
     _NO_CARD_RESPONSE = "NO_CARD"
     _CLEARED_RESPONSE = "CLEARED"
     _UID_PREFIX = "UID:"
+    _MAX_READ_ATTEMPTS = 2
 
     def __init__(
         self,
@@ -44,31 +46,42 @@ class RealRfidAdapter(RealHardwareAdapterBase):
         return self._success_result()
 
     def read_card(self) -> RfidReadResult:
-        response = self._send_request(self._READ_REQUEST, operation="read_card")
-        if response == self._NO_CARD_RESPONSE:
+        last_response: str | None = None
+        for _attempt in range(self._MAX_READ_ATTEMPTS):
+            response = self._send_request(self._READ_REQUEST, operation="read_card")
+            last_response = response
+            parsed_response = self._parse_read_response(response)
+            if parsed_response == self._READ_RESPONSE:
+                continue
+            if parsed_response == self._NO_CARD_RESPONSE:
+                return RfidReadResult(
+                    device_type=self.device_type,
+                    status=HardwareOperationStatus.NO_CARD,
+                    ok=True,
+                    uid=None,
+                    is_duplicate=False,
+                    message=f"No RFID card present ({DEFAULT_RFID_UID_FORMAT})",
+                )
+            if not parsed_response.startswith(self._UID_PREFIX):
+                raise HardwareFailureError(
+                    f"RFID reader returned unsupported read response: {response!r}",
+                    device_type=self.device_type,
+                    operation="read_card",
+                )
+            uid = self._normalize_uid(parsed_response.removeprefix(self._UID_PREFIX))
+            is_duplicate = uid == self._last_uid
+            self._last_uid = uid
             return RfidReadResult(
                 device_type=self.device_type,
-                status=HardwareOperationStatus.NO_CARD,
+                status=HardwareOperationStatus.SUCCESS,
                 ok=True,
-                uid=None,
-                is_duplicate=False,
-                message=f"No RFID card present ({DEFAULT_RFID_UID_FORMAT})",
+                uid=uid,
+                is_duplicate=is_duplicate,
             )
-        if not response.startswith(self._UID_PREFIX):
-            raise HardwareFailureError(
-                f"RFID reader returned unsupported read response: {response!r}",
-                device_type=self.device_type,
-                operation="read_card",
-            )
-        uid = self._normalize_uid(response.removeprefix(self._UID_PREFIX))
-        is_duplicate = uid == self._last_uid
-        self._last_uid = uid
-        return RfidReadResult(
+        raise HardwareFailureError(
+            f"RFID reader returned unsupported read response: {last_response!r}",
             device_type=self.device_type,
-            status=HardwareOperationStatus.SUCCESS,
-            ok=True,
-            uid=uid,
-            is_duplicate=is_duplicate,
+            operation="read_card",
         )
 
     def clear_buffer(self) -> HardwareOperationResult:
@@ -95,3 +108,14 @@ class RealRfidAdapter(RealHardwareAdapterBase):
                 operation="read_card",
             )
         return cleaned
+
+    @classmethod
+    def _parse_read_response(cls, response: str) -> str:
+        lines = [line.strip() for line in response.splitlines() if line.strip()]
+        if not lines:
+            return response
+        for line in lines:
+            if line == cls._READ_RESPONSE:
+                continue
+            return line
+        return cls._READ_RESPONSE
