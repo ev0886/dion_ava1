@@ -8,25 +8,31 @@
     :root {
       color-scheme: light;
       font-family: "Segoe UI", "Helvetica Neue", sans-serif;
-      --bg: #f2f4ef;
+      --bg: #eef2ea;
       --panel: #ffffff;
-      --panel-strong: #f6f7f3;
-      --text: #232323;
-      --muted: #5e655d;
-      --line: #c7cec0;
+      --panel-soft: #f6f8f2;
+      --text: #203020;
+      --muted: #5d675b;
+      --line: #c9d2c2;
       --accent: #76b81f;
-      --accent-strong: #5f9519;
+      --accent-strong: #5b9314;
       --accent-soft: #eef7df;
-      --selected-ring: #f0b94b;
-      --shadow: 0 18px 40px rgba(78, 95, 62, 0.12);
+      --empty-soft: #f7f8f4;
+      --filled-strong: #5d9917;
+      --selected: #f0b94b;
+      --selected-soft: #fff3d8;
       --danger: #b94939;
+      --shadow: 0 18px 40px rgba(78, 95, 62, 0.12);
     }
     * { box-sizing: border-box; }
+    h1, h2, h3, p, dl, dd, dt { margin: 0; }
+    button, input, select, textarea { font: inherit; }
     body {
       margin: 0;
+      min-height: 100vh;
       background:
-        radial-gradient(circle at top center, rgba(118, 184, 31, 0.15), transparent 22rem),
-        linear-gradient(180deg, #fafbf8 0%, var(--bg) 100%);
+        radial-gradient(circle at top center, rgba(118, 184, 31, 0.18), transparent 24rem),
+        linear-gradient(180deg, #fafcf7 0%, var(--bg) 100%);
       color: var(--text);
     }
     .operator-shell {
@@ -41,8 +47,9 @@
     .panel {
       background: var(--panel);
       border: 1px solid var(--line);
-      border-radius: 22px;
+      border-radius: 24px;
       box-shadow: var(--shadow);
+      overflow: hidden;
     }
     .header-panel,
     .section-panel {
@@ -53,93 +60,163 @@
     .eyebrow,
     .meta-label,
     .section-label,
-    .summary-list dt {
-      margin: 0;
+    .summary-list dt,
+    .pill {
       color: var(--muted);
-      font-size: 0.78rem;
+      font-size: 0.76rem;
+      line-height: 1.2;
       letter-spacing: 0.08em;
       text-transform: uppercase;
     }
-    h1, h2, p { margin: 0; }
     .header-row,
-    .nav-row,
+    .section-heading,
+    .quarter-nav,
+    .quarter-controls,
+    .helper-row,
     .action-row,
     .confirmation-actions,
-    .nav-actions,
-    .quarter-tabs {
+    .stage-strip,
+    .quarter-tabs,
+    .legend-row,
+    .selection-chip-row {
       display: flex;
       gap: 10px;
-      align-items: center;
       flex-wrap: wrap;
+      align-items: center;
     }
     .header-row,
-    .nav-row,
-    .section-heading { justify-content: space-between; }
+    .section-heading,
+    .quarter-nav { justify-content: space-between; }
     .status-chip,
-    .quarter-caption {
+    .quarter-badge,
+    .legend-chip,
+    .cell-state,
+    .selection-chip {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 34px;
       padding: 8px 12px;
       border-radius: 999px;
+      border: 1px solid var(--line);
+      font-weight: 700;
+    }
+    .status-chip,
+    .quarter-badge {
       background: var(--accent-soft);
       color: var(--accent-strong);
-      font-weight: 700;
-      font-size: 0.88rem;
-      border: 1px solid var(--line);
     }
-    .meta-grid,
-    .summary-grid {
+    .lead-copy,
+    .card-note,
+    .status-copy,
+    .summary-list dd,
+    .selection-copy,
+    .confirmation-copy {
+      color: var(--muted);
+      line-height: 1.38;
+      font-size: 0.95rem;
+    }
+    .hero-grid,
+    .summary-grid,
+    .mini-metrics,
+    .selection-summary-grid,
+    .sector-grid {
       display: grid;
       gap: 10px;
     }
-    .meta-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-    .summary-grid { grid-template-columns: 1.2fr 1fr; }
-    .meta-card,
+    .hero-grid,
+    .mini-metrics { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .summary-grid,
+    .selection-summary-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .metric-card,
     .summary-card,
+    .stage-card,
     .grid-panel,
     .confirmation-panel,
-    .status-banner {
-      padding: 12px 14px;
-      border-radius: 18px;
-      background: var(--panel-strong);
+    .status-banner,
+    .sector-card,
+    .selection-card {
+      padding: 14px;
+      border-radius: 20px;
       border: 1px solid var(--line);
-    }
-    .meta-card strong,
-    .summary-card strong {
-      display: block;
-      margin-top: 6px;
-      font-size: 1.1rem;
-    }
-    .section-heading p,
-    .status-text,
-    .summary-list dd,
-    .card-note {
-      color: var(--muted);
-      line-height: 1.35;
-      font-size: 0.93rem;
-    }
-    .grid-panel,
-    .summary-card,
-    .confirmation-panel,
-    .status-banner {
+      background: var(--panel-soft);
       display: grid;
-      gap: 12px;
+      gap: 10px;
+    }
+    .metric-card strong,
+    .summary-card strong,
+    .selection-card strong {
+      display: block;
+      margin-top: 4px;
+      font-size: 1.18rem;
+      line-height: 1.12;
+    }
+    .metric-card span:last-child {
+      color: var(--muted);
+      font-size: 0.88rem;
+    }
+    .stage-card {
+      flex: 1 1 160px;
+      min-height: 96px;
+      background: #fff;
+    }
+    .stage-card.is-active {
+      border-color: var(--accent);
+      background: var(--accent-soft);
+    }
+    .stage-card.is-complete {
+      border-color: #9ec85d;
+      background: #f3f9e8;
+    }
+    .stage-index {
+      width: 34px;
+      height: 34px;
+      border-radius: 12px;
+      border: 1px solid var(--line);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 800;
+      background: #fff;
+    }
+    .stage-card.is-active .stage-index,
+    .stage-card.is-complete .stage-index {
+      background: var(--accent);
+      color: #fff;
+      border-color: var(--accent);
+    }
+    .stage-title,
+    .sector-title {
+      font-size: 1rem;
+      font-weight: 800;
     }
     button {
       border: 0;
       border-radius: 18px;
-      min-height: 52px;
+      min-height: 56px;
       padding: 0 18px;
-      font: inherit;
       font-weight: 700;
       cursor: pointer;
+      touch-action: manipulation;
+      transition: transform 0.12s ease;
+    }
+    button:active { transform: scale(0.985); }
+    button:disabled {
+      opacity: 0.48;
+      cursor: not-allowed;
+      transform: none;
     }
     .ghost-button,
     .quarter-button,
-    .item-button,
-    .secondary-button {
+    .helper-button,
+    .secondary-button,
+    .item-button {
       background: #fff;
       color: var(--text);
       border: 1px solid var(--line);
     }
+    .quarter-button,
+    .helper-button { min-height: 48px; }
     .quarter-button.is-active,
     .item-button.is-active {
       background: var(--accent-soft);
@@ -150,99 +227,188 @@
     .confirm-button {
       background: var(--accent);
       color: #fff;
-      flex: 1 1 auto;
+      flex: 1 1 220px;
+      min-height: 64px;
+      font-size: 1rem;
     }
-    button:disabled {
-      opacity: 0.5;
-      cursor: not-allowed;
+    .secondary-button {
+      flex: 1 1 180px;
+      min-height: 64px;
     }
-    .cell-grid {
+    .helper-button {
+      flex: 1 1 120px;
+      padding: 12px 14px;
+      min-height: 56px;
+    }
+    .legend-chip { background: #fff; color: var(--text); }
+    .legend-chip.is-filled {
+      background: linear-gradient(180deg, #8ccb3d 0%, var(--accent) 100%);
+      color: #fff;
+      border-color: var(--accent-strong);
+    }
+    .legend-chip.is-empty { background: var(--empty-soft); }
+    .legend-chip.is-selected {
+      background: var(--selected-soft);
+      border-color: var(--selected);
+      color: #8d6618;
+    }
+    .quarter-overview,
+    .cell-list {
       display: grid;
-      grid-template-columns: repeat(2, minmax(0, 1fr));
       gap: 12px;
     }
+    .sector-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .sector-card { background: #fff; }
+    .sector-head,
+    .cell-topline,
+    .cell-bottomline {
+      display: flex;
+      gap: 10px;
+      justify-content: space-between;
+      align-items: flex-start;
+    }
+    .sector-note {
+      color: var(--muted);
+      font-size: 0.84rem;
+    }
     .cell-button {
-      min-height: 126px;
+      width: 100%;
+      min-height: 138px;
       padding: 14px;
-      border-radius: 20px;
+      border-radius: 22px;
       border: 2px solid var(--line);
-      text-align: left;
+      background: var(--empty-soft);
+      color: var(--text);
       display: grid;
       gap: 8px;
+      text-align: left;
       align-content: start;
-      background: #fff;
     }
     .cell-button.is-filled {
-      background: linear-gradient(180deg, #8ac93a 0%, var(--accent) 100%);
-      border-color: var(--accent-strong);
+      background: linear-gradient(180deg, #8ccb3d 0%, var(--accent) 100%);
       color: #fff;
+      border-color: var(--filled-strong);
     }
-    .cell-button.is-empty { color: var(--text); }
     .cell-button.is-selected {
-      border-color: var(--selected-ring);
-      box-shadow: 0 0 0 4px rgba(240, 185, 75, 0.26);
+      border-color: var(--selected);
+      box-shadow: 0 0 0 4px rgba(240, 185, 75, 0.28);
     }
-    .cell-title { font-size: 1.1rem; font-weight: 800; }
-    .cell-meta,
-    .selection-note {
+    .cell-button.is-selected.is-empty {
+      background: linear-gradient(180deg, #fffaf0 0%, var(--selected-soft) 100%);
+      color: var(--text);
+    }
+    .cell-code {
+      font-size: 1.12rem;
+      font-weight: 800;
+      line-height: 1.15;
+    }
+    .cell-position {
       font-size: 0.9rem;
+      opacity: 0.9;
+    }
+    .cell-item {
+      font-size: 0.95rem;
       line-height: 1.3;
+      font-weight: 700;
+    }
+    .cell-detail,
+    .item-meta {
+      font-size: 0.84rem;
+      line-height: 1.32;
+      color: var(--muted);
+    }
+    .cell-button.is-filled .cell-detail,
+    .cell-button.is-filled .cell-position,
+    .cell-button.is-filled .pill,
+    .cell-button.is-filled .item-meta {
+      color: rgba(255, 255, 255, 0.92);
+    }
+    .cell-state {
+      background: rgba(255, 255, 255, 0.86);
+      color: var(--text);
+      min-height: 30px;
+      font-size: 0.74rem;
+    }
+    .cell-button.is-filled .cell-state {
+      background: rgba(255, 255, 255, 0.18);
+      color: #fff;
+      border-color: rgba(255, 255, 255, 0.32);
     }
     .empty-state {
-      min-height: 140px;
+      min-height: 160px;
+      padding: 18px;
+      border-radius: 22px;
       border: 1px dashed var(--line);
-      border-radius: 20px;
       display: grid;
       place-items: center;
       text-align: center;
-      padding: 18px;
       color: var(--muted);
       background: #fff;
     }
+    .selection-chip { background: #fff; color: var(--text); }
     .summary-list {
-      margin: 0;
       display: grid;
-      gap: 8px;
+      gap: 10px;
     }
     .summary-list div { display: grid; gap: 2px; }
     .summary-list dd {
-      margin: 0;
       color: var(--text);
       font-weight: 700;
+    }
+    .selection-ids {
+      padding: 12px;
+      border-radius: 16px;
+      border: 1px dashed var(--line);
+      background: #fff;
+      color: var(--text);
+      font-weight: 700;
+      min-height: 72px;
     }
     .item-list {
       display: grid;
       gap: 10px;
-      max-height: 252px;
+      max-height: 340px;
       overflow-y: auto;
       padding-right: 2px;
     }
     .item-button {
-      min-height: 74px;
-      padding: 12px 14px;
+      min-height: 88px;
+      padding: 14px;
       text-align: left;
       display: grid;
-      gap: 4px;
+      gap: 6px;
     }
     .item-name { font-size: 1rem; font-weight: 800; }
-    .item-meta { color: var(--muted); font-size: 0.82rem; }
-    .confirmation-panel { display: none; }
+    .confirmation-panel { display: none; background: #fffdf7; }
     .confirmation-panel.is-visible { display: grid; }
     .confirmation-panel.is-confirmed {
       background: var(--accent-soft);
       border-color: var(--accent);
     }
+    .confirmation-emphasis {
+      padding: 14px;
+      border-radius: 18px;
+      background: #fff;
+      border: 1px solid var(--line);
+      display: grid;
+      gap: 10px;
+    }
     .status-banner.is-error {
-      border-color: #e0b0aa;
+      border-color: #e1b0a9;
       background: #faece9;
       color: var(--danger);
     }
     @media (max-width: 540px) {
-      .meta-grid,
+      .hero-grid,
       .summary-grid,
-      .cell-grid { grid-template-columns: 1fr; }
+      .mini-metrics,
+      .selection-summary-grid,
+      .sector-grid {
+        grid-template-columns: 1fr;
+      }
       .header-row,
-      .nav-row,
+      .quarter-nav,
+      .helper-row,
       .action-row,
       .confirmation-actions { align-items: stretch; }
     }
@@ -256,24 +422,61 @@
           <p class="eyebrow">DION ABA1</p>
           <h1>Operator Replenishment</h1>
         </div>
-        <div id="workflow-state" class="status-chip">Prepare replenishment</div>
+        <div id="workflow-state" class="status-chip">Шаг 1: выбор ячеек</div>
       </div>
-      <p class="status-text">
-        Touch-first replenishment foundation for a 600x1024 display. Work quarter by quarter, select cells, then stage
-        an item for confirmation.
+      <p class="lead-copy">
+        Сенсорный сценарий пополнения для экрана 600x1024. Откройте нужную четверть барабана, отметьте ячейки, затем
+        подготовьте товар к пополнению и подтвердите план без реального движения барабана в этой ветке.
       </p>
-      <div class="meta-grid">
-        <article class="meta-card">
-          <span class="meta-label">Quarter</span>
+      <div class="hero-grid">
+        <article class="metric-card">
+          <span class="meta-label">Активная четверть</span>
           <strong id="quarter-indicator">Q1</strong>
+          <span id="quarter-range-label">Позиции 1-1</span>
         </article>
-        <article class="meta-card">
-          <span class="meta-label">Selected cells</span>
+        <article class="metric-card">
+          <span class="meta-label">Выбрано ячеек</span>
           <strong id="selected-count">0</strong>
+          <span id="selected-count-detail">В этой четверти ничего не выбрано</span>
         </article>
-        <article class="meta-card">
-          <span class="meta-label">Prepared item</span>
-          <strong id="prepared-item">Not selected</strong>
+        <article class="metric-card">
+          <span class="meta-label">Подготовленный товар</span>
+          <strong id="prepared-item">Не выбран</strong>
+          <span id="prepared-item-detail">Сначала отметьте ячейки</span>
+        </article>
+      </div>
+      <div id="stage-strip" class="stage-strip" aria-label="Стадии пополнения"></div>
+    </section>
+
+    <section class="panel section-panel">
+      <div class="section-heading">
+        <div>
+          <p class="section-label">Навигация по барабану</p>
+          <h2>Четверти барабана</h2>
+          <p class="card-note">Переходите по четвертям по одной. Внутри видимой четверти можно быстро выделять несколько ячеек.</p>
+        </div>
+        <div id="quarter-badge" class="quarter-badge">Q1</div>
+      </div>
+      <div class="quarter-nav">
+        <div class="quarter-controls">
+          <button id="prev-quarter" class="ghost-button" type="button">Назад</button>
+          <div id="quarter-caption" class="quarter-caption">Четверть 1</div>
+          <button id="next-quarter" class="ghost-button" type="button">Вперёд</button>
+        </div>
+        <div id="quarter-tabs" class="quarter-tabs" aria-label="Выбор четверти"></div>
+      </div>
+      <div class="mini-metrics">
+        <article class="summary-card">
+          <span class="meta-label">Видимых ячеек</span>
+          <strong id="quarter-visible-count">0</strong>
+        </article>
+        <article class="summary-card">
+          <span class="meta-label">Заполнено</span>
+          <strong id="quarter-filled-count">0</strong>
+        </article>
+        <article class="summary-card">
+          <span class="meta-label">Пусто</span>
+          <strong id="quarter-empty-count">0</strong>
         </article>
       </div>
     </section>
@@ -281,88 +484,119 @@
     <section class="panel section-panel">
       <div class="section-heading">
         <div>
-          <p class="section-label">Navigation</p>
-          <h2>Quarter navigation</h2>
-          <p class="card-note">Use arrows or direct quarter buttons to page the drum one quarter at a time.</p>
-        </div>
-      </div>
-      <div class="nav-row">
-        <div class="nav-actions">
-          <button id="prev-quarter" class="ghost-button" type="button">Previous</button>
-          <div id="quarter-caption" class="quarter-caption">Quarter 1</div>
-          <button id="next-quarter" class="ghost-button" type="button">Next</button>
-        </div>
-        <div id="quarter-tabs" class="quarter-tabs" aria-label="Quarter selection"></div>
-      </div>
-    </section>
-
-    <section class="panel section-panel">
-      <div class="section-heading">
-        <div>
-          <p class="section-label">Quarter grid</p>
-          <h2>Touch cells</h2>
-          <p class="card-note">Filled cells stay branded green. Empty cells stay white. Selected cells are highlighted.</p>
+          <p class="section-label">Шаг 1</p>
+          <h2>Выбор ячеек в активной четверти</h2>
+          <p class="card-note">Зелёные ячейки уже заполнены, светлые свободны. Выбранные ячейки получают золотой контур.</p>
         </div>
       </div>
       <div class="grid-panel">
-        <div id="quarter-summary" class="selection-note">Loading replenishment overview...</div>
-        <div id="cell-grid" class="cell-grid" aria-live="polite"></div>
+        <div class="legend-row" aria-label="Состояния ячеек">
+          <div class="legend-chip is-filled">Заполнена</div>
+          <div class="legend-chip is-empty">Пустая</div>
+          <div class="legend-chip is-selected">Выбрана</div>
+        </div>
+        <div class="helper-row">
+          <button id="select-all-quarter-button" class="helper-button" type="button">Выбрать все</button>
+          <button id="select-empty-quarter-button" class="helper-button" type="button">Только пустые</button>
+          <button id="select-filled-quarter-button" class="helper-button" type="button">Только заполненные</button>
+          <button id="clear-quarter-button" class="helper-button" type="button">Очистить четверть</button>
+        </div>
+        <p id="quarter-summary" class="selection-copy">Загрузка карты пополнения...</p>
+        <div id="quarter-overview" class="quarter-overview" aria-live="polite"></div>
       </div>
     </section>
 
     <section class="panel section-panel">
       <div class="section-heading">
         <div>
-          <p class="section-label">Selection</p>
-          <h2>Selected cells and item picker</h2>
-          <p class="card-note">Select one or more cells, then choose the item you are preparing for replenishment.</p>
+          <p class="section-label">Шаг 2</p>
+          <h2>Подготовка к пополнению</h2>
+          <p class="card-note">Проверьте выбранную четверть и список ячеек, затем укажите товар для подготовленного плана.</p>
         </div>
+      </div>
+      <div class="selection-summary-grid">
+        <article class="selection-card">
+          <span class="meta-label">Краткая сводка</span>
+          <div class="selection-chip-row">
+            <div id="selected-quarter-chip" class="selection-chip">Четверть: нет</div>
+            <div id="selected-cells-chip" class="selection-chip">Ячеек: 0</div>
+          </div>
+          <dl class="summary-list">
+            <div>
+              <dt>Текущая четверть</dt>
+              <dd id="selected-quarter-label">Нет активного выбора</dd>
+            </div>
+            <div>
+              <dt>Подготовленный товар</dt>
+              <dd id="selected-item-label">Выберите товар</dd>
+            </div>
+          </dl>
+          <div>
+            <p class="meta-label">Идентификаторы выбранных ячеек</p>
+            <div id="selected-cells-label" class="selection-ids">Ничего не выбрано</div>
+          </div>
+        </article>
+        <article class="selection-card">
+          <span class="meta-label">Пояснение</span>
+          <strong>Подготовьте набор ячеек</strong>
+          <p id="selection-guidance" class="selection-copy">
+            Выберите одну или несколько ячеек в видимой четверти, затем отметьте товар, который будете пополнять.
+          </p>
+        </article>
       </div>
       <div class="summary-grid">
         <article class="summary-card">
-          <strong>Selected cells summary</strong>
+          <strong>Выбор товара</strong>
+          <p class="card-note">Список использует активные привязки пополнения из текущего обзора.</p>
+          <div id="item-list" class="item-list" aria-label="Товары для пополнения"></div>
+        </article>
+        <article class="summary-card">
+          <strong>План перед подтверждением</strong>
           <dl class="summary-list">
             <div>
-              <dt>Cells</dt>
-              <dd id="selected-cells-label">No cells selected</dd>
+              <dt>Четверть</dt>
+              <dd id="prepared-quarter-label">Не подготовлено</dd>
             </div>
             <div>
-              <dt>Quarter coverage</dt>
-              <dd id="selected-quarter-label">No active selection</dd>
+              <dt>Ячеек в плане</dt>
+              <dd id="prepared-count-label">0</dd>
             </div>
             <div>
-              <dt>Target item</dt>
-              <dd id="selected-item-label">Choose an item</dd>
+              <dt>Товар</dt>
+              <dd id="prepared-item-label">Не выбран</dd>
             </div>
           </dl>
         </article>
-        <article class="summary-card">
-          <strong>Item picker</strong>
-          <div id="item-list" class="item-list" aria-label="Items for replenishment"></div>
-        </article>
       </div>
       <div class="action-row">
-        <button id="prepare-button" class="main-button" type="button" disabled>Prepare replenishment</button>
-        <button id="clear-selection-button" class="secondary-button" type="button">Clear selection</button>
+        <button id="prepare-button" class="main-button" type="button" disabled>Подготовить к пополнению</button>
+        <button id="clear-selection-button" class="secondary-button" type="button">Сбросить выбор</button>
       </div>
       <div id="confirmation-panel" class="confirmation-panel">
         <div>
-          <p class="section-label">Confirmation</p>
-          <h2>Confirm replenishment</h2>
-          <p id="confirmation-copy" class="status-text">
-            Review the prepared cells and item before confirming the replenishment step.
+          <p class="section-label">Шаг 3</p>
+          <h2>Подтверждение плана</h2>
+          <p id="confirmation-copy" class="confirmation-copy">
+            Проверьте четверть, список ячеек и выбранный товар перед подтверждением локального плана пополнения.
           </p>
         </div>
+        <div class="confirmation-emphasis">
+          <div class="selection-chip-row">
+            <div id="confirmation-quarter-chip" class="selection-chip">Четверть: нет</div>
+            <div id="confirmation-count-chip" class="selection-chip">Ячеек: 0</div>
+          </div>
+          <div id="confirmation-cells" class="selection-ids">План ещё не подготовлен</div>
+        </div>
         <div class="confirmation-actions">
-          <button id="confirm-button" class="confirm-button" type="button">Confirm replenishment</button>
-          <button id="cancel-prepare-button" class="secondary-button" type="button">Back to edit</button>
+          <button id="confirm-button" class="confirm-button" type="button">Подтвердить локальный план</button>
+          <button id="cancel-prepare-button" class="secondary-button" type="button">Вернуться к редактированию</button>
         </div>
       </div>
     </section>
 
     <section id="status-banner" class="status-banner" aria-live="polite">
-      <p class="section-label">Status</p>
-      <p id="status-copy">Loading overview...</p>
+      <p class="section-label">Статус</p>
+      <p id="status-copy" class="status-copy">Загрузка обзора...</p>
     </section>
   </main>
 
@@ -375,22 +609,43 @@
       const elements = {
         workflowState: document.getElementById("workflow-state"),
         quarterIndicator: document.getElementById("quarter-indicator"),
+        quarterRangeLabel: document.getElementById("quarter-range-label"),
         selectedCount: document.getElementById("selected-count"),
+        selectedCountDetail: document.getElementById("selected-count-detail"),
         preparedItem: document.getElementById("prepared-item"),
+        preparedItemDetail: document.getElementById("prepared-item-detail"),
+        stageStrip: document.getElementById("stage-strip"),
+        quarterBadge: document.getElementById("quarter-badge"),
         prevQuarter: document.getElementById("prev-quarter"),
         nextQuarter: document.getElementById("next-quarter"),
         quarterCaption: document.getElementById("quarter-caption"),
         quarterTabs: document.getElementById("quarter-tabs"),
+        quarterVisibleCount: document.getElementById("quarter-visible-count"),
+        quarterFilledCount: document.getElementById("quarter-filled-count"),
+        quarterEmptyCount: document.getElementById("quarter-empty-count"),
+        selectAllQuarterButton: document.getElementById("select-all-quarter-button"),
+        selectEmptyQuarterButton: document.getElementById("select-empty-quarter-button"),
+        selectFilledQuarterButton: document.getElementById("select-filled-quarter-button"),
+        clearQuarterButton: document.getElementById("clear-quarter-button"),
         quarterSummary: document.getElementById("quarter-summary"),
-        cellGrid: document.getElementById("cell-grid"),
+        quarterOverview: document.getElementById("quarter-overview"),
+        selectedQuarterChip: document.getElementById("selected-quarter-chip"),
+        selectedCellsChip: document.getElementById("selected-cells-chip"),
         selectedCellsLabel: document.getElementById("selected-cells-label"),
         selectedQuarterLabel: document.getElementById("selected-quarter-label"),
         selectedItemLabel: document.getElementById("selected-item-label"),
+        selectionGuidance: document.getElementById("selection-guidance"),
+        preparedQuarterLabel: document.getElementById("prepared-quarter-label"),
+        preparedCountLabel: document.getElementById("prepared-count-label"),
+        preparedItemLabel: document.getElementById("prepared-item-label"),
         itemList: document.getElementById("item-list"),
         prepareButton: document.getElementById("prepare-button"),
         clearSelectionButton: document.getElementById("clear-selection-button"),
         confirmationPanel: document.getElementById("confirmation-panel"),
         confirmationCopy: document.getElementById("confirmation-copy"),
+        confirmationQuarterChip: document.getElementById("confirmation-quarter-chip"),
+        confirmationCountChip: document.getElementById("confirmation-count-chip"),
+        confirmationCells: document.getElementById("confirmation-cells"),
         confirmButton: document.getElementById("confirm-button"),
         cancelPrepareButton: document.getElementById("cancel-prepare-button"),
         statusBanner: document.getElementById("status-banner"),
@@ -409,6 +664,15 @@
       function setStatus(message, tone) {
         elements.statusCopy.textContent = message;
         elements.statusBanner.className = "status-banner" + (tone ? " is-" + tone : "");
+      }
+
+      function escapeHtml(value) {
+        return String(value)
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/\"/g, "&quot;")
+          .replace(/'/g, "&#39;");
       }
 
       function buildQuarterRanges() {
@@ -450,8 +714,56 @@
         return state.cells.filter((cell) => state.selectedCellIds.has(cell.id));
       }
 
+      function visibleQuarterCells() {
+        return state.cells.filter((cell) => cell.quarterIndex === state.quarterIndex);
+      }
+
       function selectedItem() {
         return state.options.find((option) => option.item_id === state.selectedItemId) || null;
+      }
+
+      function formatCellIdentifier(cell) {
+        return "P" + cell.position + " / " + (cell.option ? cell.option.slot_code : "slot-free");
+      }
+
+      function clearPreparedState() {
+        state.preparedPlan = null;
+        state.isConfirmed = false;
+      }
+
+      function setSelectionForQuarter(filterFn) {
+        visibleQuarterCells().filter(filterFn || (() => true)).forEach((cell) => {
+          state.selectedCellIds.add(cell.id);
+        });
+        clearPreparedState();
+        render();
+      }
+
+      function clearQuarterSelection() {
+        visibleQuarterCells().forEach((cell) => {
+          state.selectedCellIds.delete(cell.id);
+        });
+        clearPreparedState();
+        render();
+      }
+
+      function renderStageStrip() {
+        const activeIndex = state.preparedPlan || state.isConfirmed ? 2 : (selectedCells().length && selectedItem() ? 1 : 0);
+        const stages = [
+          { title: "Vybor yacheek", copy: "Otmette odnu ili neskolko yacheek v aktivnoy chetverti." },
+          { title: "Podgotovka", copy: "Naznachte tovar i sformiruyte plan popolneniya." },
+          { title: "Podtverzhdenie", copy: state.isConfirmed ? "Plan podtverzhden tolko v interfeise." : "Proverte plan pered lokalnym podtverzhdeniem." }
+        ];
+        elements.stageStrip.innerHTML = stages.map((stage, index) => {
+          const classes = ["stage-card"];
+          if (index < activeIndex || (state.isConfirmed && index <= activeIndex)) {
+            classes.push("is-complete");
+          }
+          if (index === activeIndex && !state.isConfirmed) {
+            classes.push("is-active");
+          }
+          return '<article class="' + classes.join(" ") + '"><div class="stage-index">' + (index + 1) + '</div><div class="stage-title">' + escapeHtml(stage.title) + '</div><p class="card-note">' + escapeHtml(stage.copy) + "</p></article>";
+        }).join("");
       }
 
       function renderQuarterTabs() {
@@ -465,6 +777,132 @@
             render();
           });
         });
+      }
+
+      function renderQuarterSummaryTouch() {
+        const current = buildQuarterRanges()[state.quarterIndex];
+        const quarterCells = visibleQuarterCells();
+        const filledCount = quarterCells.filter((cell) => cell.filled).length;
+        const emptyCount = quarterCells.length - filledCount;
+        const selectedInQuarter = quarterCells.filter((cell) => state.selectedCellIds.has(cell.id)).length;
+        elements.quarterIndicator.textContent = "Q" + (state.quarterIndex + 1);
+        elements.quarterRangeLabel.textContent = "Positions " + current.start + "-" + current.end;
+        elements.quarterBadge.textContent = "Q" + (state.quarterIndex + 1);
+        elements.quarterCaption.textContent = "Quarter " + (state.quarterIndex + 1) + " / positions " + current.start + "-" + current.end;
+        elements.quarterVisibleCount.textContent = String(quarterCells.length);
+        elements.quarterFilledCount.textContent = String(filledCount);
+        elements.quarterEmptyCount.textContent = String(emptyCount);
+        elements.selectedCount.textContent = String(selectedInQuarter);
+        elements.selectedCountDetail.textContent = selectedInQuarter ? "Selected in this quarter: " + selectedInQuarter : "Nothing selected in this quarter";
+        elements.quarterSummary.textContent = "Quarter Q" + (state.quarterIndex + 1) + ": " + quarterCells.length + " cells, " + filledCount + " filled, " + emptyCount + " empty.";
+      }
+
+      function renderQuarterGridTouch() {
+        const quarterCells = visibleQuarterCells();
+        if (!quarterCells.length) {
+          elements.quarterOverview.innerHTML = '<div class="empty-state">No cells mapped for this quarter.</div>';
+          return;
+        }
+        const splitIndex = Math.ceil(quarterCells.length / 2);
+        const groups = [
+          { title: "Sector A", cells: quarterCells.slice(0, splitIndex) },
+          { title: "Sector B", cells: quarterCells.slice(splitIndex) }
+        ].filter((group) => group.cells.length);
+        elements.quarterOverview.innerHTML = '<div class="sector-grid">' + groups.map((group) => {
+          return '<section class="sector-card"><div class="sector-head"><div><h3 class="sector-title">' + escapeHtml(group.title) + '</h3><p class="sector-note">' + escapeHtml(group.cells.map((cell) => "P" + cell.position).join(", ")) + '</p></div><div class="selection-chip">' + group.cells.length + ' cells</div></div><div class="cell-list">' + group.cells.map((cell) => {
+            const classes = ["cell-button", cell.filled ? "is-filled" : "is-empty"];
+            if (state.selectedCellIds.has(cell.id)) {
+              classes.push("is-selected");
+            }
+            const stateLabel = state.selectedCellIds.has(cell.id) ? "Selected" : (cell.filled ? "Filled" : "Empty");
+            const itemName = cell.option ? cell.option.item_name : "Free cell";
+            const detail = cell.option
+              ? cell.option.slot_code + " / qty " + cell.option.quantity + " " + cell.option.item_unit
+              : "No active binding, available for staging";
+            const bottomRight = cell.option && cell.option.capacity ? "Cap " + cell.option.capacity : "Cap n/a";
+            return '<button class="' + classes.join(" ") + '" data-cell-id="' + escapeHtml(cell.id) + '" type="button"><div class="cell-topline"><div><div class="cell-code">' + escapeHtml(cell.option ? cell.option.slot_code : "CELL-" + cell.position) + '</div><div class="cell-position">Position ' + cell.position + '</div></div><span class="cell-state">' + escapeHtml(stateLabel) + '</span></div><div class="cell-item">' + escapeHtml(itemName) + '</div><div class="cell-detail">' + escapeHtml(detail) + '</div><div class="cell-bottomline"><span class="pill">' + escapeHtml(cell.option ? cell.option.item_sku : "NO SKU") + '</span><span class="pill">' + escapeHtml(bottomRight) + "</span></div></button>";
+          }).join("") + "</div></section>";
+        }).join("") + "</div>";
+        elements.quarterOverview.querySelectorAll("[data-cell-id]").forEach((button) => {
+          button.addEventListener("click", () => {
+            const cellId = button.getAttribute("data-cell-id");
+            if (!cellId) {
+              return;
+            }
+            if (state.selectedCellIds.has(cellId)) {
+              state.selectedCellIds.delete(cellId);
+            } else {
+              state.selectedCellIds.add(cellId);
+            }
+            clearPreparedState();
+            render();
+          });
+        });
+      }
+
+      function renderItemListTouch() {
+        const items = [];
+        const seen = new Set();
+        state.options.forEach((option) => {
+          if (!seen.has(option.item_id)) {
+            seen.add(option.item_id);
+            items.push(option);
+          }
+        });
+        if (!items.length) {
+          elements.itemList.innerHTML = '<div class="empty-state">No replenishment items available.</div>';
+          return;
+        }
+        elements.itemList.innerHTML = items.map((option) => {
+          const activeClass = option.item_id === state.selectedItemId ? " is-active" : "";
+          const capacityLabel = option.capacity ? "capacity " + option.capacity : "capacity n/a";
+          return '<button class="item-button' + activeClass + '" data-item-id="' + option.item_id + '" type="button"><span class="item-name">' + escapeHtml(option.item_name) + '</span><span class="item-meta">' + escapeHtml(option.item_sku) + " / min " + option.item_min_level + " / " + escapeHtml(option.item_unit) + '</span><span class="item-meta">Base slot ' + escapeHtml(option.slot_code) + " / " + capacityLabel + "</span></button>";
+        }).join("");
+        elements.itemList.querySelectorAll("[data-item-id]").forEach((button) => {
+          button.addEventListener("click", () => {
+            state.selectedItemId = Number(button.getAttribute("data-item-id"));
+            clearPreparedState();
+            render();
+          });
+        });
+      }
+
+      function renderSelectionSummaryTouch() {
+        const cells = selectedCells().sort((left, right) => left.position - right.position);
+        const item = selectedItem();
+        const quarterLabels = Array.from(new Set(cells.map((cell) => "Q" + (cell.quarterIndex + 1))));
+        const currentQuarterLabel = "Q" + (state.quarterIndex + 1);
+        elements.preparedItem.textContent = item ? item.item_name : "Not selected";
+        elements.preparedItemDetail.textContent = item ? item.item_sku + " / min " + item.item_min_level : "Choose an item after cell selection";
+        elements.selectedQuarterChip.textContent = "Quarter: " + (quarterLabels.length ? quarterLabels.join(", ") : "none");
+        elements.selectedCellsChip.textContent = "Cells: " + cells.length;
+        elements.selectedCellsLabel.textContent = cells.length ? cells.map(formatCellIdentifier).join(", ") : "Nothing selected";
+        elements.selectedQuarterLabel.textContent = quarterLabels.length ? quarterLabels.join(", ") + (quarterLabels.length === 1 && quarterLabels[0] === currentQuarterLabel ? " (active)" : "") : "No active selection";
+        elements.selectedItemLabel.textContent = item ? item.item_name + " (" + item.item_sku + ")" : "Choose an item";
+        elements.selectionGuidance.textContent = cells.length ? "Selected " + cells.length + " cells. Assign an item, then stage the refill plan." : "Choose one or more cells in the visible quarter, then pick the item to stage.";
+        elements.preparedQuarterLabel.textContent = state.preparedPlan ? state.preparedPlan.quarters.join(", ") : (cells.length ? quarterLabels.join(", ") : "Not staged");
+        elements.preparedCountLabel.textContent = String(state.preparedPlan ? state.preparedPlan.cells.length : cells.length);
+        elements.preparedItemLabel.textContent = state.preparedPlan ? state.preparedPlan.item.item_name + " (" + state.preparedPlan.item.item_sku + ")" : (item ? item.item_name + " (" + item.item_sku + ")" : "Not selected");
+        elements.prepareButton.disabled = !(cells.length && item);
+      }
+
+      function renderConfirmationTouch() {
+        if (!state.preparedPlan) {
+          elements.confirmationPanel.className = "confirmation-panel";
+          elements.confirmationQuarterChip.textContent = "Quarter: none";
+          elements.confirmationCountChip.textContent = "Cells: 0";
+          elements.confirmationCells.textContent = "Plan not staged yet";
+          elements.workflowState.textContent = selectedCells().length && selectedItem() ? "Stage 2: prepared to refill" : "Stage 1: selection";
+          return;
+        }
+        elements.confirmationPanel.className = "confirmation-panel is-visible" + (state.isConfirmed ? " is-confirmed" : "");
+        elements.confirmationQuarterChip.textContent = "Quarter: " + state.preparedPlan.quarters.join(", ");
+        elements.confirmationCountChip.textContent = "Cells: " + state.preparedPlan.cells.length;
+        elements.confirmationCells.textContent = state.preparedPlan.cells.slice().sort((left, right) => left.position - right.position).map(formatCellIdentifier).join(", ");
+        elements.confirmationCopy.textContent = state.isConfirmed
+          ? "The plan is confirmed in UI only. No drum command was sent in this branch."
+          : "Review the quarter, cell list, and chosen item before confirming this local refill plan.";
+        elements.workflowState.textContent = state.isConfirmed ? "Stage 3: confirmed" : "Stage 3: confirmation";
       }
 
       function renderQuarterSummary() {
@@ -567,17 +1005,18 @@
       }
 
       function render() {
+        renderStageStrip();
         renderQuarterTabs();
-        renderQuarterSummary();
+        renderQuarterSummaryTouch();
         renderNavState();
-        renderGrid();
-        renderItemList();
-        renderSelectionSummary();
-        renderConfirmation();
+        renderQuarterGridTouch();
+        renderItemListTouch();
+        renderSelectionSummaryTouch();
+        renderConfirmationTouch();
       }
 
       function prepareReplenishment() {
-        const cells = selectedCells();
+        const cells = selectedCells().sort((left, right) => left.position - right.position);
         const item = selectedItem();
         if (!cells.length || !item) {
           return;
@@ -588,7 +1027,7 @@
           item
         };
         state.isConfirmed = false;
-        setStatus("Prepared " + cells.length + " cells for " + item.item_name + ". Review the confirmation panel.", "");
+        setStatus("Staged local refill plan for " + cells.length + " cells and item " + item.item_name + ".", "");
         render();
       }
 
@@ -597,15 +1036,14 @@
           return;
         }
         state.isConfirmed = true;
-        setStatus("Confirmed local replenishment plan for cells " + state.preparedPlan.cells.map((cell) => cell.position).join(", ") + ". No backend drum command was sent.", "");
+        setStatus("Confirmed local plan for " + state.preparedPlan.cells.map((cell) => "P" + cell.position).join(", ") + ". No backend drum command was sent.", "");
         render();
       }
 
       function clearSelection() {
         state.selectedCellIds.clear();
         state.selectedItemId = null;
-        state.preparedPlan = null;
-        state.isConfirmed = false;
+        clearPreparedState();
         setStatus("Selection cleared. Choose a quarter, tap cells, and stage an item.", "");
         render();
       }
@@ -623,7 +1061,7 @@
           setStatus("Loaded " + state.options.length + " replenishment bindings for the operator layout.", "");
           render();
         } catch (error) {
-          elements.cellGrid.innerHTML = '<div class="empty-state">Operator replenishment overview is unavailable.</div>';
+          elements.quarterOverview.innerHTML = '<div class="empty-state">Operator replenishment overview is unavailable.</div>';
           elements.itemList.innerHTML = '<div class="empty-state">No item list available.</div>';
           setStatus(error.message || "Failed to load replenishment overview", "error");
         }
@@ -637,11 +1075,26 @@
         state.quarterIndex = Math.min(QUARTER_COUNT - 1, state.quarterIndex + 1);
         render();
       });
+      elements.selectAllQuarterButton.addEventListener("click", () => {
+        setSelectionForQuarter();
+        setStatus("Selected every visible cell in the active quarter.", "");
+      });
+      elements.selectEmptyQuarterButton.addEventListener("click", () => {
+        setSelectionForQuarter((cell) => !cell.filled);
+        setStatus("Selected empty cells in the active quarter.", "");
+      });
+      elements.selectFilledQuarterButton.addEventListener("click", () => {
+        setSelectionForQuarter((cell) => cell.filled);
+        setStatus("Selected filled cells in the active quarter.", "");
+      });
+      elements.clearQuarterButton.addEventListener("click", () => {
+        clearQuarterSelection();
+        setStatus("Cleared selection in the active quarter.", "");
+      });
       elements.prepareButton.addEventListener("click", prepareReplenishment);
       elements.confirmButton.addEventListener("click", confirmReplenishment);
       elements.cancelPrepareButton.addEventListener("click", () => {
-        state.preparedPlan = null;
-        state.isConfirmed = false;
+        clearPreparedState();
         setStatus("Returned to selection mode for further edits.", "");
         render();
       });
