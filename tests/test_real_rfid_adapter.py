@@ -91,6 +91,33 @@ def test_real_provider_composition_still_works_with_operational_rfid_transport()
     assert clear_result.ok is True
 
 
+def test_real_provider_composition_accepts_known_good_pi_rfid_shape_with_sdk_library() -> None:
+    settings = AppSettings(
+        hardware_provider=HardwareProvider.REAL,
+        hardware_real_endpoints={
+            "drum_controller": _serial_endpoint_config(code="drum-1", driver_name="drum-driver", port="COM1"),
+            "lock_controller": _serial_endpoint_config(code="lock-1", driver_name="lock-driver", port="COM2"),
+            "rfid_reader": _serial_endpoint_config(
+                code="rfid-1",
+                driver_name="rfid-driver",
+                port="/dev/ttyACM0",
+                sdk_library="/opt/dion_ava1/vendor/rusguard/linux_arm64_release/librgsec.so",
+            ),
+        },
+    )
+
+    bundle = create_hardware_bundle(
+        settings,
+        transport_overrides={"rfid_reader": _FakeTransport([b"PONG\n", b"UID:012345\n", b"CLEARED\n"])},
+    )
+
+    assert bundle.rfid_reader._config is not None
+    assert bundle.rfid_reader._config.transport.sdk_library == "/opt/dion_ava1/vendor/rusguard/linux_arm64_release/librgsec.so"
+    assert bundle.rfid_reader.ping().ok is True
+    assert bundle.rfid_reader.read_card().uid == "012345"
+    assert bundle.rfid_reader.clear_buffer().ok is True
+
+
 class _FakeTransport:
     def __init__(self, responses: list[object]) -> None:
         self._responses = list(responses)
@@ -118,7 +145,23 @@ def _rfid_config():
     return HardwareEndpointTransportConfig.model_validate(_serial_endpoint_config(code="rfid-1", driver_name="rfid-driver", port="COM7"))
 
 
-def _serial_endpoint_config(*, code: str, driver_name: str, port: str) -> dict[str, object]:
+def _serial_endpoint_config(
+    *,
+    code: str,
+    driver_name: str,
+    port: str,
+    sdk_library: str | None = None,
+) -> dict[str, object]:
+    transport: dict[str, object] = {
+        "transport": "serial",
+        "port": port,
+        "baudrate": 9600,
+        "data_bits": 8,
+        "parity": "none",
+        "stop_bits": 1,
+    }
+    if sdk_library is not None:
+        transport["sdk_library"] = sdk_library
     return {
         "endpoint": {
             "code": code,
@@ -130,12 +173,5 @@ def _serial_endpoint_config(*, code: str, driver_name: str, port: str) -> dict[s
                 "write_timeout_ms": 1000,
             },
         },
-        "transport": {
-            "transport": "serial",
-            "port": port,
-            "baudrate": 9600,
-            "data_bits": 8,
-            "parity": "none",
-            "stop_bits": 1,
-        },
+        "transport": transport,
     }

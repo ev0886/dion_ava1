@@ -10,6 +10,7 @@ from app.domain.enums import StartupReadinessStatus
 from app.hardware import (
     HardwareTimeoutError,
     RealRfidAdapter,
+    RealHardwareSettings,
     SerialTransport,
     TcpTransport,
     create_hardware_bundle,
@@ -86,6 +87,34 @@ def test_real_provider_composition_uses_actual_transport_implementations_by_defa
     assert isinstance(bundle.drum_controller._transport, SerialTransport)
     assert isinstance(bundle.lock_controller._transport, TcpTransport)
     assert isinstance(bundle.rfid_reader._transport, SerialTransport)
+
+
+def test_exact_known_good_pi_runtime_config_shape_is_accepted() -> None:
+    config = RealHardwareSettings.model_validate(_known_good_pi_real_runtime_config())
+
+    assert config.drum_controller is not None
+    assert config.drum_controller.protocol.move_completion_timeout_ms == 35000
+    assert config.drum_controller.protocol.post_move_unlock_delay_ms == 1500
+    assert config.lock_controller is not None
+    assert config.lock_controller.protocol.board_address == 0
+    assert config.rfid_reader is not None
+    assert config.rfid_reader.transport.port == "/dev/ttyACM0"
+    assert config.rfid_reader.transport.sdk_library == "/opt/dion_ava1/vendor/rusguard/linux_arm64_release/librgsec.so"
+
+
+def test_real_provider_bundle_accepts_exact_known_good_pi_runtime_config_shape() -> None:
+    settings = AppSettings(
+        hardware_provider=HardwareProvider.REAL,
+        hardware_real_endpoints=_known_good_pi_real_runtime_config(),
+    )
+
+    bundle = create_hardware_bundle(settings)
+
+    assert isinstance(bundle.drum_controller._transport, SerialTransport)
+    assert isinstance(bundle.lock_controller._transport, SerialTransport)
+    assert isinstance(bundle.rfid_reader._transport, SerialTransport)
+    assert bundle.rfid_reader._config is not None
+    assert bundle.rfid_reader._config.transport.sdk_library == "/opt/dion_ava1/vendor/rusguard/linux_arm64_release/librgsec.so"
 
 
 def test_real_readiness_can_become_healthy_when_rfid_lock_and_drum_transports_work(
@@ -240,5 +269,78 @@ def _tcp_endpoint_config(*, code: str, driver_name: str, host: str, port: int) -
             "transport": "tcp",
             "host": host,
             "port": port,
+        },
+    }
+
+
+def _known_good_pi_real_runtime_config() -> dict[str, object]:
+    return {
+        "drum_controller": {
+            "endpoint": {
+                "code": "drum-1",
+                "driver_name": "drum-driver",
+                "enabled": True,
+                "timeouts": {
+                    "connect_timeout_ms": 1000,
+                    "read_timeout_ms": 1000,
+                    "write_timeout_ms": 1000,
+                },
+            },
+            "protocol": {
+                "move_completion_timeout_ms": 35000,
+                "post_move_unlock_delay_ms": 1500,
+            },
+            "transport": {
+                "transport": "serial",
+                "port": "/dev/serial/by-path/platform-1000110000.pcie-pci-0001:01:00.0-usb-0:1.2:1.0-port0",
+                "baudrate": 9600,
+                "data_bits": 8,
+                "parity": "none",
+                "stop_bits": 1,
+            },
+        },
+        "lock_controller": {
+            "endpoint": {
+                "code": "lock-1",
+                "driver_name": "lock-driver",
+                "enabled": True,
+                "timeouts": {
+                    "connect_timeout_ms": 1000,
+                    "read_timeout_ms": 1000,
+                    "write_timeout_ms": 1000,
+                },
+            },
+            "protocol": {
+                "board_address": 0,
+            },
+            "transport": {
+                "transport": "serial",
+                "port": "/dev/serial/by-path/platform-1000110000.pcie-pci-0001:01:00.0-usb-0:1.1:1.0-port0",
+                "baudrate": 19200,
+                "data_bits": 8,
+                "parity": "none",
+                "stop_bits": 1,
+            },
+        },
+        "rfid_reader": {
+            "endpoint": {
+                "code": "rfid-1",
+                "driver_name": "rfid-driver",
+                "enabled": True,
+                "timeouts": {
+                    "connect_timeout_ms": 1000,
+                    "read_timeout_ms": 1000,
+                    "write_timeout_ms": 1000,
+                },
+            },
+            "transport": {
+                "transport": "serial",
+                "port": "/dev/ttyACM0",
+                "sdk_library": "/opt/dion_ava1/vendor/rusguard/linux_arm64_release/librgsec.so",
+                "baudrate": 9600,
+                "data_bits": 8,
+                "parity": "none",
+                "stop_bits": 1,
+            },
         },
     }

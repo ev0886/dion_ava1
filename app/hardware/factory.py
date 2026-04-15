@@ -17,7 +17,13 @@ from app.hardware.lock_stub_real import StubRealLockAdapter
 from app.hardware.rfid_mock import MockRfidAdapter
 from app.hardware.rfid_real import RealRfidAdapter
 from app.hardware.rfid_stub_real import StubRealRfidAdapter
-from app.hardware.transport_config import HardwareEndpointTransportConfig
+from app.hardware.transport_config import (
+    AnyHardwareEndpointTransportConfig,
+    DrumHardwareEndpointTransportConfig,
+    HardwareEndpointTransportConfig,
+    LockHardwareEndpointTransportConfig,
+    RfidHardwareEndpointTransportConfig,
+)
 from app.hardware.transports import (
     SerialRequestResponseTransport,
     SerialTransport,
@@ -37,7 +43,7 @@ class HardwareBundle:
 
 @dataclass(frozen=True, slots=True)
 class ParsedEndpointConfig:
-    config: HardwareEndpointTransportConfig | None
+    config: AnyHardwareEndpointTransportConfig | None
     error_message: str | None = None
 
 
@@ -125,7 +131,7 @@ def _parse_endpoint_config(raw_config: object, *, endpoint_name: str) -> ParsedE
     if raw_config is None:
         return ParsedEndpointConfig(config=None, error_message=None)
     try:
-        return ParsedEndpointConfig(config=HardwareEndpointTransportConfig.model_validate(raw_config))
+        return ParsedEndpointConfig(config=_endpoint_config_model(endpoint_name).model_validate(raw_config))
     except ValidationError as error:
         first_error = error.errors()[0]
         location = ".".join(str(part) for part in first_error.get("loc", ()))
@@ -138,8 +144,18 @@ def _parse_endpoint_config(raw_config: object, *, endpoint_name: str) -> ParsedE
         )
 
 
+def _endpoint_config_model(endpoint_name: str):
+    if endpoint_name == "drum_controller":
+        return DrumHardwareEndpointTransportConfig
+    if endpoint_name == "lock_controller":
+        return LockHardwareEndpointTransportConfig
+    if endpoint_name == "rfid_reader":
+        return RfidHardwareEndpointTransportConfig
+    return HardwareEndpointTransportConfig
+
+
 def _create_transport_client(
-    config: HardwareEndpointTransportConfig | None,
+    config: AnyHardwareEndpointTransportConfig | None,
 ) -> SerialRequestResponseTransport | TcpRequestResponseTransport | None:
     if config is None:
         return None

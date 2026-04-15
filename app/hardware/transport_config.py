@@ -77,9 +77,67 @@ class HardwareEndpointTransportConfig(BaseModel):
     transport: TransportSettings
 
 
+class DrumControllerProtocolSettings(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    move_completion_timeout_ms: int = Field(default=35000, ge=1, le=120000)
+    post_move_unlock_delay_ms: int = Field(default=1500, ge=0, le=60000)
+
+
+class LockControllerProtocolSettings(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    board_address: int = Field(default=0, ge=0, le=255)
+
+
+class DrumHardwareEndpointTransportConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    endpoint: CommonEndpointSettings
+    protocol: DrumControllerProtocolSettings = Field(default_factory=DrumControllerProtocolSettings)
+    transport: TransportSettings
+
+
+class LockHardwareEndpointTransportConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    endpoint: CommonEndpointSettings
+    protocol: LockControllerProtocolSettings = Field(default_factory=LockControllerProtocolSettings)
+    transport: TransportSettings
+
+
+class RfidSerialTransportSettings(SerialTransportSettings):
+    sdk_library: str | None = Field(default=None, min_length=1, max_length=1024)
+
+    @field_validator("sdk_library")
+    @classmethod
+    def _validate_sdk_library(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        cleaned = value.strip()
+        if not cleaned:
+            raise ValueError("must not be blank")
+        return cleaned
+
+
+class RfidHardwareEndpointTransportConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    endpoint: CommonEndpointSettings
+    transport: RfidSerialTransportSettings
+
+
+AnyHardwareEndpointTransportConfig = (
+    HardwareEndpointTransportConfig
+    | DrumHardwareEndpointTransportConfig
+    | LockHardwareEndpointTransportConfig
+    | RfidHardwareEndpointTransportConfig
+)
+
+
 class RealHardwareSettings(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    drum_controller: HardwareEndpointTransportConfig | None = None
-    lock_controller: HardwareEndpointTransportConfig | None = None
-    rfid_reader: HardwareEndpointTransportConfig | None = None
+    drum_controller: DrumHardwareEndpointTransportConfig | None = None
+    lock_controller: LockHardwareEndpointTransportConfig | None = None
+    rfid_reader: RfidHardwareEndpointTransportConfig | None = None
