@@ -39,9 +39,9 @@
       width: min(100vw, 600px);
       height: 100vh;
       margin: 0 auto;
-      padding: 8px;
+      padding: 6px;
       display: grid;
-      gap: 8px;
+      gap: 6px;
       grid-template-rows: auto auto minmax(0, 1fr) auto auto;
       overflow: hidden;
       align-content: stretch;
@@ -55,9 +55,9 @@
     }
     .header-panel,
     .section-panel {
-      padding: 10px;
+      padding: 6px;
       display: grid;
-      gap: 8px;
+      gap: 6px;
     }
     .eyebrow,
     .meta-label,
@@ -284,33 +284,43 @@
       border: 1px solid var(--line);
       background: #fff;
       display: grid;
-      gap: 8px;
+      gap: 6px;
       height: 100%;
+      grid-template-rows: auto auto minmax(0, 1fr);
     }
     .quarter-drum-head {
       display: flex;
-      gap: 8px;
+      gap: 6px;
       justify-content: space-between;
       align-items: center;
       flex-wrap: wrap;
     }
     .quarter-drum-caption {
       color: var(--muted);
-      font-size: 0.74rem;
+      font-size: 0.72rem;
       line-height: 1.2;
     }
-    .quarter-drum-grid-wrap {
-      overflow: hidden;
-      padding-bottom: 0;
-    }
-    .quarter-drum-grid {
-      min-width: 100%;
+    .quarter-sector-head {
       display: grid;
       grid-template-columns: repeat(8, minmax(0, 1fr));
       gap: 4px;
     }
+    .quarter-drum-grid-wrap {
+      overflow: hidden;
+      min-height: 0;
+    }
+    .quarter-drum-grid {
+      height: 100%;
+      min-width: 100%;
+      display: grid;
+      grid-template-columns: repeat(8, minmax(0, 1fr));
+      grid-template-rows: repeat(15, minmax(0, 1fr));
+      grid-auto-flow: column;
+      gap: 4px;
+      align-content: stretch;
+    }
     .sector-button {
-      min-height: 34px;
+      min-height: 32px;
       padding: 4px 2px;
       border-radius: 12px;
       border: 1px solid var(--line);
@@ -331,7 +341,7 @@
       opacity: 0.55;
     }
     .sector-name {
-      font-size: 0.76rem;
+      font-size: 0.74rem;
       font-weight: 800;
       line-height: 1.1;
     }
@@ -342,10 +352,11 @@
     }
     .cell-button {
       width: 100%;
-      min-height: 36px;
+      min-height: 0;
+      height: 100%;
       aspect-ratio: auto;
-      padding: 4px 2px;
-      border-radius: 12px;
+      padding: 3px 2px;
+      border-radius: 10px;
       border: 2px solid var(--line);
       background: #fff;
       color: var(--text);
@@ -390,7 +401,7 @@
       border-color: rgba(141, 102, 24, 0.24);
     }
     .cell-number {
-      font-size: 0.82rem;
+      font-size: 0.78rem;
       font-weight: 800;
       line-height: 1;
       letter-spacing: 0.02em;
@@ -567,6 +578,7 @@
     .grid-panel {
       min-height: 0;
       grid-template-rows: auto auto auto minmax(0, 1fr);
+      gap: 6px;
     }
     .legend-row {
       gap: 6px;
@@ -586,7 +598,7 @@
     .workflow-overview {
       display: grid;
       grid-template-columns: 1.15fr 0.85fr;
-      gap: 8px;
+      gap: 6px;
       align-items: start;
     }
     .selection-card,
@@ -614,7 +626,7 @@
     }
     .selection-card--plan .summary-list {
       grid-template-columns: repeat(3, minmax(0, 1fr));
-      gap: 8px;
+      gap: 6px;
     }
     .action-row,
     .confirmation-actions {
@@ -623,6 +635,12 @@
     .status-banner {
       padding: 8px 10px;
       gap: 4px;
+    }
+    .selection-ids {
+      max-height: 58px;
+    }
+    .item-list {
+      max-height: 152px;
     }
     @media (max-width: 540px) {
       .hero-grid,
@@ -646,21 +664,20 @@
         grid-template-columns: 1fr;
       }
       .quarter-drum-map {
-        padding: 8px;
+        padding: 6px;
       }
       .quarter-drum-grid {
         gap: 4px;
       }
       .sector-button {
-        min-height: 34px;
-        padding: 5px 2px;
+        min-height: 30px;
+        padding: 4px 2px;
       }
       .cell-button {
-        min-height: 34px;
         border-radius: 10px;
       }
       .cell-number {
-        font-size: 0.76rem;
+        font-size: 0.72rem;
       }
     }
   </style>
@@ -969,9 +986,9 @@
               id: "cell-" + position,
               quarterIndex: range.index,
               position,
-              sectorIndex: quarterOffset % SECTORS_PER_QUARTER,
-              sectorNumber: quarterOffset % SECTORS_PER_QUARTER + 1,
-              rowNumber: Math.floor(quarterOffset / SECTORS_PER_QUARTER) + 1,
+              sectorIndex: Math.floor(quarterOffset / ROWS_PER_QUARTER),
+              sectorNumber: Math.floor(quarterOffset / ROWS_PER_QUARTER) + 1,
+              rowNumber: quarterOffset % ROWS_PER_QUARTER + 1,
               option,
               filled: Boolean(option && option.quantity > 0)
             });
@@ -1369,7 +1386,12 @@
             : "пустых ячеек нет";
           return '<button class="' + classes.join(" ") + '" data-sector-index="' + index + '" type="button" ' + (emptyCells.length ? "" : "disabled ") + 'aria-label="' + escapeHtml(sectorLabel(state.quarterIndex, index) + ": " + actionLabel) + '"><span class="sector-name">' + sectorLabel(state.quarterIndex, index) + '</span><span class="sector-meta">' + escapeHtml(metaLabel) + "</span></button>";
         }).join("");
-        const cellsMarkup = quarterCells.map((cell) => {
+        const cellsMarkup = quarterCells.slice().sort((left, right) => {
+          if (left.rowNumber !== right.rowNumber) {
+            return left.rowNumber - right.rowNumber;
+          }
+          return left.sectorIndex - right.sectorIndex;
+        }).map((cell) => {
           const classes = ["cell-button", cell.filled ? "is-filled" : "is-empty"];
           const isSelected = state.selectedCellIds.has(cell.id);
           if (isSelected) {
@@ -1378,7 +1400,8 @@
           const itemLabel = cell.option ? cell.option.item_name : "Свободно";
           return '<button class="' + classes.join(" ") + '" data-cell-id="' + escapeHtml(cell.id) + '" type="button" aria-label="' + escapeHtml("Позиция " + cell.position + ", " + sectorLabel(cell.quarterIndex, cell.sectorIndex) + ", ряд " + cell.rowNumber + ", " + itemLabel) + '"><span class="cell-number">' + cell.position + "</span></button>";
         }).join("");
-        elements.quarterOverview.innerHTML = '<section class="quarter-drum-map"><div class="quarter-drum-head"><div><h3 class="sector-title">Четверть ' + escapeHtml(quarterLabel(state.quarterIndex)) + '</h3><p class="quarter-drum-caption">Сектора сверху, 8 колонок и 15 рядов.</p></div><div class="selection-chip">Выбрано: ' + selectedInQuarter + '</div></div><div class="quarter-drum-grid-wrap"><div id="quarter-drum-grid" class="quarter-drum-grid" role="grid">' + header + cellsMarkup + "</div></div></section>";
+        const gridCaption = "8 sectors x 15 rows. Cells are numbered vertically by sector.";
+        elements.quarterOverview.innerHTML = '<section class="quarter-drum-map"><div class="quarter-drum-head"><div><h3 class="sector-title">' + escapeHtml(quarterLabel(state.quarterIndex)) + '</h3><p class="quarter-drum-caption">' + escapeHtml(gridCaption) + '</p></div><div class="selection-chip">Selected: ' + selectedInQuarter + '</div></div><div class="quarter-sector-head">' + header + '</div><div class="quarter-drum-grid-wrap"><div id="quarter-drum-grid" class="quarter-drum-grid" role="grid">' + cellsMarkup + "</div></div></section>";
         elements.quarterOverview.querySelectorAll("[data-sector-index]").forEach((button) => {
           button.addEventListener("click", () => {
             const sectorIndex = Number(button.getAttribute("data-sector-index"));
