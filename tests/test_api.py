@@ -109,6 +109,16 @@ def test_ui_user_page_serves_configured_dispense_flow(tmp_path: Path) -> None:
     assert '"/inventory/kiosk-dispense-options"' in response.text
     assert '"dispenseQuantity": 1' in response.text
     assert '"autoResetTimeoutMs": 15000' in response.text
+    assert '"authEndpoint": "/auth/read-and-resolve-rfid"' in response.text
+    assert '"dispenseEndpoint": "/operations/dispense"' in response.text
+    assert "usb-status-title" not in response.text
+    assert "usb-export-operations-button" not in response.text
+    assert "usb-export-users-button" not in response.text
+    assert "usb-import-users-button" not in response.text
+    assert '"usbStatusEndpoint"' not in response.text
+    assert '"localUsbOperationsExportEndpoint"' not in response.text
+    assert '"localUsbUsersExportEndpoint"' not in response.text
+    assert '"localUsbUsersImportEndpoint"' not in response.text
 
 
 def test_ui_operator_page_serves_role_foundation(tmp_path: Path) -> None:
@@ -135,6 +145,14 @@ def test_ui_mvp_route_remains_backward_compatible_alias_to_user_ui(tmp_path: Pat
     assert "User UI" in response.text
     assert '"uiRole": "user"' in response.text
     assert "Готово к выдаче" in response.text
+    assert "usb-status-title" not in response.text
+    assert "usb-export-operations-button" not in response.text
+    assert "usb-export-users-button" not in response.text
+    assert "usb-import-users-button" not in response.text
+    assert '"usbStatusEndpoint"' not in response.text
+    assert '"localUsbOperationsExportEndpoint"' not in response.text
+    assert '"localUsbUsersExportEndpoint"' not in response.text
+    assert '"localUsbUsersImportEndpoint"' not in response.text
 
 
 def test_ui_admin_page_serves_user_management_config(tmp_path: Path) -> None:
@@ -174,6 +192,29 @@ def test_ui_admin_page_serves_user_management_config(tmp_path: Path) -> None:
     assert '"exportUsersEndpoint"' in response.text
     assert '"importExampleCsvText"' in response.text
     assert '"uiRole": "admin"' in response.text
+
+
+def test_ui_user_static_assets_no_longer_include_usb_admin_handlers(tmp_path: Path) -> None:
+    app = create_app(_settings(tmp_path, "api_ui_user_assets.sqlite3"))
+
+    with TestClient(app) as client:
+        response = client.get("/ui-assets/mvp.js")
+
+    assert response.status_code == 200
+    assert "startAuth" in response.text
+    assert "startDispense" in response.text
+    assert "resetToIdle" in response.text
+    assert "refreshOptions" in response.text
+    assert "scheduleAutoReset" in response.text
+    assert "syncDispenseButton" in response.text
+    assert "refreshUsbStatus" not in response.text
+    assert "exportOperationsToUsb" not in response.text
+    assert "exportUsersToUsb" not in response.text
+    assert "importUsersFromUsb" not in response.text
+    assert "usbStatusEndpoint" not in response.text
+    assert "localUsbOperationsExportEndpoint" not in response.text
+    assert "localUsbUsersExportEndpoint" not in response.text
+    assert "localUsbUsersImportEndpoint" not in response.text
 
 
 def test_ui_mvp_static_assets_are_served(tmp_path: Path) -> None:

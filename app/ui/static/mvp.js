@@ -8,22 +8,6 @@
     idleReturnChip: document.getElementById("idle-return-chip"),
     dispenseTarget: document.getElementById("dispense-target"),
     inventoryQuantity: document.getElementById("inventory-quantity"),
-    usbStatusTitle: document.getElementById("usb-status-title"),
-    usbStatusDetail: document.getElementById("usb-status-detail"),
-    exportDateFrom: document.getElementById("usb-export-date-from"),
-    exportDateTo: document.getElementById("usb-export-date-to"),
-    exportOperationsButton: document.getElementById("usb-export-operations-button"),
-    exportResult: document.getElementById("usb-export-result"),
-    exportResultTitle: document.getElementById("usb-export-result-title"),
-    exportResultDetail: document.getElementById("usb-export-result-detail"),
-    exportUsersButton: document.getElementById("usb-export-users-button"),
-    usersExportResult: document.getElementById("usb-users-export-result"),
-    usersExportResultTitle: document.getElementById("usb-users-export-result-title"),
-    usersExportResultDetail: document.getElementById("usb-users-export-result-detail"),
-    importUsersButton: document.getElementById("usb-import-users-button"),
-    usersImportResult: document.getElementById("usb-users-import-result"),
-    usersImportResultTitle: document.getElementById("usb-users-import-result-title"),
-    usersImportResultDetail: document.getElementById("usb-users-import-result-detail"),
     optionCountPill: document.getElementById("option-count-pill"),
     optionsEmptyState: document.getElementById("options-empty-state"),
     dispenseOptions: document.getElementById("dispense-options"),
@@ -57,7 +41,6 @@
     autoResetTimerId: null,
     countdownTimerId: null,
     autoResetDeadline: null,
-    usbStatus: null,
   };
 
   const terminalResetDelayMs = config.autoResetTimeoutMs || 15000;
@@ -67,30 +50,10 @@
     elements.startAuthButton.disabled = isBusy;
     elements.resetButton.disabled = isBusy;
     syncDispenseButton();
-    syncUsbExportControls();
   }
 
   function syncDispenseButton() {
     elements.dispenseButton.disabled = state.isBusy || !state.currentUser || !state.selectedOption;
-  }
-
-  function syncUsbExportControls() {
-    if (!elements.exportDateFrom || !elements.exportDateTo || !elements.exportOperationsButton) {
-      return;
-    }
-
-    const hasDates = Boolean(elements.exportDateFrom.value && elements.exportDateTo.value);
-    const usbAvailable = Boolean(state.usbStatus && state.usbStatus.usb_available);
-
-    elements.exportDateFrom.disabled = state.isBusy;
-    elements.exportDateTo.disabled = state.isBusy;
-    elements.exportOperationsButton.disabled = state.isBusy || !usbAvailable || !hasDates;
-    if (elements.exportUsersButton) {
-      elements.exportUsersButton.disabled = state.isBusy || !usbAvailable;
-    }
-    if (elements.importUsersButton) {
-      elements.importUsersButton.disabled = state.isBusy || !usbAvailable;
-    }
   }
 
   function updateStatusTone(tone) {
@@ -168,60 +131,6 @@
     elements.errorCode.textContent = operation && operation.error_code ? operation.error_code : "n/a";
   }
 
-  function setUsbExportResult(kind, title, detail) {
-    if (!elements.exportResult || !elements.exportResultTitle || !elements.exportResultDetail) {
-      return;
-    }
-
-    elements.exportResult.className = "usb-export-result";
-    if (kind === "success") {
-      elements.exportResult.classList.add("usb-export-result-success");
-    } else if (kind === "failure") {
-      elements.exportResult.classList.add("usb-export-result-failure");
-    } else {
-      elements.exportResult.classList.add("usb-export-result-neutral");
-    }
-
-    elements.exportResultTitle.textContent = title;
-    elements.exportResultDetail.textContent = detail;
-  }
-
-  function setUsbUsersExportResult(kind, title, detail) {
-    if (!elements.usersExportResult || !elements.usersExportResultTitle || !elements.usersExportResultDetail) {
-      return;
-    }
-
-    elements.usersExportResult.className = "usb-export-result";
-    if (kind === "success") {
-      elements.usersExportResult.classList.add("usb-export-result-success");
-    } else if (kind === "failure") {
-      elements.usersExportResult.classList.add("usb-export-result-failure");
-    } else {
-      elements.usersExportResult.classList.add("usb-export-result-neutral");
-    }
-
-    elements.usersExportResultTitle.textContent = title;
-    elements.usersExportResultDetail.textContent = detail;
-  }
-
-  function setUsbUsersImportResult(kind, title, detail) {
-    if (!elements.usersImportResult || !elements.usersImportResultTitle || !elements.usersImportResultDetail) {
-      return;
-    }
-
-    elements.usersImportResult.className = "usb-export-result";
-    if (kind === "success") {
-      elements.usersImportResult.classList.add("usb-export-result-success");
-    } else if (kind === "failure") {
-      elements.usersImportResult.classList.add("usb-export-result-failure");
-    } else {
-      elements.usersImportResult.classList.add("usb-export-result-neutral");
-    }
-
-    elements.usersImportResultTitle.textContent = title;
-    elements.usersImportResultDetail.textContent = detail;
-  }
-
   function clearUser() {
     state.currentUser = null;
     state.currentRfidUid = null;
@@ -273,252 +182,6 @@
 
   function describeOption(option) {
     return option.item_name + " | qty " + option.total_quantity;
-  }
-
-  function renderUsbStatus(payload) {
-    if (!elements.usbStatusTitle || !elements.usbStatusDetail) {
-      return;
-    }
-
-    if (payload && payload.usb_available) {
-      state.usbStatus = payload;
-      elements.usbStatusTitle.textContent = "\u0055\u0053\u0042-\u043d\u043e\u0441\u0438\u0442\u0435\u043b\u044c \u043e\u0431\u043d\u0430\u0440\u0443\u0436\u0435\u043d";
-      elements.usbStatusDetail.textContent = payload.mount_path
-        ? "\u041f\u0443\u0442\u044c: " + payload.mount_path
-        : "\u0422\u043e\u0447\u043a\u0430 \u043c\u043e\u043d\u0442\u0438\u0440\u043e\u0432\u0430\u043d\u0438\u044f \u043d\u0435 \u0443\u043a\u0430\u0437\u0430\u043d\u0430.";
-      syncUsbExportControls();
-      return;
-    }
-
-    state.usbStatus = { usb_available: false };
-    elements.usbStatusTitle.textContent = "\u0055\u0053\u0042-\u043d\u043e\u0441\u0438\u0442\u0435\u043b\u044c \u043d\u0435 \u043e\u0431\u043d\u0430\u0440\u0443\u0436\u0435\u043d";
-    elements.usbStatusDetail.textContent =
-      "\u041f\u043e\u0434\u043a\u043b\u044e\u0447\u0438\u0442\u0435 USB-\u043d\u043e\u0441\u0438\u0442\u0435\u043b\u044c \u043a Raspberry Pi \u0438 \u0434\u043e\u0436\u0434\u0438\u0442\u0435\u0441\u044c \u0435\u0433\u043e \u043c\u043e\u043d\u0442\u0438\u0440\u043e\u0432\u0430\u043d\u0438\u044f.";
-    syncUsbExportControls();
-  }
-
-  async function refreshUsbStatus() {
-    if (!config.usbStatusEndpoint) {
-      return;
-    }
-
-    try {
-      const { response, payload } = await readJson(config.usbStatusEndpoint, { method: "GET" });
-      if (!response.ok) {
-        throw new Error(payload.detail || "USB status endpoint returned an error.");
-      }
-      renderUsbStatus(payload);
-    } catch (error) {
-      state.usbStatus = { usb_available: false };
-      elements.usbStatusTitle.textContent = "\u0055\u0053\u0042-\u0441\u0442\u0430\u0442\u0443\u0441 \u043d\u0435\u0434\u043e\u0441\u0442\u0443\u043f\u0435\u043d";
-      elements.usbStatusDetail.textContent =
-        "\u041d\u0435 \u0443\u0434\u0430\u043b\u043e\u0441\u044c \u043f\u043e\u043b\u0443\u0447\u0438\u0442\u044c \u0441\u0442\u0430\u0442\u0443\u0441 USB-\u043d\u043e\u0441\u0438\u0442\u0435\u043b\u044f.";
-      syncUsbExportControls();
-    }
-  }
-
-  function formatDateForInput(currentDate) {
-    const year = String(currentDate.getFullYear());
-    const month = String(currentDate.getMonth() + 1).padStart(2, "0");
-    const day = String(currentDate.getDate()).padStart(2, "0");
-    return year + "-" + month + "-" + day;
-  }
-
-  async function exportOperationsToUsb() {
-    if (!config.localUsbOperationsExportEndpoint) {
-      return;
-    }
-
-    const dateFrom = elements.exportDateFrom ? elements.exportDateFrom.value : "";
-    const dateTo = elements.exportDateTo ? elements.exportDateTo.value : "";
-
-    if (!state.usbStatus || !state.usbStatus.usb_available) {
-      setUsbExportResult(
-        "failure",
-        "\u0055\u0053\u0042 \u043d\u0435 \u043d\u0430\u0439\u0434\u0435\u043d",
-        "\u041f\u043e\u0434\u043a\u043b\u044e\u0447\u0438\u0442\u0435 USB-\u043d\u043e\u0441\u0438\u0442\u0435\u043b\u044c \u0438 \u043f\u043e\u0432\u0442\u043e\u0440\u0438\u0442\u0435 \u044d\u043a\u0441\u043f\u043e\u0440\u0442."
-      );
-      syncUsbExportControls();
-      return;
-    }
-
-    if (!dateFrom || !dateTo) {
-      setUsbExportResult(
-        "failure",
-        "\u041d\u0435 \u0443\u043a\u0430\u0437\u0430\u043d \u043f\u0435\u0440\u0438\u043e\u0434",
-        "\u0412\u044b\u0431\u0435\u0440\u0438\u0442\u0435 \u0434\u0430\u0442\u0443 \u00ab\u0441\u00bb \u0438 \u00ab\u043f\u043e\u00bb."
-      );
-      syncUsbExportControls();
-      return;
-    }
-
-    if (dateFrom > dateTo) {
-      setUsbExportResult(
-        "failure",
-        "\u041d\u0435\u0432\u0435\u0440\u043d\u044b\u0439 \u0434\u0438\u0430\u043f\u0430\u0437\u043e\u043d",
-        "\u0414\u0430\u0442\u0430 \u00ab\u0441\u00bb \u0434\u043e\u043b\u0436\u043d\u0430 \u0431\u044b\u0442\u044c \u043d\u0435 \u043f\u043e\u0437\u0436\u0435 \u0434\u0430\u0442\u044b \u00ab\u043f\u043e\u00bb."
-      );
-      return;
-    }
-
-    setBusy(true);
-    setUsbExportResult(
-      "neutral",
-      "\u042d\u043a\u0441\u043f\u043e\u0440\u0442 \u0432\u044b\u043f\u043e\u043b\u043d\u044f\u0435\u0442\u0441\u044f",
-      "\u041f\u043e\u0434\u043e\u0436\u0434\u0438\u0442\u0435, CSV \u0437\u0430\u043f\u0438\u0441\u044b\u0432\u0430\u0435\u0442\u0441\u044f \u043d\u0430 USB-\u043d\u043e\u0441\u0438\u0442\u0435\u043b\u044c."
-    );
-
-    try {
-      const { response, payload } = await readJson(config.localUsbOperationsExportEndpoint, {
-        method: "POST",
-        body: JSON.stringify({
-          date_from: dateFrom,
-          date_to: dateTo,
-        }),
-      });
-
-      if (!response.ok) {
-        throw new Error(payload.detail || "USB export endpoint returned an error.");
-      }
-
-      setUsbExportResult(
-        "success",
-        "\u042d\u043a\u0441\u043f\u043e\u0440\u0442 \u0437\u0430\u0432\u0435\u0440\u0448\u0435\u043d",
-        "\u0424\u0430\u0439\u043b \u0437\u0430\u043f\u0438\u0441\u0430\u043d: " + payload.file_path
-      );
-    } catch (error) {
-      setUsbExportResult(
-        "failure",
-        "\u041e\u0448\u0438\u0431\u043a\u0430 \u044d\u043a\u0441\u043f\u043e\u0440\u0442\u0430",
-        String(error)
-      );
-    } finally {
-      setBusy(false);
-      await refreshUsbStatus();
-    }
-  }
-
-  async function exportUsersToUsb() {
-    if (!config.localUsbUsersExportEndpoint) {
-      return;
-    }
-
-    if (!state.usbStatus || !state.usbStatus.usb_available) {
-      setUsbUsersExportResult(
-        "failure",
-        "\u0055\u0053\u0042 \u043d\u0435 \u043d\u0430\u0439\u0434\u0435\u043d",
-        "\u041f\u043e\u0434\u043a\u043b\u044e\u0447\u0438\u0442\u0435 USB-\u043d\u043e\u0441\u0438\u0442\u0435\u043b\u044c \u0438 \u043f\u043e\u0432\u0442\u043e\u0440\u0438\u0442\u0435 \u0432\u044b\u0433\u0440\u0443\u0437\u043a\u0443."
-      );
-      syncUsbExportControls();
-      return;
-    }
-
-    setBusy(true);
-    setUsbUsersExportResult(
-      "neutral",
-      "\u042d\u043a\u0441\u043f\u043e\u0440\u0442 \u0432\u044b\u043f\u043e\u043b\u043d\u044f\u0435\u0442\u0441\u044f",
-      "\u041f\u043e\u0434\u043e\u0436\u0434\u0438\u0442\u0435, CSV \u043f\u043e\u043b\u044c\u0437\u043e\u0432\u0430\u0442\u0435\u043b\u0435\u0439 \u0437\u0430\u043f\u0438\u0441\u044b\u0432\u0430\u0435\u0442\u0441\u044f \u043d\u0430 USB-\u043d\u043e\u0441\u0438\u0442\u0435\u043b\u044c."
-    );
-
-    try {
-      const { response, payload } = await readJson(config.localUsbUsersExportEndpoint, {
-        method: "POST",
-        body: JSON.stringify({}),
-      });
-
-      if (!response.ok) {
-        throw new Error(payload.detail || "USB users export endpoint returned an error.");
-      }
-
-      setUsbUsersExportResult(
-        "success",
-        "\u042d\u043a\u0441\u043f\u043e\u0440\u0442 \u0437\u0430\u0432\u0435\u0440\u0448\u0435\u043d",
-        "\u0424\u0430\u0439\u043b \u0437\u0430\u043f\u0438\u0441\u0430\u043d: " + payload.file_path
-      );
-    } catch (error) {
-      setUsbUsersExportResult(
-        "failure",
-        "\u041e\u0448\u0438\u0431\u043a\u0430 \u044d\u043a\u0441\u043f\u043e\u0440\u0442\u0430",
-        String(error)
-      );
-    } finally {
-      setBusy(false);
-      await refreshUsbStatus();
-    }
-  }
-
-  async function importUsersFromUsb() {
-    if (!config.localUsbUsersImportEndpoint) {
-      return;
-    }
-
-    if (!state.usbStatus || !state.usbStatus.usb_available) {
-      setUsbUsersImportResult(
-        "failure",
-        "\u0055\u0053\u0042 \u043d\u0435 \u043d\u0430\u0439\u0434\u0435\u043d",
-        "\u041f\u043e\u0434\u043a\u043b\u044e\u0447\u0438\u0442\u0435 USB-\u043d\u043e\u0441\u0438\u0442\u0435\u043b\u044c \u0438 \u043f\u043e\u0432\u0442\u043e\u0440\u0438\u0442\u0435 \u0438\u043c\u043f\u043e\u0440\u0442."
-      );
-      syncUsbExportControls();
-      return;
-    }
-
-    setBusy(true);
-    setUsbUsersImportResult(
-      "neutral",
-      "\u0418\u043c\u043f\u043e\u0440\u0442 \u0432\u044b\u043f\u043e\u043b\u043d\u044f\u0435\u0442\u0441\u044f",
-      "\u041f\u043e\u0434\u043e\u0436\u0434\u0438\u0442\u0435, \u0447\u0438\u0442\u0430\u0435\u0442\u0441\u044f users.csv \u0441 USB-\u043d\u043e\u0441\u0438\u0442\u0435\u043b\u044f."
-    );
-
-    try {
-      const { response, payload } = await readJson(config.localUsbUsersImportEndpoint, {
-        method: "POST",
-        body: JSON.stringify({}),
-      });
-
-      if (!response.ok) {
-        throw new Error(payload.detail || "USB users import endpoint returned an error.");
-      }
-
-      setUsbUsersImportResult(
-        "success",
-        "\u0418\u043c\u043f\u043e\u0440\u0442 \u0437\u0430\u0432\u0435\u0440\u0448\u0435\u043d",
-        "users.csv: \u0441\u043e\u0437\u0434\u0430\u043d\u043e " +
-          payload.created_count +
-          ", \u043e\u0431\u043d\u043e\u0432\u043b\u0435\u043d\u043e " +
-          payload.updated_count +
-          ", \u0432\u0441\u0435\u0433\u043e \u0441\u0442\u0440\u043e\u043a " +
-          payload.total_rows
-      );
-    } catch (error) {
-      setUsbUsersImportResult(
-        "failure",
-        "\u041e\u0448\u0438\u0431\u043a\u0430 \u0438\u043c\u043f\u043e\u0440\u0442\u0430",
-        String(error)
-      );
-    } finally {
-      setBusy(false);
-      await refreshUsbStatus();
-    }
-  }
-
-  function initializeUsbExportForm() {
-    if (!elements.exportDateFrom || !elements.exportDateTo || !elements.exportOperationsButton) {
-      return;
-    }
-
-    const today = formatDateForInput(new Date());
-    elements.exportDateFrom.value = today;
-    elements.exportDateTo.value = today;
-    elements.exportDateFrom.addEventListener("input", syncUsbExportControls);
-    elements.exportDateTo.addEventListener("input", syncUsbExportControls);
-    elements.exportOperationsButton.addEventListener("click", exportOperationsToUsb);
-    if (elements.exportUsersButton) {
-      elements.exportUsersButton.addEventListener("click", exportUsersToUsb);
-    }
-    if (elements.importUsersButton) {
-      elements.importUsersButton.addEventListener("click", importUsersFromUsb);
-    }
-    syncUsbExportControls();
   }
 
   function renderSelectedOption() {
@@ -737,7 +400,5 @@
   elements.resetButton.addEventListener("click", resetToIdle);
 
   resetToIdle();
-  initializeUsbExportForm();
-  refreshUsbStatus();
   refreshOptions();
 })();

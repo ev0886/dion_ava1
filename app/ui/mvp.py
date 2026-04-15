@@ -27,10 +27,6 @@ def render_user_page(settings: AppSettings) -> HTMLResponse:
         "authEndpoint": "/auth/read-and-resolve-rfid",
         "dispenseEndpoint": "/operations/dispense",
         "optionsEndpoint": "/inventory/kiosk-dispense-options",
-        "usbStatusEndpoint": "/local/usb/status",
-        "localUsbOperationsExportEndpoint": "/local/usb/export/operations",
-        "localUsbUsersExportEndpoint": "/local/usb/export/users",
-        "localUsbUsersImportEndpoint": "/local/usb/import/users",
         "autoResetTimeoutMs": 15000,
         "dispenseQuantity": 1,
     }
