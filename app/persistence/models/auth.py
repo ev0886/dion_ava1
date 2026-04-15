@@ -5,9 +5,9 @@ from datetime import datetime
 from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
-from app.domain.enums import RoleCode, UserStatus
+from app.domain.enums import DispenseRestrictionPolicy, RoleCode, UserStatus
 from app.persistence.base import Base, CreatedAtMixin, PrimaryKeyMixin, UpdatedAtMixin
-from app.persistence.types import enum_column
+from app.persistence.types import EnumValueType, enum_column
 
 
 class Role(PrimaryKeyMixin, CreatedAtMixin, UpdatedAtMixin, Base):
@@ -25,6 +25,12 @@ class User(PrimaryKeyMixin, CreatedAtMixin, UpdatedAtMixin, Base):
     user_code: Mapped[str] = mapped_column(String(100), nullable=False, unique=True)
     full_name: Mapped[str] = mapped_column(String(255), nullable=False)
     status: Mapped[UserStatus] = enum_column(UserStatus, index=True)
+    dispense_restriction_policy: Mapped[DispenseRestrictionPolicy] = mapped_column(
+        EnumValueType(DispenseRestrictionPolicy),
+        nullable=False,
+        default=DispenseRestrictionPolicy.UNLIMITED,
+        server_default=DispenseRestrictionPolicy.UNLIMITED.value,
+    )
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default="1")
 
 

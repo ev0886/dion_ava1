@@ -1,0 +1,342 @@
+from __future__ import annotations
+
+import csv
+from dataclasses import dataclass
+from datetime import UTC, date, datetime
+from io import StringIO
+
+from app.application.dto.admin import (
+    AdminOperationExportRowDTO,
+    AdminRecentOperationDTO,
+    AdminSystemStatusDTO,
+    AdminUserImportResultDTO,
+    AdminUserRecordDTO,
+)
+from app.application.exceptions import NotFoundError, ValidationError
+from app.application.startup_service import StartupOrchestrationService
+from app.config import AppSettings
+from app.domain.enums import DispenseRestrictionPolicy, RoleCode, UserStatus
+from app.persistence.models import User
+from app.persistence.repositories.operations import OperationRepository
+from app.persistence.repositories.users import UserRepository
+
+
+@dataclass(frozen=True, slots=True)
+class _ImportedUserRow:
+    row_number: int
+    user_code: str
+    full_name: str
+    role_code: RoleCode
+    rfid_uid: str | None
+    dispense_restriction_policy: DispenseRestrictionPolicy
+
+
+class AdminUserService:
+    _CSV_COLUMNS = (
+        "user_code",
+        "full_name",
+        "role_code",
+        "rfid_uid",
+        "dispense_restriction_policy",
+    )
+    _CSV_HEADER_TEXT = ",".join(_CSV_COLUMNS)
+
+    def __init__(self, user_repository: UserRepository) -> None:
+        self.user_repository = user_repository
+
+    def list_users(self) -> list[AdminUserRecordDTO]:
+        return self.user_repository.list_for_admin()
+
+    def export_users_csv(self) -> str:
+        output = StringIO()
+        writer = csv.writer(output, lineterminator="\n")
+        writer.writerow(self._CSV_COLUMNS)
+        for user in self.user_repository.list_for_admin():
+            writer.writerow(
+                (
+                    user.user_code,
+                    user.full_name,
+                    user.role_code.value if user.role_code is not None else "",
+                    user.rfid_uid or "",
+                    user.dispense_restriction_policy.value,
+                )
+            )
+        return output.getvalue()
+
+    def update_user(
+        self,
+        *,
+        user_id: int,
+        rfid_uid: str | None,
+        is_active: bool,
+        dispense_restriction_policy: DispenseRestrictionPolicy,
+    ) -> AdminUserRecordDTO:
+        user = self.user_repository.get_by_id(user_id)
+        if user is None:
+            raise NotFoundError(f"User not found: {user_id}")
+
+        normalized_rfid_uid = self._normalize_optional_rfid_uid(rfid_uid)
+        self._apply_rfid_assignment(user=user, normalized_rfid_uid=normalized_rfid_uid)
+        user.is_active = is_active
+        if is_active:
+            if user.status is UserStatus.INACTIVE:
+                user.status = UserStatus.ACTIVE
+        elif user.status is UserStatus.ACTIVE:
+            user.status = UserStatus.INACTIVE
+        user.dispense_restriction_policy = dispense_restriction_policy
+        self.user_repository.session.commit()
+        return self.user_repository.get_admin_record(user.id)
+
+    def import_users_csv(self, csv_text: str) -> AdminUserImportResultDTO:
+        rows = self._parse_csv_rows(csv_text)
+        created_count = 0
+        updated_count = 0
+
+        try:
+            for row in rows:
+                try:
+                    role = self.user_repository.get_role_by_code(row.role_code)
+                    if role is None:
+                        raise ValidationError(f"unknown role_code '{row.role_code.value}'")
+
+                    user = self.user_repository.get_by_user_code(row.user_code)
+                    if user is None:
+                        user = User(
+                            role_id=role.id,
+                            user_code=row.user_code,
+                            full_name=row.full_name,
+                            status=UserStatus.ACTIVE,
+                            dispense_restriction_policy=row.dispense_restriction_policy,
+                            is_active=True,
+                        )
+                        self.user_repository.session.add(user)
+                        self.user_repository.session.flush()
+                        created_count += 1
+                    else:
+                        user.role_id = role.id
+                        user.full_name = row.full_name
+                        user.dispense_restriction_policy = row.dispense_restriction_policy
+                        updated_count += 1
+
+                    self._apply_rfid_assignment(user=user, normalized_rfid_uid=row.rfid_uid)
+                except ValidationError as exc:
+                    raise self._with_csv_row_context(row.row_number, exc) from exc
+
+            self.user_repository.session.commit()
+        except Exception:
+            self.user_repository.session.rollback()
+            raise
+
+        return AdminUserImportResultDTO(
+            created_count=created_count,
+            updated_count=updated_count,
+            total_rows=len(rows),
+        )
+
+    def _apply_rfid_assignment(self, *, user: User, normalized_rfid_uid: str | None) -> None:
+        active_cards = self.user_repository.list_active_rfid_cards_for_user(user.id)
+
+        if normalized_rfid_uid is None:
+            self.user_repository.revoke_rfid_cards(active_cards)
+            return
+
+        existing_card = self.user_repository.get_rfid_card_by_uid(normalized_rfid_uid)
+        if existing_card is not None and existing_card.user_id != user.id and existing_card.revoked_at is None:
+            raise ValidationError(self._build_rfid_conflict_message(normalized_rfid_uid, existing_card.user_id))
+
+        cards_to_revoke = [card for card in active_cards if existing_card is None or card.id != existing_card.id]
+        self.user_repository.revoke_rfid_cards(cards_to_revoke)
+
+        if existing_card is not None:
+            existing_card.user_id = user.id
+            existing_card.card_uid = normalized_rfid_uid
+            existing_card.is_active = True
+            existing_card.issued_at = _utcnow_naive()
+            existing_card.revoked_at = None
+            return
+
+        if active_cards:
+            active_cards[0].card_uid = normalized_rfid_uid
+            active_cards[0].is_active = True
+            active_cards[0].issued_at = _utcnow_naive()
+            active_cards[0].revoked_at = None
+            return
+
+        self.user_repository.create_rfid_card(user_id=user.id, card_uid=normalized_rfid_uid, issued_at=_utcnow_naive())
+
+    @staticmethod
+    def _normalize_optional_rfid_uid(rfid_uid: str | None) -> str | None:
+        if rfid_uid is None:
+            return None
+        normalized = "".join(character for character in rfid_uid if character.isalnum()).upper()
+        if not normalized:
+            return None
+        return normalized
+
+    def _build_rfid_conflict_message(self, normalized_rfid_uid: str, owner_user_id: int) -> str:
+        owner = self.user_repository.get_by_id(owner_user_id)
+        if owner is None:
+            return f"RFID UID '{normalized_rfid_uid}' is already assigned to another user"
+        return (
+            f"RFID UID '{normalized_rfid_uid}' is already assigned to user_code "
+            f"'{owner.user_code}' ({owner.full_name})"
+        )
+
+    @staticmethod
+    def _with_csv_row_context(row_number: int, exc: ValidationError) -> ValidationError:
+        detail = str(exc)
+        prefix = f"CSV row {row_number}: "
+        if detail.startswith(prefix):
+            return exc
+        return ValidationError(f"{prefix}{detail}")
+
+    @classmethod
+    def _parse_csv_rows(cls, csv_text: str) -> list[_ImportedUserRow]:
+        if not csv_text.strip():
+            raise ValidationError("CSV payload must not be empty")
+
+        reader = csv.DictReader(StringIO(csv_text))
+        if reader.fieldnames is None:
+            raise ValidationError("CSV header row is required")
+
+        fieldnames = [fieldname.strip() for fieldname in reader.fieldnames]
+        if tuple(fieldnames) != cls._CSV_COLUMNS:
+            received_header = ",".join(fieldnames)
+            raise ValidationError(
+                f"CSV header mismatch. Expected: {cls._CSV_HEADER_TEXT}. Got: {received_header}"
+            )
+
+        rows: list[_ImportedUserRow] = []
+        seen_user_codes: set[str] = set()
+        for row_number, raw_row in enumerate(reader, start=2):
+            if raw_row is None:
+                continue
+            user_code = cls._require_csv_value(raw_row, "user_code", row_number)
+            if user_code in seen_user_codes:
+                raise ValidationError(f"CSV row {row_number}: duplicate user_code {user_code} in import file")
+            seen_user_codes.add(user_code)
+            rows.append(
+                _ImportedUserRow(
+                    row_number=row_number,
+                    user_code=user_code,
+                    full_name=cls._require_csv_value(raw_row, "full_name", row_number),
+                    role_code=cls._parse_role_code(raw_row.get("role_code"), row_number),
+                    rfid_uid=cls._normalize_optional_rfid_uid(raw_row.get("rfid_uid")),
+                    dispense_restriction_policy=cls._parse_policy(raw_row.get("dispense_restriction_policy"), row_number),
+                )
+            )
+
+        if not rows:
+            raise ValidationError("CSV must contain at least one data row")
+        return rows
+
+    @staticmethod
+    def _require_csv_value(raw_row: dict[str, str | None], column_name: str, row_number: int) -> str:
+        value = (raw_row.get(column_name) or "").strip()
+        if not value:
+            raise ValidationError(f"CSV row {row_number}: {column_name} must not be empty")
+        return value
+
+    @staticmethod
+    def _parse_role_code(raw_role_code: str | None, row_number: int) -> RoleCode:
+        normalized = (raw_role_code or "").strip().lower()
+        if not normalized:
+            raise ValidationError(f"CSV row {row_number}: role_code must not be empty")
+        try:
+            return RoleCode(normalized)
+        except ValueError as exc:
+            allowed_role_codes = ", ".join(role_code.value for role_code in RoleCode)
+            raise ValidationError(
+                f"CSV row {row_number}: invalid role_code '{raw_role_code}'. "
+                f"Allowed role_code values: {allowed_role_codes}"
+            ) from exc
+
+    @staticmethod
+    def _parse_policy(raw_policy: str | None, row_number: int) -> DispenseRestrictionPolicy:
+        normalized = (raw_policy or "").strip().lower()
+        if not normalized:
+            raise ValidationError(f"CSV row {row_number}: dispense_restriction_policy must not be empty")
+        try:
+            return DispenseRestrictionPolicy(normalized)
+        except ValueError as exc:
+            raise ValidationError(
+                f"CSV row {row_number}: invalid dispense_restriction_policy '{raw_policy}'"
+            ) from exc
+
+
+class AdminOperationService:
+    _CSV_COLUMNS = (
+        "operation_id",
+        "started_at",
+        "finished_at",
+        "operation_type",
+        "operation_state",
+        "user_code",
+        "user_full_name",
+        "item_name",
+        "quantity",
+        "slot_code",
+        "result",
+        "error_code",
+        "error_message",
+    )
+
+    def __init__(self, operation_repository: OperationRepository) -> None:
+        self.operation_repository = operation_repository
+
+    def list_recent_operations(self, *, limit: int = 20) -> list[AdminRecentOperationDTO]:
+        return self.operation_repository.list_recent_for_admin(limit=limit)
+
+    def list_problem_operations(self, *, limit: int = 20) -> list[AdminRecentOperationDTO]:
+        return self.operation_repository.list_problem_for_admin(limit=limit)
+
+    def export_operations_csv(self, *, date_from: date, date_to: date) -> str:
+        if date_from > date_to:
+            raise ValidationError("date_from must be less than or equal to date_to")
+
+        rows = self.operation_repository.list_for_admin_export(date_from=date_from, date_to=date_to)
+        output = StringIO()
+        writer = csv.writer(output, lineterminator="\n")
+        writer.writerow(self._CSV_COLUMNS)
+        for row in rows:
+            writer.writerow(self._csv_row_values(row))
+        return output.getvalue()
+
+    @staticmethod
+    def _csv_row_values(row: AdminOperationExportRowDTO) -> tuple[object, ...]:
+        return (
+            row.operation_id,
+            row.started_at.isoformat() if row.started_at is not None else "",
+            row.finished_at.isoformat() if row.finished_at is not None else "",
+            row.operation_type.value,
+            row.operation_state.value,
+            row.user_code or "",
+            row.user_full_name or "",
+            row.item_name or "",
+            row.quantity if row.quantity is not None else "",
+            row.slot_code or "",
+            row.result or "",
+            row.error_code or "",
+            row.error_message or "",
+        )
+
+
+class AdminSystemStatusService:
+    def __init__(self, startup_service: StartupOrchestrationService) -> None:
+        self.startup_service = startup_service
+
+    def get_system_status(self, settings: AppSettings) -> AdminSystemStatusDTO:
+        startup_status = self.startup_service.run_startup_checks()
+        return AdminSystemStatusDTO(
+            health_status="ok",
+            readiness_status=startup_status.readiness_status,
+            hardware_provider=settings.hardware_provider,
+            app_environment=settings.app_environment,
+            app_name=settings.app_name,
+            api_host=settings.api_host,
+            api_port=settings.api_port,
+        )
+
+
+def _utcnow_naive() -> datetime:
+    return datetime.now(UTC).replace(tzinfo=None)

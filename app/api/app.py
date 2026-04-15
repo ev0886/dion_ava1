@@ -1,15 +1,17 @@
 from __future__ import annotations
 
 from contextlib import asynccontextmanager
+from datetime import date
 from pathlib import Path
 
-from fastapi import Depends, FastAPI
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi import Depends, FastAPI, Request
+from fastapi.responses import HTMLResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 
 from app.api.dependencies import get_application_container
 from app.api.errors import register_exception_handlers
 from app.api.schemas import (
+    AdminUserUpdateRequest,
     AuthReadAndResolveRfidRequest,
     AuthResolveRequest,
     DispenseOperationRequest,
@@ -114,6 +116,78 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
     @app.get("/ui/admin", response_class=HTMLResponse)
     def admin_ui() -> HTMLResponse:
         return render_admin_page(app_settings)
+
+    @app.get("/admin/users")
+    def admin_list_users(container: ApplicationContainer = Depends(get_application_container)) -> JSONResponse:
+        return JSONResponse({"users": to_api_payload(container.services.admin_users.list_users())})
+
+    @app.get("/admin/operations/recent")
+    def admin_list_recent_operations(container: ApplicationContainer = Depends(get_application_container)) -> JSONResponse:
+        return JSONResponse({"operations": to_api_payload(container.services.admin_operations.list_recent_operations())})
+
+    @app.get("/admin/operations/problem")
+    def admin_list_problem_operations(container: ApplicationContainer = Depends(get_application_container)) -> JSONResponse:
+        return JSONResponse({"operations": to_api_payload(container.services.admin_operations.list_problem_operations())})
+
+    @app.get("/admin/operations/export")
+    def admin_export_operations(
+        date_from: date,
+        date_to: date,
+        container: ApplicationContainer = Depends(get_application_container),
+    ) -> Response:
+        return Response(
+            content=container.services.admin_operations.export_operations_csv(
+                date_from=date_from,
+                date_to=date_to,
+            ).encode("utf-8-sig"),
+            media_type="text/csv; charset=utf-8",
+            headers={"content-disposition": 'attachment; filename="admin-operations-export.csv"'},
+        )
+
+    @app.get("/admin/system/status")
+    def admin_system_status(container: ApplicationContainer = Depends(get_application_container)) -> JSONResponse:
+        return JSONResponse(to_api_payload(container.services.admin_system_status.get_system_status(container.settings)))
+
+    @app.get("/admin/users/export")
+    def admin_export_users(container: ApplicationContainer = Depends(get_application_container)) -> Response:
+        return Response(
+            content=container.services.admin_users.export_users_csv().encode("utf-8-sig"),
+            media_type="text/csv; charset=utf-8",
+            headers={"content-disposition": 'attachment; filename="admin-users-export.csv"'},
+        )
+
+    @app.put("/admin/users/{user_id}")
+    def admin_update_user(
+        user_id: int,
+        payload: AdminUserUpdateRequest,
+        container: ApplicationContainer = Depends(get_application_container),
+    ) -> JSONResponse:
+        return JSONResponse(
+            {
+                "user": to_api_payload(
+                    container.services.admin_users.update_user(
+                        user_id=user_id,
+                        rfid_uid=payload.rfid_uid,
+                        is_active=payload.is_active,
+                        dispense_restriction_policy=payload.dispense_restriction_policy,
+                    )
+                )
+            }
+        )
+
+    @app.post("/admin/users/import")
+    async def admin_import_users(
+        request: Request,
+        container: ApplicationContainer = Depends(get_application_container),
+    ) -> JSONResponse:
+        csv_text = (await request.body()).decode("utf-8-sig")
+        return JSONResponse(
+            {
+                "result": to_api_payload(
+                    container.services.admin_users.import_users_csv(csv_text)
+                )
+            }
+        )
 
     @app.post("/operations/dispense")
     def dispense_operation(

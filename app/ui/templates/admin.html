@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>DION ABA1 Admin Console</title>
+  <title>DION ABA1 Админка оператора MVP</title>
   <link rel="stylesheet" href="/ui-assets/admin.css">
 </head>
 <body>
@@ -11,75 +11,104 @@
     <header class="hero">
       <div>
         <p class="eyebrow">DION ABA1</p>
-        <p class="eyebrow">Admin Console</p>
-        <h1>Административная рабочая область</h1>
+        <h1>Админка оператора MVP</h1>
       </div>
       <p class="hero-note">
-        Общие пользовательские и административные экраны снова возвращены в фирменный стиль. Операторское пополнение
-        остается на отдельном маршруте и не смешивается с этой зоной.
+        Только локальное обслуживание пользователей. Матрица доступа и расширенная CSV-логика остаются вне этой ветки.
       </p>
     </header>
 
     <section class="status-panel" id="status-panel" aria-live="polite">
       <strong id="status-title">Готово</strong>
-      <p id="status-message">Панели администрирования подготовлены к локальному обслуживанию автомата.</p>
-    </section>
-
-    <section class="panel panel-grid">
-      <article class="admin-card">
-        <p class="eyebrow">Маршруты</p>
-        <h2>Разделение ролей</h2>
-        <ul class="detail-list">
-          <li><strong>/ui/user</strong> и <strong>/ui/mvp</strong> сохраняют сценарий выдачи.</li>
-          <li><strong>/ui/operator</strong> теперь изолирован под touch-first пополнение.</li>
-          <li><strong>/ui/admin</strong> остается отдельной административной зоной.</li>
-        </ul>
-      </article>
-      <article class="admin-card">
-        <p class="eyebrow">Смены</p>
-        <h2>Контур обслуживания</h2>
-        <p class="card-note">
-          Здесь остаются обзор системы, экспортные и сервисные действия. Они не должны дублировать операторский workflow
-          пополнения по четвертям барабана.
-        </p>
-      </article>
-      <article class="admin-card">
-        <p class="eyebrow">Статус</p>
-        <h2>Панель контроля</h2>
-        <dl class="metric-grid">
-          <div>
-            <dt>Визуальная система</dt>
-            <dd>Восстановлена</dd>
-          </div>
-          <div>
-            <dt>Operator UI</dt>
-            <dd>Отделен</dd>
-          </div>
-          <div>
-            <dt>Последнее обновление</dt>
-            <dd id="admin-last-sync">Сейчас</dd>
-          </div>
-        </dl>
-      </article>
+      <p id="status-message">Загрузка пользователей из локального backend.</p>
     </section>
 
     <section class="panel">
       <div class="panel-heading">
         <div>
-          <p class="eyebrow">Навигация</p>
-          <h2>Что находится под рукой</h2>
+          <p class="eyebrow">Операции</p>
+          <h2>Экспорт операций в CSV</h2>
         </div>
       </div>
-      <div class="table-wrap">
-        <table class="admin-table">
+      <div class="export-grid">
+        <label class="field-block" for="operations-export-date-from">
+          <span class="field-label">Дата с</span>
+          <input id="operations-export-date-from" class="inline-input" type="date">
+        </label>
+        <label class="field-block" for="operations-export-date-to">
+          <span class="field-label">Дата по</span>
+          <input id="operations-export-date-to" class="inline-input" type="date">
+        </label>
+        <div class="export-actions">
+          <button id="operations-export-button" class="secondary-button" type="button">Экспорт CSV</button>
+          <p class="row-note">Диапазон по дням. Если дата не указана, экспорт не запускается.</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-heading">
+        <div>
+          <p class="eyebrow">Система</p>
+          <h2>Статус backend</h2>
+        </div>
+      </div>
+      <div class="system-status-block" aria-live="polite">
+        <div class="system-status-grid">
+          <div class="system-status-item">
+            <span class="system-status-label">Состояние</span>
+            <strong id="system-health-status">Загрузка</strong>
+          </div>
+          <div class="system-status-item">
+            <span class="system-status-label">Готовность</span>
+            <strong id="system-readiness-status">Загрузка</strong>
+          </div>
+          <div class="system-status-item">
+            <span class="system-status-label">Провайдер оборудования / режим</span>
+            <strong id="system-hardware-provider">Загрузка</strong>
+          </div>
+          <div class="system-status-item">
+            <span class="system-status-label">Окружение приложения</span>
+            <strong id="system-app-environment">Загрузка</strong>
+          </div>
+          <div class="system-status-item">
+            <span class="system-status-label">Имя приложения</span>
+            <strong id="system-app-name">Загрузка</strong>
+          </div>
+          <div class="system-status-item">
+            <span class="system-status-label">Привязка API</span>
+            <strong id="system-api-bind">Загрузка</strong>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-heading">
+        <div>
+          <p class="eyebrow">Проблемы</p>
+          <h2>Операции, требующие внимания</h2>
+        </div>
+      </div>
+      <p class="panel-note">Только проблемные состояния: failed и recovery_required.</p>
+      <div class="table-wrap table-wrap-scroll">
+        <table class="operations-table">
           <thead>
             <tr>
-              <th>Зона</th>
-              <th>Назначение</th>
-              <th>Основной акцент</th>
+              <th>Время</th>
+              <th>Тип</th>
+              <th>Состояние</th>
+              <th>Пользователь</th>
+              <th>Товар</th>
+              <th>Количество</th>
+              <th>Ячейка</th>
             </tr>
           </thead>
-          <tbody id="admin-route-table-body"></tbody>
+          <tbody id="problem-operations-table-body">
+            <tr>
+              <td colspan="7" class="placeholder-cell">Загрузка проблемных операций...</td>
+            </tr>
+          </tbody>
         </table>
       </div>
     </section>
@@ -87,11 +116,109 @@
     <section class="panel">
       <div class="panel-heading">
         <div>
-          <p class="eyebrow">Примечания</p>
-          <h2>Ограничения этой ветки</h2>
+          <p class="eyebrow">Операции</p>
+          <h2>Последние действия системы</h2>
         </div>
       </div>
-      <div class="callout-grid" id="admin-callouts"></div>
+      <div class="table-wrap table-wrap-scroll">
+        <table class="operations-table">
+          <thead>
+            <tr>
+              <th>Время</th>
+              <th>Тип</th>
+              <th>Состояние</th>
+              <th>Пользователь</th>
+              <th>Товар</th>
+              <th>Количество</th>
+              <th>Ячейка</th>
+            </tr>
+          </thead>
+          <tbody id="operations-table-body">
+            <tr>
+              <td colspan="7" class="placeholder-cell">Загрузка последних операций...</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-heading">
+        <div>
+          <p class="eyebrow">Пользователи</p>
+          <h2>Импорт CSV</h2>
+        </div>
+      </div>
+      <div class="import-grid">
+        <label class="field-block" for="import-file">
+          <span class="field-label">CSV-файл</span>
+          <input id="import-file" class="inline-input" type="file" accept=".csv,text/csv">
+        </label>
+        <label class="field-block" for="import-textarea">
+          <span class="field-label">Содержимое CSV</span>
+          <textarea
+            id="import-textarea"
+            class="inline-textarea"
+            rows="6"
+            placeholder="user_code,full_name,role_code,rfid_uid,dispense_restriction_policy"
+          ></textarea>
+        </label>
+        <div class="import-actions">
+          <div class="import-action-row">
+            <button id="load-example-button" class="secondary-button" type="button">Загрузить пример</button>
+            <a
+              id="export-users-link"
+              class="secondary-button text-button"
+              href="/admin/users/export"
+              download="admin-users-export.csv"
+            >Экспорт CSV</a>
+            <a
+              id="download-example-link"
+              class="secondary-button text-button"
+              href="/ui-assets/admin-users-import-example.csv"
+              download="admin-users-import-example.csv"
+            >Скачать пример CSV</a>
+            <button id="import-button" class="save-button" type="button">Импортировать CSV</button>
+          </div>
+          <p class="row-note">Вставьте CSV или выберите файл. Если указаны оба варианта, приоритет у содержимого файла.</p>
+        </div>
+        <div id="import-result" class="import-result" aria-live="polite">
+          <strong id="import-result-title">Импорт еще не запускался.</strong>
+          <p id="import-result-message">После отправки здесь появится итог импорта.</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-heading">
+        <div>
+          <p class="eyebrow">Пользователи</p>
+          <h2>Поддержка RFID и политики выдачи</h2>
+        </div>
+        <button id="refresh-button" class="secondary-button" type="button">Обновить</button>
+      </div>
+      <div class="table-wrap table-wrap-scroll">
+        <table class="user-table">
+          <thead>
+            <tr>
+              <th>ID пользователя</th>
+              <th>Код пользователя</th>
+              <th>Полное имя</th>
+              <th>Статус</th>
+              <th>Активен</th>
+              <th>Роль</th>
+              <th>RFID UID</th>
+              <th>Политика выдачи</th>
+              <th>Сохранить</th>
+            </tr>
+          </thead>
+          <tbody id="user-table-body">
+            <tr>
+              <td colspan="9" class="placeholder-cell">Загрузка пользователей...</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
     </section>
   </main>
 

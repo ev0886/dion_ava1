@@ -1,71 +1,577 @@
 (function () {
+  const config = window.DION_ADMIN_UI_CONFIG;
+
   const elements = {
     statusPanel: document.getElementById("status-panel"),
     statusTitle: document.getElementById("status-title"),
     statusMessage: document.getElementById("status-message"),
-    adminLastSync: document.getElementById("admin-last-sync"),
-    adminRouteTableBody: document.getElementById("admin-route-table-body"),
-    adminCallouts: document.getElementById("admin-callouts")
+    systemHealthStatus: document.getElementById("system-health-status"),
+    systemReadinessStatus: document.getElementById("system-readiness-status"),
+    systemHardwareProvider: document.getElementById("system-hardware-provider"),
+    systemAppEnvironment: document.getElementById("system-app-environment"),
+    systemAppName: document.getElementById("system-app-name"),
+    systemApiBind: document.getElementById("system-api-bind"),
+    refreshButton: document.getElementById("refresh-button"),
+    userTableBody: document.getElementById("user-table-body"),
+    problemOperationsTableBody: document.getElementById("problem-operations-table-body"),
+    operationsTableBody: document.getElementById("operations-table-body"),
+    operationsExportDateFrom: document.getElementById("operations-export-date-from"),
+    operationsExportDateTo: document.getElementById("operations-export-date-to"),
+    operationsExportButton: document.getElementById("operations-export-button"),
+    importFile: document.getElementById("import-file"),
+    importTextarea: document.getElementById("import-textarea"),
+    loadExampleButton: document.getElementById("load-example-button"),
+    exportUsersLink: document.getElementById("export-users-link"),
+    downloadExampleLink: document.getElementById("download-example-link"),
+    importButton: document.getElementById("import-button"),
+    importResult: document.getElementById("import-result"),
+    importResultTitle: document.getElementById("import-result-title"),
+    importResultMessage: document.getElementById("import-result-message"),
   };
 
-  const routeRows = [
-    {
-      route: "/ui/user",
-      purpose: "Пользовательский kiosk-flow для авторизации и выдачи",
-      focus: "Крупные действия, RFID, быстрый выбор товара"
-    },
-    {
-      route: "/ui/mvp",
-      purpose: "Алиас пользовательского экрана без отдельного визуального отклонения",
-      focus: "Та же фирменная подача, что и на /ui/user"
-    },
-    {
-      route: "/ui/operator",
-      purpose: "Touch-first пополнение по четвертям барабана",
-      focus: "Quarter paging, cell grid, batch selection, staged confirmation"
-    },
-    {
-      route: "/ui/admin",
-      purpose: "Административный обзор и сервисная координация",
-      focus: "Контроль маршрутов, границ ролей и контекста обслуживания"
-    }
-  ];
+  const state = {
+    users: [],
+    problemOperations: [],
+    operations: [],
+    systemStatus: null,
+    isLoading: false,
+    isExportingOperations: false,
+    isImporting: false,
+    savingUserIds: new Set(),
+  };
 
-  const callouts = [
-    {
-      title: "Без смешивания ролей",
-      body: "Операторский маршрут не возвращается к desktop-таблице и не сливается с административной консолью."
+  const displayLabels = {
+    system: {
+      ok: "OK",
+      degraded: "Ограниченная готовность",
+      ready: "Готово",
+      not_ready: "Не готово",
+      real: "Реальный",
+      "stub-real": "Stub-real",
+      mock: "Mock",
+      development: "Разработка",
+      "production-like": "Production-like",
     },
-    {
-      title: "Фирменная палитра",
-      body: "Восстановлены зеленый, белый и нейтральные оттенки вместо упрощенных placeholder-страниц."
+    operationType: {
+      dispense: "Выдача",
+      return: "Возврат",
+      refill_item: "Пополнение",
     },
-    {
-      title: "UI-фокус ветки",
-      body: "Ветка концентрируется на визуальном и touch workflow слое без внедрения реального drum-control поведения."
-    }
-  ];
+    operationState: {
+      completed: "Завершено",
+      failed: "Ошибка",
+      recovery_required: "Требуется восстановление",
+    },
+    policy: {
+      unlimited: "Без ограничений",
+      once_per_day: "Один раз в день",
+    },
+    userStatus: {
+      active: "Активен",
+      inactive: "Неактивен",
+      blocked: "Заблокирован",
+    },
+  };
 
   function setStatus(kind, title, message) {
-    elements.statusPanel.className = "status-panel" + (kind ? " status-" + kind : "");
+    elements.statusPanel.className = "status-panel";
+    if (kind) {
+      elements.statusPanel.classList.add("status-" + kind);
+    }
     elements.statusTitle.textContent = title;
     elements.statusMessage.textContent = message;
   }
 
-  function renderRoutes() {
-    elements.adminRouteTableBody.innerHTML = routeRows.map(function (row) {
-      return "<tr><td><strong>" + row.route + "</strong></td><td>" + row.purpose + "</td><td>" + row.focus + "</td></tr>";
-    }).join("");
+  function escapeHtml(value) {
+    return String(value)
+      .replaceAll("&", "&amp;")
+      .replaceAll("<", "&lt;")
+      .replaceAll(">", "&gt;")
+      .replaceAll('"', "&quot;")
+      .replaceAll("'", "&#39;");
   }
 
-  function renderCallouts() {
-    elements.adminCallouts.innerHTML = callouts.map(function (callout) {
-      return '<article class="callout-card"><h2>' + callout.title + "</h2><p>" + callout.body + "</p></article>";
-    }).join("");
+  function setImportResult(kind, title, message) {
+    elements.importResult.className = "import-result";
+    if (kind) {
+      elements.importResult.classList.add("import-result-" + kind);
+    }
+    elements.importResultTitle.textContent = title;
+    elements.importResultMessage.textContent = message;
   }
 
-  elements.adminLastSync.textContent = new Date().toLocaleString("ru-RU");
-  renderRoutes();
-  renderCallouts();
-  setStatus("success", "Готово", "Административный экран снова выглядит как часть общей фирменной системы и остается отдельным от operator UI.");
+  function formatSystemValue(value) {
+    if (value === null || value === undefined || value === "") {
+      return "n/a";
+    }
+    return String(value);
+  }
+
+  function getDisplayLabel(group, value) {
+    if (value === null || value === undefined || value === "") {
+      return "n/a";
+    }
+    const rawValue = String(value);
+    return displayLabels[group] && displayLabels[group][rawValue]
+      ? displayLabels[group][rawValue]
+      : rawValue;
+  }
+
+  function renderSystemStatus() {
+    const systemStatus = state.systemStatus;
+    if (!systemStatus) {
+      elements.systemHealthStatus.textContent = "n/a";
+      elements.systemReadinessStatus.textContent = "n/a";
+      elements.systemHardwareProvider.textContent = "n/a";
+      elements.systemAppEnvironment.textContent = "n/a";
+      elements.systemAppName.textContent = "n/a";
+      elements.systemApiBind.textContent = "n/a";
+      return;
+    }
+
+    elements.systemHealthStatus.textContent = getDisplayLabel("system", systemStatus.health_status);
+    elements.systemReadinessStatus.textContent = getDisplayLabel("system", systemStatus.readiness_status);
+    elements.systemHardwareProvider.textContent = getDisplayLabel("system", systemStatus.hardware_provider);
+    elements.systemAppEnvironment.textContent = getDisplayLabel("system", systemStatus.app_environment);
+    elements.systemAppName.textContent = formatSystemValue(systemStatus.app_name);
+    elements.systemApiBind.textContent =
+      formatSystemValue(systemStatus.api_host) + ":" + formatSystemValue(systemStatus.api_port);
+  }
+
+  function userRowMarkup(user) {
+    const saveDisabled = state.isLoading || state.savingUserIds.has(user.user_id) ? "disabled" : "";
+    const policyOptions = config.supportedPolicies
+      .map(function (policy) {
+        const selected = user.dispense_restriction_policy === policy ? "selected" : "";
+        return (
+          '<option value="' +
+          escapeHtml(policy) +
+          '" ' +
+          selected +
+          ">" +
+          escapeHtml(getDisplayLabel("policy", policy)) +
+          "</option>"
+        );
+      })
+      .join("");
+    const activeOptions = [
+      '<option value="true" ' +
+        (user.is_active ? "selected" : "") +
+        ">Активен</option>",
+      '<option value="false" ' +
+        (!user.is_active ? "selected" : "") +
+        ">Неактивен</option>",
+    ].join("");
+
+    return (
+      '<tr data-user-id="' +
+      String(user.user_id) +
+      '">' +
+      "<td>" +
+      String(user.user_id) +
+      "</td>" +
+      "<td>" +
+      escapeHtml(user.user_code) +
+      "</td>" +
+      "<td>" +
+      escapeHtml(user.full_name) +
+      "</td>" +
+      '<td><span class="status-chip">' +
+      escapeHtml(getDisplayLabel("userStatus", user.status)) +
+      "</span></td>" +
+      '<td><select class="inline-select" name="is_active">' +
+      activeOptions +
+      "</select></td>" +
+      "<td>" +
+      escapeHtml(user.role_code || "n/a") +
+      "</td>" +
+      "<td>" +
+      '<input class="inline-input" name="rfid_uid" type="text" value="' +
+      escapeHtml(user.rfid_uid || "") +
+      '" placeholder="Не назначен">' +
+      '<div class="row-note">Оставьте пустым, чтобы снять привязку.</div>' +
+      "</td>" +
+      "<td>" +
+      '<select class="inline-select" name="dispense_restriction_policy">' +
+      policyOptions +
+      "</select>" +
+      "</td>" +
+      "<td>" +
+      '<button class="save-button" type="button" ' +
+      saveDisabled +
+      ">Сохранить</button>" +
+      "</td>" +
+      "</tr>"
+    );
+  }
+
+  function renderUsers() {
+    if (!state.users.length) {
+      elements.userTableBody.innerHTML =
+        '<tr><td colspan="9" class="placeholder-cell">В текущей runtime-базе пользователи не найдены.</td></tr>';
+      return;
+    }
+
+    elements.userTableBody.innerHTML = state.users.map(userRowMarkup).join("");
+    elements.userTableBody.querySelectorAll(".save-button").forEach(function (button) {
+      button.addEventListener("click", function () {
+        const row = button.closest("tr");
+        if (!row) {
+          return;
+        }
+        const userId = Number(row.dataset.userId);
+        void saveRow(userId, row);
+      });
+    });
+  }
+
+  function formatDateTime(value) {
+    if (!value) {
+      return "n/a";
+    }
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) {
+      return value;
+    }
+    return date.toLocaleString("ru-RU", {
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+    });
+  }
+
+  function buildUserLabel(operation) {
+    const parts = [];
+    if (operation.user_code) {
+      parts.push(operation.user_code);
+    }
+    if (operation.user_full_name) {
+      parts.push(operation.user_full_name);
+    }
+    return parts.length ? parts.join(" / ") : "n/a";
+  }
+
+  function operationRowMarkup(operation) {
+    const quantity =
+      operation.quantity === null || operation.quantity === undefined ? "n/a" : String(operation.quantity);
+
+    return (
+      "<tr>" +
+      "<td>" +
+      escapeHtml(formatDateTime(operation.started_at)) +
+      "</td>" +
+      "<td>" +
+      escapeHtml(getDisplayLabel("operationType", operation.operation_type)) +
+      "</td>" +
+      '<td><span class="status-chip">' +
+      escapeHtml(getDisplayLabel("operationState", operation.operation_state)) +
+      "</span></td>" +
+      "<td>" +
+      escapeHtml(buildUserLabel(operation)) +
+      "</td>" +
+      "<td>" +
+      escapeHtml(operation.item_name || "n/a") +
+      "</td>" +
+      "<td>" +
+      escapeHtml(quantity) +
+      "</td>" +
+      "<td>" +
+      escapeHtml(operation.slot_code || "n/a") +
+      "</td>" +
+      "</tr>"
+    );
+  }
+
+  function renderOperations() {
+    if (!state.operations.length) {
+      elements.operationsTableBody.innerHTML =
+        '<tr><td colspan="7" class="placeholder-cell">Последние операции пока не найдены.</td></tr>';
+      return;
+    }
+
+    elements.operationsTableBody.innerHTML = state.operations.map(operationRowMarkup).join("");
+  }
+
+  function renderProblemOperations() {
+    if (!state.problemOperations.length) {
+      elements.problemOperationsTableBody.innerHTML =
+        '<tr><td colspan="7" class="placeholder-cell">Проблемные операции не найдены.</td></tr>';
+      return;
+    }
+
+    elements.problemOperationsTableBody.innerHTML = state.problemOperations.map(operationRowMarkup).join("");
+  }
+
+  async function readJson(url, options) {
+    const response = await fetch(url, {
+      headers: {
+        "Content-Type": "application/json",
+      },
+      ...options,
+    });
+    const payload = await response.json();
+    return { response, payload };
+  }
+
+  function syncControls() {
+    elements.refreshButton.disabled = state.isLoading;
+    elements.operationsExportButton.disabled = state.isLoading || state.isExportingOperations;
+    elements.operationsExportDateFrom.disabled = state.isExportingOperations;
+    elements.operationsExportDateTo.disabled = state.isExportingOperations;
+    elements.importButton.disabled = state.isLoading || state.isImporting;
+    elements.loadExampleButton.disabled = state.isImporting;
+    elements.importFile.disabled = state.isImporting;
+    elements.importTextarea.disabled = state.isImporting;
+    const saveButtons = elements.userTableBody.querySelectorAll(".save-button");
+    saveButtons.forEach(function (button) {
+      const row = button.closest("tr");
+      const userId = row ? Number(row.dataset.userId) : 0;
+      button.disabled = state.isLoading || state.savingUserIds.has(userId);
+    });
+  }
+
+  function buildOperationsExportUrl() {
+    const dateFrom = elements.operationsExportDateFrom.value;
+    const dateTo = elements.operationsExportDateTo.value;
+    if (!dateFrom || !dateTo) {
+      throw new Error("Укажите даты «с» и «по» для экспорта CSV.");
+    }
+
+    const params = new URLSearchParams({
+      date_from: dateFrom,
+      date_to: dateTo,
+    });
+    return config.exportOperationsEndpoint + "?" + params.toString();
+  }
+
+  function downloadFile(url) {
+    const link = document.createElement("a");
+    link.href = url;
+    link.rel = "noopener";
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+  }
+
+  async function readImportCsvText() {
+    const file = elements.importFile.files && elements.importFile.files[0];
+    if (file) {
+      return await file.text();
+    }
+    return elements.importTextarea.value;
+  }
+
+  function loadExampleCsv() {
+    elements.importTextarea.value = config.importExampleCsvText;
+    elements.importFile.value = "";
+    setImportResult("", "Пример загружен", "Образец CSV вставлен в текстовое поле и готов к редактированию.");
+  }
+
+  function formatImportSummary(result) {
+    return (
+      "Создано: " +
+      String(result.created_count) +
+      ", обновлено: " +
+      String(result.updated_count) +
+      ", всего строк: " +
+      String(result.total_rows) +
+      "."
+    );
+  }
+
+  async function loadUsers() {
+    try {
+      const { response, payload } = await readJson(config.listUsersEndpoint, { method: "GET" });
+      if (!response.ok) {
+        throw new Error(payload.detail || "Не удалось получить список пользователей.");
+      }
+      state.users = Array.isArray(payload.users) ? payload.users : [];
+      renderUsers();
+    } catch (error) {
+      state.users = [];
+      renderUsers();
+      throw error;
+    }
+  }
+
+  async function loadSystemStatus() {
+    try {
+      const { response, payload } = await readJson(config.systemStatusEndpoint, { method: "GET" });
+      if (!response.ok) {
+        throw new Error(payload.detail || "Не удалось загрузить статус системы.");
+      }
+      state.systemStatus = payload;
+      renderSystemStatus();
+    } catch (error) {
+      state.systemStatus = null;
+      renderSystemStatus();
+      throw error;
+    }
+  }
+
+  async function loadRecentOperations() {
+    try {
+      const { response, payload } = await readJson(config.recentOperationsEndpoint, { method: "GET" });
+      if (!response.ok) {
+        throw new Error(payload.detail || "Не удалось получить список последних операций.");
+      }
+      state.operations = Array.isArray(payload.operations) ? payload.operations : [];
+      renderOperations();
+    } catch (error) {
+      state.operations = [];
+      renderOperations();
+      throw error;
+    }
+  }
+
+  async function loadProblemOperations() {
+    try {
+      const { response, payload } = await readJson(config.problemOperationsEndpoint, { method: "GET" });
+      if (!response.ok) {
+        throw new Error(payload.detail || "Не удалось загрузить проблемные операции.");
+      }
+      state.problemOperations = Array.isArray(payload.operations) ? payload.operations : [];
+      renderProblemOperations();
+    } catch (error) {
+      state.problemOperations = [];
+      renderProblemOperations();
+      throw error;
+    }
+  }
+
+  async function loadAdminData() {
+    state.isLoading = true;
+    syncControls();
+    setStatus("", "Загрузка", "Обновление пользователей и последних операций из локального backend.");
+
+    try {
+      await Promise.all([loadSystemStatus(), loadUsers(), loadProblemOperations(), loadRecentOperations()]);
+      setStatus(
+        "success",
+        "Готово",
+        "Пользователи и последние операции загружены. Измените RFID UID или политику выдачи и сохраните нужную строку."
+      );
+    } catch (error) {
+      setStatus("error", "Ошибка загрузки", String(error));
+    } finally {
+      state.isLoading = false;
+      syncControls();
+    }
+  }
+
+  async function saveRow(userId, row) {
+    state.savingUserIds.add(userId);
+    syncControls();
+    setStatus("", "Сохранение", "Сохранение изменений для пользователя " + String(userId) + ".");
+
+    const rfidInput = row.querySelector('input[name="rfid_uid"]');
+    const activeSelect = row.querySelector('select[name="is_active"]');
+    const policySelect = row.querySelector('select[name="dispense_restriction_policy"]');
+
+    try {
+      const { response, payload } = await readJson(config.updateUserEndpointBase + "/" + String(userId), {
+        method: "PUT",
+        body: JSON.stringify({
+          rfid_uid: rfidInput ? rfidInput.value : "",
+          is_active: activeSelect ? activeSelect.value === "true" : true,
+          dispense_restriction_policy: policySelect ? policySelect.value : "unlimited",
+        }),
+      });
+      if (!response.ok) {
+        throw new Error(payload.detail || "Не удалось сохранить изменения.");
+      }
+
+      const savedUser = payload.user;
+      state.users = state.users.map(function (user) {
+        return user.user_id === userId ? savedUser : user;
+      });
+      renderUsers();
+      setStatus(
+        "success",
+        "Сохранено",
+        "Пользователь " + String(userId) + " обновлен. RFID UID и политика выдачи сохранены в локальной базе."
+      );
+    } catch (error) {
+      setStatus("error", "Ошибка сохранения", String(error));
+    } finally {
+      state.savingUserIds.delete(userId);
+      syncControls();
+    }
+  }
+
+  async function importUsers() {
+    state.isImporting = true;
+    syncControls();
+    setStatus("", "Импорт", "Отправка CSV пользователей в локальный backend.");
+    setImportResult("", "Импорт выполняется", "Ожидание валидации backend и результата импорта.");
+
+    try {
+      const csvText = await readImportCsvText();
+      const response = await fetch(config.importUsersEndpoint, {
+        method: "POST",
+        headers: {
+          "Content-Type": "text/csv; charset=utf-8",
+        },
+        body: csvText,
+      });
+      const payload = await response.json();
+      if (!response.ok) {
+        throw new Error(payload.detail || payload.error || "Не удалось выполнить импорт.");
+      }
+
+      const result = payload.result || {};
+      setImportResult("success", "Импорт завершен", formatImportSummary(result));
+      setStatus("success", "Импорт завершен", "CSV пользователей успешно обработан. Обновляю список.");
+      await loadAdminData();
+    } catch (error) {
+      setImportResult("error", "Ошибка импорта", String(error));
+      setStatus("error", "Ошибка импорта", String(error));
+    } finally {
+      state.isImporting = false;
+      syncControls();
+    }
+  }
+
+  async function exportOperations() {
+    state.isExportingOperations = true;
+    syncControls();
+
+    try {
+      const exportUrl = buildOperationsExportUrl();
+      setStatus("success", "Экспорт CSV", "Запускаю выгрузку операций за выбранный период.");
+      downloadFile(exportUrl);
+    } catch (error) {
+      setStatus("error", "Ошибка экспорта CSV", String(error));
+    } finally {
+      state.isExportingOperations = false;
+      syncControls();
+    }
+  }
+
+  elements.refreshButton.addEventListener("click", function () {
+    void loadAdminData();
+  });
+  elements.loadExampleButton.addEventListener("click", function () {
+    loadExampleCsv();
+  });
+  elements.operationsExportButton.addEventListener("click", function () {
+    void exportOperations();
+  });
+  if (elements.downloadExampleLink && config.importExampleCsvAssetUrl) {
+    elements.downloadExampleLink.href = config.importExampleCsvAssetUrl;
+  }
+  if (elements.exportUsersLink && config.exportUsersEndpoint) {
+    elements.exportUsersLink.href = config.exportUsersEndpoint;
+  }
+  elements.importButton.addEventListener("click", function () {
+    void importUsers();
+  });
+
+  renderSystemStatus();
+  renderProblemOperations();
+  renderOperations();
+  void loadAdminData();
 })();

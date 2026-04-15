@@ -1,13 +1,35 @@
 from __future__ import annotations
 
+from datetime import datetime
 from pathlib import Path
 
 from fastapi.testclient import TestClient
 
 from app.api import create_app
-from app.config import AppSettings
-from app.domain.enums import BindingType, ItemStatus, OperationState, RoleCode, SlotStatus, SlotType, UserStatus
-from app.persistence.models import InventoryBalance, Item, Operation, OperationStateHistory, RecoveryCase, Role, Slot, SlotItemBinding, User
+from app.config import AppSettings, HardwareProvider
+from app.domain.enums import (
+    BindingType,
+    DispenseRestrictionPolicy,
+    ItemStatus,
+    OperationState,
+    OperationType,
+    RoleCode,
+    SlotStatus,
+    SlotType,
+    UserStatus,
+)
+from app.persistence.models import (
+    InventoryBalance,
+    Item,
+    Operation,
+    OperationStateHistory,
+    RecoveryCase,
+    Role,
+    Slot,
+    SlotItemBinding,
+    User,
+    UserRfidCard,
+)
 
 
 def test_app_creation_smoke(tmp_path: Path) -> None:
@@ -62,7 +84,263 @@ def test_ui_role_routes_render_and_mvp_alias_matches_user(tmp_path: Path) -> Non
     assert user_response.text == alias_response.text
     assert "User Workflow" in user_response.text
     assert "Operator Replenishment" in operator_response.text
-    assert "Admin Console" in admin_response.text
+    assert "Поддержка RFID и политики выдачи" in admin_response.text
+    assert "Операции, требующие внимания" in admin_response.text
+    assert '"/admin/users"' in admin_response.text
+    assert '"/admin/system/status"' in admin_response.text
+    assert '"/admin/operations/problem"' in admin_response.text
+    assert '"/admin/operations/recent"' in admin_response.text
+    assert '"/admin/operations/export"' in admin_response.text
+    assert '"/admin/users/import"' in admin_response.text
+
+
+def test_admin_system_status_endpoint_returns_health_readiness_and_runtime_settings(tmp_path: Path) -> None:
+    app = create_app(
+        AppSettings(
+            data_dir=tmp_path,
+            sqlite_filename="api_admin_system_status.sqlite3",
+            alembic_config_path=Path("alembic.ini"),
+            app_name="DION ABA1 Test",
+            app_environment="test",
+            hardware_provider=HardwareProvider.STUB_REAL,
+            api_host="0.0.0.0",
+            api_port=8012,
+        )
+    )
+
+    with TestClient(app) as client:
+        response = client.get("/admin/system/status")
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "health_status": "ok",
+        "readiness_status": "degraded",
+        "hardware_provider": "stub-real",
+        "app_environment": "test",
+        "app_name": "DION ABA1 Test",
+        "api_host": "0.0.0.0",
+        "api_port": 8012,
+    }
+
+
+def test_ui_admin_static_assets_are_served(tmp_path: Path) -> None:
+    app = create_app(_settings(tmp_path, "api_ui_admin_assets.sqlite3"))
+
+    with TestClient(app) as client:
+        response = client.get("/ui-assets/admin.js")
+
+    assert response.status_code == 200
+    assert "saveRow" in response.text
+    assert "loadUsers" in response.text
+    assert "exportOperations" in response.text
+    assert "loadExampleCsv" in response.text
+    assert "loadSystemStatus" in response.text
+    assert "systemStatusEndpoint" in response.text
+    assert "importUsers" in response.text
+
+
+def test_ui_admin_import_example_csv_asset_is_served(tmp_path: Path) -> None:
+    app = create_app(_settings(tmp_path, "api_ui_admin_import_example_asset.sqlite3"))
+
+    with TestClient(app) as client:
+        response = client.get("/ui-assets/admin-users-import-example.csv")
+
+    assert response.status_code == 200
+    assert "user_code,full_name,role_code,rfid_uid,dispense_restriction_policy" in response.text
+    assert "user-1001,Ivan Petrov,user,11 22 aa bb,unlimited" in response.text
+    assert "operator-2001,Anna Sidorova,operator,44 55 cc dd,once_per_day" in response.text
+
+
+def test_admin_users_endpoint_lists_assigned_and_unassigned_users(tmp_path: Path) -> None:
+    app = create_app(_settings(tmp_path, "api_admin_list.sqlite3"))
+    _seed_base_domain(app)
+    _seed_unassigned_user(app)
+
+    with TestClient(app) as client:
+        response = client.get("/admin/users")
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "users": [
+            {
+                "user_id": 1,
+                "user_code": "user-1",
+                "full_name": "User One",
+                "status": "active",
+                "is_active": True,
+                "role_code": "user",
+                "rfid_uid": "000FE2767C0045",
+                "dispense_restriction_policy": "unlimited",
+            },
+            {
+                "user_id": 2,
+                "user_code": "operator-1",
+                "full_name": "Operator One",
+                "status": "active",
+                "is_active": True,
+                "role_code": "operator",
+                "rfid_uid": None,
+                "dispense_restriction_policy": "once_per_day",
+            },
+        ]
+    }
+
+
+def test_admin_recent_and_problem_operations_endpoints_return_expected_slices(tmp_path: Path) -> None:
+    app = create_app(_settings(tmp_path, "api_admin_operations.sqlite3"))
+    _seed_base_domain(app)
+    _seed_unassigned_user(app)
+
+    with app.state.session_factory() as session:
+        session.add_all(
+            [
+                Operation(
+                    session_id=None,
+                    operation_type=OperationType.DISPENSE,
+                    operation_state=OperationState.COMPLETED,
+                    user_id=1,
+                    item_id=1,
+                    slot_id=1,
+                    qty_requested=1,
+                    qty_confirmed=1,
+                    result=None,
+                    error_code=None,
+                    error_message=None,
+                    hardware_context_json={},
+                    business_context_json={},
+                    started_at=datetime(2026, 4, 13, 9, 0, 0),
+                    finished_at=datetime(2026, 4, 13, 9, 1, 0),
+                ),
+                Operation(
+                    session_id=None,
+                    operation_type=OperationType.REFILL_ITEM,
+                    operation_state=OperationState.FAILED,
+                    user_id=2,
+                    item_id=1,
+                    slot_id=1,
+                    qty_requested=5,
+                    qty_confirmed=None,
+                    result=None,
+                    error_code="hardware_timeout",
+                    error_message="seeded failure",
+                    hardware_context_json={},
+                    business_context_json={},
+                    started_at=datetime(2026, 4, 13, 10, 0, 0),
+                    finished_at=datetime(2026, 4, 13, 10, 1, 0),
+                ),
+            ]
+        )
+        session.commit()
+
+    with TestClient(app) as client:
+        recent_response = client.get("/admin/operations/recent")
+        problem_response = client.get("/admin/operations/problem")
+
+    assert recent_response.status_code == 200
+    assert recent_response.json()["operations"][0]["operation_type"] == "refill_item"
+    assert recent_response.json()["operations"][0]["operation_state"] == "failed"
+    assert recent_response.json()["operations"][1]["operation_type"] == "dispense"
+
+    assert problem_response.status_code == 200
+    assert problem_response.json() == {
+        "operations": [
+            {
+                "operation_id": 2,
+                "started_at": "2026-04-13T10:00:00",
+                "operation_type": "refill_item",
+                "operation_state": "failed",
+                "user_code": "operator-1",
+                "user_full_name": "Operator One",
+                "item_name": "Item One",
+                "quantity": 5,
+                "slot_code": "slot-1",
+            }
+        ]
+    }
+
+
+def test_admin_operations_export_returns_csv_for_date_range(tmp_path: Path) -> None:
+    app = create_app(_settings(tmp_path, "api_admin_export.sqlite3"))
+    _seed_base_domain(app)
+
+    with app.state.session_factory() as session:
+        session.add(
+            Operation(
+                session_id=None,
+                operation_type=OperationType.DISPENSE,
+                operation_state=OperationState.COMPLETED,
+                user_id=1,
+                item_id=1,
+                slot_id=1,
+                qty_requested=1,
+                qty_confirmed=1,
+                result="ok",
+                error_code=None,
+                error_message=None,
+                hardware_context_json={},
+                business_context_json={},
+                started_at=datetime(2026, 4, 12, 9, 0, 0),
+                finished_at=datetime(2026, 4, 12, 9, 1, 0),
+            )
+        )
+        session.commit()
+
+    with TestClient(app) as client:
+        response = client.get("/admin/operations/export?date_from=2026-04-12&date_to=2026-04-12")
+
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/csv")
+    assert "operation_id,started_at,finished_at,operation_type,operation_state" in response.text
+    assert "dispense,completed,user-1,User One,Item One,1,slot-1,ok" in response.text
+
+
+def test_admin_users_export_import_and_update_round_trip(tmp_path: Path) -> None:
+    app = create_app(_settings(tmp_path, "api_admin_users_round_trip.sqlite3"))
+    _seed_base_domain(app)
+    _seed_unassigned_user(app)
+
+    csv_payload = "\n".join(
+        (
+            "user_code,full_name,role_code,rfid_uid,dispense_restriction_policy",
+            "operator-1,Operator Updated,operator,11 22 aa bb,unlimited",
+        )
+    )
+
+    with TestClient(app) as client:
+        export_response = client.get("/admin/users/export")
+        import_response = client.post(
+            "/admin/users/import",
+            content=csv_payload.encode("utf-8"),
+            headers={"content-type": "text/csv; charset=utf-8"},
+        )
+        update_response = client.put(
+            "/admin/users/1",
+            json={
+                "rfid_uid": "",
+                "is_active": False,
+                "dispense_restriction_policy": "once_per_day",
+            },
+        )
+        users_response = client.get("/admin/users")
+
+    assert export_response.status_code == 200
+    assert "user_code,full_name,role_code,rfid_uid,dispense_restriction_policy" in export_response.text
+
+    assert import_response.status_code == 200
+    assert import_response.json() == {"result": {"created_count": 0, "updated_count": 1, "total_rows": 1}}
+
+    assert update_response.status_code == 200
+    assert update_response.json()["user"]["status"] == "inactive"
+    assert update_response.json()["user"]["dispense_restriction_policy"] == "once_per_day"
+    assert update_response.json()["user"]["rfid_uid"] is None
+
+    users = users_response.json()["users"]
+    assert users[0]["status"] == "inactive"
+    assert users[0]["dispense_restriction_policy"] == "once_per_day"
+    assert users[0]["rfid_uid"] is None
+    assert users[1]["full_name"] == "Operator Updated"
+    assert users[1]["rfid_uid"] == "1122AABB"
+    assert users[1]["dispense_restriction_policy"] == "unlimited"
 
 
 def test_operator_replenishment_overview_lists_active_options(tmp_path: Path) -> None:
@@ -172,6 +450,7 @@ def _seed_base_domain(app) -> None:
             user_code="user-1",
             full_name="User One",
             status=UserStatus.ACTIVE,
+            dispense_restriction_policy=DispenseRestrictionPolicy.UNLIMITED,
             is_active=True,
         )
         item = Item(
@@ -206,6 +485,33 @@ def _seed_base_domain(app) -> None:
             )
         )
         session.add(InventoryBalance(slot_id=slot.id, item_id=item.id, quantity=5))
+        session.add(
+            UserRfidCard(
+                user_id=user.id,
+                card_uid="000FE2767C0045",
+                is_active=True,
+                issued_at=user.created_at,
+                revoked_at=None,
+            )
+        )
+        session.commit()
+
+
+def _seed_unassigned_user(app) -> None:
+    with app.state.session_factory() as session:
+        operator_role = Role(code=RoleCode.OPERATOR, name="Operator")
+        session.add(operator_role)
+        session.flush()
+        session.add(
+            User(
+                role_id=operator_role.id,
+                user_code="operator-1",
+                full_name="Operator One",
+                status=UserStatus.ACTIVE,
+                dispense_restriction_policy=DispenseRestrictionPolicy.ONCE_PER_DAY,
+                is_active=True,
+            )
+        )
         session.commit()
 
 
@@ -221,6 +527,7 @@ def _seed_operator_domain(app) -> None:
             user_code="operator-1",
             full_name="Operator One",
             status=UserStatus.ACTIVE,
+            dispense_restriction_policy=DispenseRestrictionPolicy.UNLIMITED,
             is_active=True,
         )
         session.add(operator)

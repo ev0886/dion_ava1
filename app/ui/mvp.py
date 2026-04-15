@@ -11,6 +11,13 @@ _UI_DIR = Path(__file__).resolve().parent
 _MVP_TEMPLATE_PATH = _UI_DIR / "templates" / "mvp.html"
 _OPERATOR_TEMPLATE_PATH = _UI_DIR / "templates" / "operator.html"
 _ADMIN_TEMPLATE_PATH = _UI_DIR / "templates" / "admin.html"
+_ADMIN_USERS_IMPORT_EXAMPLE_CSV = "\n".join(
+    [
+        "user_code,full_name,role_code,rfid_uid,dispense_restriction_policy",
+        "user-1001,Ivan Petrov,user,11 22 aa bb,unlimited",
+        "operator-2001,Anna Sidorova,operator,44 55 cc dd,once_per_day",
+    ]
+)
 
 
 def render_user_page(settings: AppSettings) -> HTMLResponse:
@@ -40,5 +47,18 @@ def render_operator_page(settings: AppSettings) -> HTMLResponse:
 def render_admin_page(settings: AppSettings) -> HTMLResponse:
     del settings
     template = _ADMIN_TEMPLATE_PATH.read_text(encoding="utf-8")
-    ui_config = {"uiRole": "admin"}
+    ui_config = {
+        "uiRole": "admin",
+        "systemStatusEndpoint": "/admin/system/status",
+        "listUsersEndpoint": "/admin/users",
+        "problemOperationsEndpoint": "/admin/operations/problem",
+        "recentOperationsEndpoint": "/admin/operations/recent",
+        "exportOperationsEndpoint": "/admin/operations/export",
+        "exportUsersEndpoint": "/admin/users/export",
+        "updateUserEndpointBase": "/admin/users",
+        "importUsersEndpoint": "/admin/users/import",
+        "importExampleCsvAssetUrl": "/ui-assets/admin-users-import-example.csv",
+        "importExampleCsvText": _ADMIN_USERS_IMPORT_EXAMPLE_CSV,
+        "supportedPolicies": ["unlimited", "once_per_day"],
+    }
     return HTMLResponse(template.replace("__DION_ADMIN_UI_CONFIG__", json.dumps(ui_config, ensure_ascii=True)))
