@@ -10,6 +10,7 @@ from app.hardware import (
     RealRfidAdapter,
     create_hardware_bundle,
 )
+from app.hardware.rfid_rusguard import RusGuardCardRead
 
 
 def test_real_rfid_adapter_ping_success_with_fake_transport() -> None:
@@ -66,6 +67,46 @@ def test_real_rfid_adapter_timeout_is_reported_as_safe_timeout() -> None:
         adapter.read_card()
 
 
+def test_real_rfid_adapter_sdk_transport_accepts_4_byte_uid() -> None:
+    adapter = RealRfidAdapter(config=_sdk_rfid_config(), transport=_FakeSdkTransport(RusGuardCardRead(status_type=0, uid="A1B2C3D4", uid_size=4)))
+
+    result = adapter.read_card()
+
+    assert result.ok is True
+    assert result.status is HardwareOperationStatus.SUCCESS
+    assert result.uid == "A1B2C3D4"
+    assert result.is_duplicate is False
+
+
+def test_real_rfid_adapter_sdk_transport_accepts_7_byte_uid() -> None:
+    adapter = RealRfidAdapter(config=_sdk_rfid_config(), transport=_FakeSdkTransport(RusGuardCardRead(status_type=0, uid="01020304050607", uid_size=7)))
+
+    result = adapter.read_card()
+
+    assert result.ok is True
+    assert result.status is HardwareOperationStatus.SUCCESS
+    assert result.uid == "01020304050607"
+    assert result.is_duplicate is False
+
+
+def test_real_rfid_adapter_sdk_transport_maps_zero_length_uid_to_no_card() -> None:
+    adapter = RealRfidAdapter(config=_sdk_rfid_config(), transport=_FakeSdkTransport(RusGuardCardRead(status_type=0, uid=None, uid_size=0)))
+
+    result = adapter.read_card()
+
+    assert result.ok is True
+    assert result.status is HardwareOperationStatus.NO_CARD
+    assert result.uid is None
+    assert result.is_duplicate is False
+
+
+def test_real_rfid_adapter_sdk_transport_rejects_contradictory_missing_uid() -> None:
+    adapter = RealRfidAdapter(config=_sdk_rfid_config(), transport=_FakeSdkTransport(RusGuardCardRead(status_type=0, uid=None, uid_size=4)))
+
+    with pytest.raises(HardwareFailureError, match="contradictory SDK card-read response"):
+        adapter.read_card()
+
+
 def test_real_provider_composition_still_works_with_operational_rfid_transport() -> None:
     settings = AppSettings(
         hardware_provider=HardwareProvider.REAL,
@@ -112,10 +153,33 @@ class _RaisingTransport:
         raise self._error
 
 
+class _FakeSdkTransport:
+    def __init__(self, result: RusGuardCardRead) -> None:
+        self._result = result
+        self.ping_calls: list[int | None] = []
+        self.read_calls: list[int | None] = []
+
+    def ping(self, timeout_ms: int | None = None) -> None:
+        self.ping_calls.append(timeout_ms)
+
+    def read_card(self, timeout_ms: int | None = None) -> RusGuardCardRead:
+        self.read_calls.append(timeout_ms)
+        return self._result
+
+
 def _rfid_config():
     from app.hardware.transport_config import HardwareEndpointTransportConfig
 
     return HardwareEndpointTransportConfig.model_validate(_serial_endpoint_config(code="rfid-1", driver_name="rfid-driver", port="COM7"))
+
+
+def _sdk_rfid_config():
+    from types import SimpleNamespace
+    from app.hardware.transport_config import HardwareEndpointTransportConfig
+
+    config = HardwareEndpointTransportConfig.model_validate(_serial_endpoint_config(code="rfid-1", driver_name="rfid-driver", port="COM7"))
+    config.transport = SimpleNamespace(sdk_library="vendor/rusguard/sdk/RG.dll")
+    return config
 
 
 def _serial_endpoint_config(*, code: str, driver_name: str, port: str) -> dict[str, object]:
