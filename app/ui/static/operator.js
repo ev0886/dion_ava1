@@ -3,6 +3,7 @@
   const CELLS_PER_SECTOR = 15;
   const CELLS_PER_QUARTER = SECTORS_PER_QUARTER * CELLS_PER_SECTOR;
   const TOTAL_QUARTERS = 4;
+  const REMOVE_SUCCESS_RETURN_DELAY_MS = 1800;
 
   let currentQuarter = 1;
   let activeSector = 1;
@@ -10,12 +11,14 @@
   let pendingAction = null;
   let pendingActionType = null;
   let isActionConfirmed = false;
+  let removeSuccessTimerId = null;
 
   const selectedCells = new Set();
 
   const boardView = document.getElementById("operator-board-view");
   const confirmationView = document.getElementById("operator-confirmation-view");
   const removeExecutionView = document.getElementById("operator-remove-execution-view");
+  const removeSuccessView = document.getElementById("operator-remove-success-view");
   const mainActions = document.getElementById("operator-actions-main");
   const confirmationActions = document.getElementById("operator-actions-confirmation");
   const removeExecutionActions = document.getElementById("operator-actions-remove-execution");
@@ -39,7 +42,6 @@
   const confirmationConfirmButton = document.getElementById("confirmation-confirm-button");
   const removeExecutionCount = document.getElementById("remove-execution-count");
   const removeExecutionCells = document.getElementById("remove-execution-cells");
-  const removeExecutionNote = document.getElementById("remove-execution-note");
   const removeExecutionCancelButton = document.getElementById("remove-execution-cancel-button");
   const removeExecutionCompleteButton = document.getElementById("remove-execution-complete-button");
 
@@ -47,6 +49,7 @@
     !boardView ||
     !confirmationView ||
     !removeExecutionView ||
+    !removeSuccessView ||
     !mainActions ||
     !confirmationActions ||
     !removeExecutionActions ||
@@ -70,7 +73,6 @@
     !confirmationConfirmButton ||
     !removeExecutionCount ||
     !removeExecutionCells ||
-    !removeExecutionNote ||
     !removeExecutionCancelButton ||
     !removeExecutionCompleteButton
   ) {
@@ -114,14 +116,30 @@
     quarterIndicator.textContent = currentQuarter + "/4";
   }
 
+  function clearRemoveSuccessTimer() {
+    if (removeSuccessTimerId !== null) {
+      window.clearTimeout(removeSuccessTimerId);
+      removeSuccessTimerId = null;
+    }
+  }
+
+  function clearPendingActionState() {
+    pendingAction = null;
+    pendingActionType = null;
+    isActionConfirmed = false;
+    confirmationNote.hidden = true;
+  }
+
   function syncViewState() {
     const showBoard = currentView === "board";
     const showConfirmation = currentView === "confirmation";
     const showRemoveExecution = currentView === "remove-execution";
+    const showRemoveSuccess = currentView === "remove-success";
 
     boardView.hidden = !showBoard;
     confirmationView.hidden = !showConfirmation;
     removeExecutionView.hidden = !showRemoveExecution;
+    removeSuccessView.hidden = !showRemoveSuccess;
     mainActions.hidden = !showBoard;
     confirmationActions.hidden = !showConfirmation;
     removeExecutionActions.hidden = !showRemoveExecution;
@@ -129,6 +147,7 @@
     boardView.classList.toggle("is-active", showBoard);
     confirmationView.classList.toggle("is-active", showConfirmation);
     removeExecutionView.classList.toggle("is-active", showRemoveExecution);
+    removeSuccessView.classList.toggle("is-active", showRemoveSuccess);
     mainActions.classList.toggle("is-active", showBoard);
     confirmationActions.classList.toggle("is-active", showConfirmation);
     removeExecutionActions.classList.toggle("is-active", showRemoveExecution);
@@ -159,7 +178,6 @@
 
   function renderRemoveExecution() {
     removeExecutionCount.textContent = String(selectedCells.size);
-    removeExecutionNote.hidden = true;
     renderCellChips(removeExecutionCells);
   }
 
@@ -173,11 +191,13 @@
   }
 
   function showBoardView() {
+    clearRemoveSuccessTimer();
     currentView = "board";
     syncViewState();
   }
 
   function showConfirmationView(actionType, actionLabel) {
+    clearRemoveSuccessTimer();
     pendingActionType = actionType;
     pendingAction = actionLabel;
     isActionConfirmed = false;
@@ -187,9 +207,29 @@
   }
 
   function showRemoveExecutionView() {
+    clearRemoveSuccessTimer();
     renderRemoveExecution();
     currentView = "remove-execution";
     syncViewState();
+  }
+
+  function returnToBoardAfterRemoveSuccess() {
+    clearRemoveSuccessTimer();
+    selectedCells.clear();
+    clearPendingActionState();
+    renderCells();
+    updateSelectionSummary();
+    showBoardView();
+    setStatusMessage("Выберите ячейки");
+  }
+
+  function showRemoveSuccessView() {
+    clearRemoveSuccessTimer();
+    currentView = "remove-success";
+    syncViewState();
+    removeSuccessTimerId = window.setTimeout(function () {
+      returnToBoardAfterRemoveSuccess();
+    }, REMOVE_SUCCESS_RETURN_DELAY_MS);
   }
 
   function renderSectors() {
@@ -322,8 +362,8 @@
   });
 
   removeExecutionCompleteButton.addEventListener("click", function () {
-    removeExecutionNote.hidden = false;
-    setStatusMessage("Изъять: отмечено");
+    showRemoveSuccessView();
+    setStatusMessage("Изъять: остатки удалены");
   });
 
   updateSelectionSummary();
