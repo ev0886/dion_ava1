@@ -133,8 +133,12 @@ def test_ui_operator_page_serves_role_foundation(tmp_path: Path) -> None:
 
     assert response.status_code == 200
     assert "Operator UI" in response.text
-    assert "Operator Replenishment Screen" in response.text
-    assert "Replenishment workflow implementation is the next stage." in response.text
+    assert "Навигация оператора по ячейкам" in response.text
+    assert "4 сектора / 120 ячеек" in response.text
+    assert 'id="cells-grid"' in response.text
+    assert "Изъять" in response.text
+    assert "Пополнить" in response.text
+    assert "Выход" in response.text
     assert '"uiRole": "operator"' in response.text
     assert '"refillWorkflowStatus": "planned"' in response.text
 
