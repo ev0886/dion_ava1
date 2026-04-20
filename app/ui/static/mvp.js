@@ -25,13 +25,13 @@
   };
 
   const userItems = [
-    { id: "item-1", name: "Перчатки защитные" },
-    { id: "item-2", name: "Очки защитные" },
-    { id: "item-3", name: "Каска" },
-    { id: "item-4", name: "Жилет сигнальный" },
-    { id: "item-5", name: "Респиратор" },
-    { id: "item-6", name: "Ботинки рабочие" },
-    { id: "item-7", name: "Наушники защитные" },
+    { id: "item-1", name: "Перчатки защитные", isAvailable: true },
+    { id: "item-2", name: "Очки защитные", isAvailable: true },
+    { id: "item-3", name: "Каска", isAvailable: false },
+    { id: "item-4", name: "Жилет сигнальный", isAvailable: true },
+    { id: "item-5", name: "Респиратор", isAvailable: true },
+    { id: "item-6", name: "Ботинки рабочие", isAvailable: false },
+    { id: "item-7", name: "Наушники защитные", isAvailable: true },
   ];
 
   const screens = {
@@ -84,12 +84,23 @@
       enableIdleTimeout: true,
       roleTheme: "user",
     },
-    userItemNext: {
-      kicker: "\u0412\u044b\u0431\u0440\u0430\u043d\u043d\u044b\u0439 \u0442\u043e\u0432\u0430\u0440",
-      title: "\u0412\u044b \u0432\u044b\u0431\u0440\u0430\u043b\u0438 \u0442\u043e\u0432\u0430\u0440",
-      message: getSelectedUserItemMessage,
+    userItemAvailable: {
+      kicker: "\u0421\u043b\u0435\u0434\u0443\u044e\u0449\u0438\u0439 \u0448\u0430\u0433",
+      title: "\u041c\u043e\u0436\u043d\u043e \u043f\u0440\u043e\u0434\u043e\u043b\u0436\u0438\u0442\u044c",
+      message: getAvailableUserItemMessage,
       actions: [
-        { label: "\u041d\u0430\u0437\u0430\u0434", action: "back-to-user-items", tone: "secondary" },
+        { label: "\u041d\u0430\u0437\u0430\u0434 \u043a \u0442\u043e\u0432\u0430\u0440\u0430\u043c", action: "back-to-user-items", tone: "secondary" },
+        { label: "\u041d\u0430 \u0433\u043b\u0430\u0432\u043d\u0443\u044e", action: "go-start", tone: "ghost" },
+      ],
+      enableIdleTimeout: true,
+      roleTheme: "user",
+    },
+    userItemUnavailable: {
+      kicker: "\u041f\u043e\u043b\u0443\u0447\u0435\u043d\u0438\u0435 \u043d\u0435\u0434\u043e\u0441\u0442\u0443\u043f\u043d\u043e",
+      title: "\u041f\u043e\u043b\u0443\u0447\u0435\u043d\u0438\u0435 \u0432 \u0434\u0430\u043d\u043d\u044b\u0439 \u043c\u043e\u043c\u0435\u043d\u0442 \u043d\u0435\u0434\u043e\u0441\u0442\u0443\u043f\u043d\u043e",
+      message: getUnavailableUserItemMessage,
+      actions: [
+        { label: "\u041a \u0442\u043e\u0432\u0430\u0440\u0430\u043c", action: "back-to-user-items", tone: "secondary" },
         { label: "\u041d\u0430 \u0433\u043b\u0430\u0432\u043d\u0443\u044e", action: "go-start", tone: "ghost" },
       ],
       enableIdleTimeout: true,
@@ -208,6 +219,22 @@
       return "\u0412\u044b\u0431\u0435\u0440\u0438\u0442\u0435 \u043f\u043e\u0437\u0438\u0446\u0438\u044e \u0438 \u0432\u0435\u0440\u043d\u0438\u0442\u0435\u0441\u044c \u043a \u0441\u043f\u0438\u0441\u043a\u0443.";
     }
     return selectedItem.name;
+  }
+
+  function getAvailableUserItemMessage() {
+    const selectedItem = getSelectedUserItem();
+    if (!selectedItem) {
+      return "\u0412\u044b\u0431\u0435\u0440\u0438\u0442\u0435 \u0442\u043e\u0432\u0430\u0440, \u0447\u0442\u043e\u0431\u044b \u043f\u0435\u0440\u0435\u0439\u0442\u0438 \u043a \u0441\u043b\u0435\u0434\u0443\u044e\u0449\u0435\u043c\u0443 \u0448\u0430\u0433\u0443.";
+    }
+    return "\u0422\u043e\u0432\u0430\u0440 \u00ab" + selectedItem.name + "\u00bb \u0434\u043e\u0441\u0442\u0443\u043f\u0435\u043d. \u041c\u043e\u0436\u043d\u043e \u043f\u0435\u0440\u0435\u0439\u0442\u0438 \u043a \u0441\u043b\u0435\u0434\u0443\u044e\u0449\u0435\u043c\u0443 \u0448\u0430\u0433\u0443 \u0438\u043b\u0438 \u0432\u0435\u0440\u043d\u0443\u0442\u044c\u0441\u044f \u043a \u0432\u044b\u0431\u043e\u0440\u0443.";
+  }
+
+  function getUnavailableUserItemMessage() {
+    const selectedItem = getSelectedUserItem();
+    if (!selectedItem) {
+      return "\u0412\u044b\u0431\u0435\u0440\u0438\u0442\u0435 \u0442\u043e\u0432\u0430\u0440 \u0438 \u043f\u043e\u0432\u0442\u043e\u0440\u0438\u0442\u0435 \u043f\u043e\u043f\u044b\u0442\u043a\u0443.";
+    }
+    return "\u0422\u043e\u0432\u0430\u0440 \u00ab" + selectedItem.name + "\u00bb \u0441\u0435\u0439\u0447\u0430\u0441 \u043d\u0435\u043b\u044c\u0437\u044f \u043f\u043e\u043b\u0443\u0447\u0438\u0442\u044c. \u0412\u0435\u0440\u043d\u0438\u0442\u0435\u0441\u044c \u043a \u0441\u043f\u0438\u0441\u043a\u0443 \u0438 \u0432\u044b\u0431\u0435\u0440\u0438\u0442\u0435 \u0434\u0440\u0443\u0433\u0443\u044e \u043f\u043e\u0437\u0438\u0446\u0438\u044e.";
   }
 
   function createActionButton(action) {
@@ -366,7 +393,7 @@
         showScreen("userItemSelect");
         return;
       }
-      showScreen("userItemNext");
+      showScreen(getSelectedUserItem().isAvailable ? "userItemAvailable" : "userItemUnavailable");
       return;
     }
     if (action === "back-to-user-items") {
