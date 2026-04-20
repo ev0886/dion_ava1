@@ -141,6 +141,34 @@
     return getQuarterCellStart(quarter) + columnIndex * CELLS_PER_SECTOR + rowIndex;
   }
 
+  function getSectorCellNumbers(quarter, sectorNumber) {
+    const sectorStart = getQuarterSectorStart(quarter);
+    const columnIndex = sectorNumber - sectorStart;
+
+    if (columnIndex < 0 || columnIndex >= SECTORS_PER_QUARTER) {
+      return [];
+    }
+
+    const cellNumbers = [];
+
+    for (let rowIndex = 0; rowIndex < CELLS_PER_SECTOR; rowIndex += 1) {
+      cellNumbers.push(getVisibleCellNumber(quarter, columnIndex, rowIndex));
+    }
+
+    return cellNumbers;
+  }
+
+  function isSectorFullySelected(quarter, sectorNumber) {
+    const sectorCellNumbers = getSectorCellNumbers(quarter, sectorNumber);
+
+    return (
+      sectorCellNumbers.length === CELLS_PER_SECTOR &&
+      sectorCellNumbers.every(function (cellNumber) {
+        return selectedCells.has(cellNumber);
+      })
+    );
+  }
+
   function getSelectedCellNumbers() {
     return Array.from(selectedCells).sort(function (left, right) {
       return left - right;
@@ -391,6 +419,7 @@
     clearRemoveSuccessTimer();
     selectedCells.clear();
     clearPendingActionState();
+    renderSectors();
     renderCells();
     updateSelectionSummary();
     showBoardView();
@@ -411,6 +440,7 @@
     clearReplenishSuccessTimer();
     selectedCells.clear();
     clearPendingActionState();
+    renderSectors();
     renderCells();
     updateSelectionSummary();
     showBoardView();
@@ -433,22 +463,50 @@
 
     for (let index = 0; index < SECTORS_PER_QUARTER; index += 1) {
       const sectorNumber = getQuarterSectorStart(currentQuarter) + index;
+      const isActiveSector = sectorNumber === activeSector;
+      const isFullySelected = isSectorFullySelected(currentQuarter, sectorNumber);
       const button = document.createElement("button");
       button.type = "button";
       button.className = "sector-chip";
       button.textContent = String(index + 1);
       button.dataset.sector = String(sectorNumber);
       button.setAttribute("aria-label", "Сектор " + sectorNumber);
-      button.setAttribute("aria-pressed", sectorNumber === activeSector ? "true" : "false");
+      button.setAttribute("aria-pressed", isActiveSector ? "true" : "false");
+      button.setAttribute("aria-selected", isFullySelected ? "true" : "false");
 
-      if (sectorNumber === activeSector) {
+      if (isActiveSector) {
         button.classList.add("is-active");
       }
 
+      if (isFullySelected) {
+        button.classList.add("is-fully-selected");
+      }
+
       button.addEventListener("click", function () {
+        const sectorCellNumbers = getSectorCellNumbers(currentQuarter, sectorNumber);
+        const shouldClearSector = sectorCellNumbers.every(function (cellNumber) {
+          return selectedCells.has(cellNumber);
+        });
+
         activeSector = sectorNumber;
+
+        sectorCellNumbers.forEach(function (cellNumber) {
+          if (shouldClearSector) {
+            selectedCells.delete(cellNumber);
+          } else {
+            selectedCells.add(cellNumber);
+          }
+        });
+
         renderSectors();
-        setStatusMessage("Сектор " + sectorNumber + " выбран");
+        renderCells();
+        updateSelectionSummary();
+
+        if (shouldClearSector) {
+          setStatusMessage("Сектор " + sectorNumber + " снят");
+        } else {
+          setStatusMessage("Сектор " + sectorNumber + " выбран полностью");
+        }
       });
 
       sectorGrid.appendChild(button);
@@ -489,6 +547,7 @@
           }
 
           updateSelectionSummary();
+          renderSectors();
 
           if (currentView === "confirmation") {
             renderConfirmation();
