@@ -468,7 +468,7 @@
       const button = document.createElement("button");
       button.type = "button";
       button.className = "sector-chip";
-      button.textContent = String(index + 1);
+      button.textContent = String(sectorNumber);
       button.dataset.sector = String(sectorNumber);
       button.setAttribute("aria-label", "Сектор " + sectorNumber);
       button.setAttribute("aria-pressed", isActiveSector ? "true" : "false");
