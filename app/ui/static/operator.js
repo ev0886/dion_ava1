@@ -5,6 +5,8 @@
   const TOTAL_QUARTERS = 4;
   const REMOVE_SUCCESS_RETURN_DELAY_MS = 1800;
   const REPLENISH_SUCCESS_RETURN_DELAY_MS = 1800;
+  const UI_IDLE_TIMEOUT_MS = 30000;
+  const PRESENCE_COUNTDOWN_SECONDS = 30;
   const REPLENISH_SAMPLE_ITEMS = [
     { id: "item-01", name: "Вода негазированная 0,5 л", meta: "ПЭТ бутылка" },
     { id: "item-02", name: "Вода газированная 0,5 л", meta: "ПЭТ бутылка" },
@@ -23,6 +25,12 @@
   let isActionConfirmed = false;
   let removeSuccessTimerId = null;
   let replenishSuccessTimerId = null;
+  let inactivityTimerId = null;
+  let presenceCountdownIntervalId = null;
+  let presenceCountdownTimeoutId = null;
+  let presenceCountdownDeadline = null;
+  let presenceReturnView = null;
+  let isPresenceOverlayVisible = false;
   let selectedReplenishItemId = null;
 
   const selectedCells = new Set();
@@ -75,6 +83,10 @@
   const replenishExecutionCompleteButton = document.getElementById("replenish-execution-complete-button");
   const replenishSuccessMessage = document.getElementById("replenish-success-message");
   const replenishSuccessCells = document.getElementById("replenish-success-cells");
+  const presenceOverlay = document.getElementById("presence-overlay");
+  const presenceOverlayCountdown = document.getElementById("presence-overlay-countdown");
+  const presenceOverlayYesButton = document.getElementById("presence-overlay-yes-button");
+  const presenceOverlayNoButton = document.getElementById("presence-overlay-no-button");
 
   if (
     !boardView ||
@@ -124,9 +136,136 @@
     !replenishExecutionCancelButton ||
     !replenishExecutionCompleteButton ||
     !replenishSuccessMessage ||
-    !replenishSuccessCells
+    !replenishSuccessCells ||
+    !presenceOverlay ||
+    !presenceOverlayCountdown ||
+    !presenceOverlayYesButton ||
+    !presenceOverlayNoButton
   ) {
     return;
+  }
+
+  function canUseSharedInactivityTimeout() {
+    return currentView !== "remove-success" && currentView !== "replenish-success";
+  }
+
+  function clearInactivityTimer() {
+    if (inactivityTimerId !== null) {
+      window.clearTimeout(inactivityTimerId);
+      inactivityTimerId = null;
+    }
+  }
+
+  function clearPresenceCountdown() {
+    if (presenceCountdownIntervalId !== null) {
+      window.clearInterval(presenceCountdownIntervalId);
+      presenceCountdownIntervalId = null;
+    }
+
+    if (presenceCountdownTimeoutId !== null) {
+      window.clearTimeout(presenceCountdownTimeoutId);
+      presenceCountdownTimeoutId = null;
+    }
+
+    presenceCountdownDeadline = null;
+    presenceOverlayCountdown.textContent = String(PRESENCE_COUNTDOWN_SECONDS);
+  }
+
+  function renderPresenceCountdown() {
+    if (presenceCountdownDeadline === null) {
+      return;
+    }
+
+    const remainingMs = Math.max(0, presenceCountdownDeadline - Date.now());
+    const remainingSeconds = Math.ceil(remainingMs / 1000);
+    presenceOverlayCountdown.textContent = String(remainingSeconds);
+  }
+
+  function goToStartScreen() {
+    window.location.assign("/ui/user");
+  }
+
+  function hidePresenceOverlay(options) {
+    const settings = options || {};
+
+    clearPresenceCountdown();
+    isPresenceOverlayVisible = false;
+    presenceReturnView = null;
+    presenceOverlay.hidden = true;
+    presenceOverlay.setAttribute("aria-hidden", "true");
+    document.body.classList.remove("presence-overlay-active");
+
+    if (settings.restartIdleTimer !== false) {
+      scheduleInactivityTimeout();
+    }
+  }
+
+  function showPresenceOverlay() {
+    if (isPresenceOverlayVisible || !canUseSharedInactivityTimeout()) {
+      return;
+    }
+
+    clearInactivityTimer();
+    clearPresenceCountdown();
+    presenceReturnView = currentView;
+    isPresenceOverlayVisible = true;
+    presenceOverlay.hidden = false;
+    presenceOverlay.setAttribute("aria-hidden", "false");
+    document.body.classList.add("presence-overlay-active");
+    presenceCountdownDeadline = Date.now() + (PRESENCE_COUNTDOWN_SECONDS * 1000);
+    renderPresenceCountdown();
+    presenceCountdownIntervalId = window.setInterval(renderPresenceCountdown, 250);
+    presenceCountdownTimeoutId = window.setTimeout(function () {
+      goToStartScreen();
+    }, PRESENCE_COUNTDOWN_SECONDS * 1000);
+    presenceOverlayYesButton.focus();
+  }
+
+  function scheduleInactivityTimeout() {
+    clearInactivityTimer();
+
+    if (isPresenceOverlayVisible || !canUseSharedInactivityTimeout()) {
+      return;
+    }
+
+    inactivityTimerId = window.setTimeout(function () {
+      showPresenceOverlay();
+    }, UI_IDLE_TIMEOUT_MS);
+  }
+
+  function restartInactivityTimeout() {
+    if (isPresenceOverlayVisible) {
+      return;
+    }
+
+    scheduleInactivityTimeout();
+  }
+
+  function handlePresenceResume() {
+    if (!isPresenceOverlayVisible) {
+      return;
+    }
+
+    if (presenceReturnView && currentView !== presenceReturnView) {
+      currentView = presenceReturnView;
+      syncViewState();
+    }
+
+    hidePresenceOverlay({ restartIdleTimer: true });
+  }
+
+  function handlePresenceInteraction(event) {
+    const target = event.target;
+
+    if (!(target instanceof Element)) {
+      return;
+    }
+
+    if (target.closest("#presence-overlay")) {
+      return;
+    }
+
+    restartInactivityTimeout();
   }
 
   function getQuarterCellStart(quarter) {
@@ -378,6 +517,7 @@
     clearReplenishSuccessTimer();
     currentView = "board";
     syncViewState();
+    scheduleInactivityTimeout();
   }
 
   function showConfirmationView(actionType, actionLabel) {
@@ -389,6 +529,7 @@
     renderConfirmation();
     currentView = "confirmation";
     syncViewState();
+    scheduleInactivityTimeout();
   }
 
   function showRemoveExecutionView() {
@@ -397,6 +538,7 @@
     renderRemoveExecution();
     currentView = "remove-execution";
     syncViewState();
+    scheduleInactivityTimeout();
   }
 
   function showReplenishItemSelectView() {
@@ -405,6 +547,7 @@
     renderReplenishItemSelect();
     currentView = "replenish-item-select";
     syncViewState();
+    scheduleInactivityTimeout();
   }
 
   function showReplenishExecutionView() {
@@ -413,6 +556,7 @@
     renderReplenishExecution();
     currentView = "replenish-execution";
     syncViewState();
+    scheduleInactivityTimeout();
   }
 
   function returnToBoardAfterRemoveSuccess() {
@@ -427,6 +571,8 @@
   }
 
   function showRemoveSuccessView() {
+    hidePresenceOverlay({ restartIdleTimer: false });
+    clearInactivityTimer();
     clearRemoveSuccessTimer();
     clearReplenishSuccessTimer();
     currentView = "remove-success";
@@ -448,6 +594,8 @@
   }
 
   function showReplenishSuccessView() {
+    hidePresenceOverlay({ restartIdleTimer: false });
+    clearInactivityTimer();
     clearRemoveSuccessTimer();
     clearReplenishSuccessTimer();
     renderReplenishSuccess();
@@ -674,4 +822,23 @@
   syncViewState();
   wireActionButton(removeButton, "remove", "Изъять");
   wireActionButton(refillButton, "refill", "Пополнить");
+  presenceOverlayYesButton.addEventListener("click", function () {
+    handlePresenceResume();
+  });
+
+  presenceOverlayNoButton.addEventListener("click", function () {
+    goToStartScreen();
+  });
+
+  document.addEventListener("pointerdown", handlePresenceInteraction, true);
+  document.addEventListener("keydown", function (event) {
+    if (isPresenceOverlayVisible) {
+      return;
+    }
+
+    handlePresenceInteraction(event);
+  }, true);
+  document.addEventListener("touchstart", handlePresenceInteraction, true);
+
+  scheduleInactivityTimeout();
 })();

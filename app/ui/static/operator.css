@@ -34,6 +34,10 @@ body {
   color: var(--text);
 }
 
+body.presence-overlay-active {
+  overflow: hidden;
+}
+
 button,
 a {
   font: inherit;
@@ -697,6 +701,83 @@ a {
   outline: none;
 }
 
+.presence-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+}
+
+.presence-overlay[hidden] {
+  display: none !important;
+}
+
+.presence-overlay-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(18, 29, 22, 0.5);
+  backdrop-filter: blur(6px);
+}
+
+.presence-overlay-card {
+  position: relative;
+  width: min(100%, 420px);
+  padding: 24px 20px;
+  display: grid;
+  gap: 14px;
+  justify-items: center;
+  text-align: center;
+  border: 1px solid rgba(255, 255, 255, 0.45);
+  border-radius: 24px;
+  background:
+    radial-gradient(circle at top, rgba(27, 124, 101, 0.22), transparent 14rem),
+    linear-gradient(180deg, rgba(248, 251, 244, 0.98) 0%, rgba(235, 243, 229, 0.98) 100%);
+  box-shadow: 0 24px 60px rgba(18, 29, 22, 0.28);
+}
+
+.presence-overlay-kicker,
+.presence-overlay-title,
+.presence-overlay-message,
+.presence-overlay-countdown {
+  margin: 0;
+}
+
+.presence-overlay-kicker {
+  color: var(--muted);
+  font-size: 0.76rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.presence-overlay-title {
+  font-size: 1.8rem;
+  line-height: 1.05;
+  color: var(--brand-strong);
+}
+
+.presence-overlay-message {
+  max-width: 20ch;
+  color: var(--text);
+  font-size: 1rem;
+  line-height: 1.35;
+}
+
+.presence-overlay-countdown {
+  font-size: 3.2rem;
+  line-height: 1;
+  color: var(--brand-strong);
+}
+
+.presence-overlay-actions {
+  width: 100%;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
 @media (max-width: 420px) {
   .operator-shell {
     padding-left: 8px;
@@ -815,5 +896,17 @@ a {
     min-height: 34px;
     padding: 6px 10px;
     font-size: 0.84rem;
+  }
+
+  .presence-overlay-card {
+    padding: 20px 16px;
+  }
+
+  .presence-overlay-title {
+    font-size: 1.56rem;
+  }
+
+  .presence-overlay-countdown {
+    font-size: 2.8rem;
   }
 }

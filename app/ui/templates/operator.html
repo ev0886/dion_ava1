@@ -163,6 +163,20 @@
     </footer>
   </main>
 
+  <div class="presence-overlay" id="presence-overlay" hidden aria-hidden="true">
+    <div class="presence-overlay-backdrop"></div>
+    <section class="presence-overlay-card" role="dialog" aria-modal="true" aria-labelledby="presence-overlay-title">
+      <p class="presence-overlay-kicker">DION ABA1</p>
+      <h2 class="presence-overlay-title" id="presence-overlay-title">Вы еще здесь?</h2>
+      <p class="presence-overlay-message">Возврат на стартовый экран через</p>
+      <strong class="presence-overlay-countdown" id="presence-overlay-countdown">30</strong>
+      <div class="presence-overlay-actions">
+        <button class="action-button action-button-confirm" id="presence-overlay-yes-button" type="button">Да</button>
+        <button class="action-button action-button-back" id="presence-overlay-no-button" type="button">Нет</button>
+      </div>
+    </section>
+  </div>
+
   <script>
     window.DION_OPERATOR_UI_CONFIG = __DION_OPERATOR_UI_CONFIG__;
   </script>

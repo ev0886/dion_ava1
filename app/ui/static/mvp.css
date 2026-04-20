@@ -30,6 +30,10 @@ body {
   color: var(--text);
 }
 
+body.presence-overlay-active {
+  overflow: hidden;
+}
+
 .app-shell {
   min-height: 100vh;
   display: grid;
@@ -303,6 +307,82 @@ body {
   display: none;
 }
 
+.presence-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: grid;
+  place-items: center;
+  padding: 1rem;
+}
+
+.presence-overlay[hidden] {
+  display: none !important;
+}
+
+.presence-overlay-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(28, 39, 18, 0.48);
+  backdrop-filter: blur(6px);
+}
+
+.presence-overlay-card {
+  position: relative;
+  width: min(100%, 28rem);
+  padding: 1.5rem 1.25rem;
+  display: grid;
+  gap: 0.85rem;
+  justify-items: center;
+  text-align: center;
+  border-radius: 1.5rem;
+  border: 1px solid rgba(255, 255, 255, 0.42);
+  background:
+    radial-gradient(circle at top, rgba(110, 171, 37, 0.22), transparent 14rem),
+    linear-gradient(180deg, rgba(252, 253, 249, 0.98) 0%, rgba(239, 245, 229, 0.98) 100%);
+  box-shadow: 0 24px 60px rgba(39, 54, 24, 0.24);
+}
+
+.presence-overlay-kicker,
+.presence-overlay-title,
+.presence-overlay-message,
+.presence-overlay-countdown {
+  margin: 0;
+}
+
+.presence-overlay-kicker {
+  color: var(--muted);
+  font-size: 0.74rem;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.presence-overlay-title {
+  font-size: clamp(2rem, 7vw, 2.8rem);
+  line-height: 1;
+}
+
+.presence-overlay-message {
+  max-width: 18rem;
+  color: #31422d;
+  font-size: 1rem;
+  line-height: 1.4;
+}
+
+.presence-overlay-countdown {
+  font-size: 3rem;
+  line-height: 1;
+  color: var(--primary-strong);
+}
+
+.presence-overlay-actions {
+  width: 100%;
+  display: grid;
+  gap: 0.65rem;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
 @media (max-width: 640px) {
   .app-shell {
     padding: 0.75rem;
@@ -315,5 +395,9 @@ body {
 
   .screen-message {
     font-size: 0.98rem;
+  }
+
+  .presence-overlay-card {
+    padding: 1.25rem 1rem;
   }
 }
