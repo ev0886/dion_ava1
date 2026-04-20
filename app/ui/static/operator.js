@@ -8,14 +8,17 @@
   let activeSector = 1;
   let currentView = "board";
   let pendingAction = null;
+  let pendingActionType = null;
   let isActionConfirmed = false;
 
   const selectedCells = new Set();
 
   const boardView = document.getElementById("operator-board-view");
   const confirmationView = document.getElementById("operator-confirmation-view");
+  const removeExecutionView = document.getElementById("operator-remove-execution-view");
   const mainActions = document.getElementById("operator-actions-main");
   const confirmationActions = document.getElementById("operator-actions-confirmation");
+  const removeExecutionActions = document.getElementById("operator-actions-remove-execution");
   const sectorGrid = document.getElementById("sector-grid");
   const cellsGrid = document.getElementById("cells-grid");
   const selectionSummary = document.getElementById("selection-summary");
@@ -34,12 +37,19 @@
   const confirmationNote = document.getElementById("confirmation-note");
   const confirmationBackButton = document.getElementById("confirmation-back-button");
   const confirmationConfirmButton = document.getElementById("confirmation-confirm-button");
+  const removeExecutionCount = document.getElementById("remove-execution-count");
+  const removeExecutionCells = document.getElementById("remove-execution-cells");
+  const removeExecutionNote = document.getElementById("remove-execution-note");
+  const removeExecutionCancelButton = document.getElementById("remove-execution-cancel-button");
+  const removeExecutionCompleteButton = document.getElementById("remove-execution-complete-button");
 
   if (
     !boardView ||
     !confirmationView ||
+    !removeExecutionView ||
     !mainActions ||
     !confirmationActions ||
+    !removeExecutionActions ||
     !sectorGrid ||
     !cellsGrid ||
     !selectionSummary ||
@@ -57,7 +67,12 @@
     !confirmationTitle ||
     !confirmationNote ||
     !confirmationBackButton ||
-    !confirmationConfirmButton
+    !confirmationConfirmButton ||
+    !removeExecutionCount ||
+    !removeExecutionCells ||
+    !removeExecutionNote ||
+    !removeExecutionCancelButton ||
+    !removeExecutionCompleteButton
   ) {
     return;
   }
@@ -101,29 +116,51 @@
 
   function syncViewState() {
     const showBoard = currentView === "board";
+    const showConfirmation = currentView === "confirmation";
+    const showRemoveExecution = currentView === "remove-execution";
 
     boardView.hidden = !showBoard;
-    confirmationView.hidden = showBoard;
+    confirmationView.hidden = !showConfirmation;
+    removeExecutionView.hidden = !showRemoveExecution;
     mainActions.hidden = !showBoard;
-    confirmationActions.hidden = showBoard;
+    confirmationActions.hidden = !showConfirmation;
+    removeExecutionActions.hidden = !showRemoveExecution;
 
     boardView.classList.toggle("is-active", showBoard);
-    confirmationView.classList.toggle("is-active", !showBoard);
+    confirmationView.classList.toggle("is-active", showConfirmation);
+    removeExecutionView.classList.toggle("is-active", showRemoveExecution);
     mainActions.classList.toggle("is-active", showBoard);
-    confirmationActions.classList.toggle("is-active", !showBoard);
+    confirmationActions.classList.toggle("is-active", showConfirmation);
+    removeExecutionActions.classList.toggle("is-active", showRemoveExecution);
   }
 
   function renderConfirmationCells() {
     const cellNumbers = getSelectedCellNumbers();
-
     confirmationCells.innerHTML = "";
-
     cellNumbers.forEach(function (cellNumber) {
       const chip = document.createElement("span");
       chip.className = "confirmation-cell-chip";
       chip.textContent = String(cellNumber);
       confirmationCells.appendChild(chip);
     });
+  }
+
+  function renderCellChips(container) {
+    const cellNumbers = getSelectedCellNumbers();
+    container.innerHTML = "";
+
+    cellNumbers.forEach(function (cellNumber) {
+      const chip = document.createElement("span");
+      chip.className = "confirmation-cell-chip";
+      chip.textContent = String(cellNumber);
+      container.appendChild(chip);
+    });
+  }
+
+  function renderRemoveExecution() {
+    removeExecutionCount.textContent = String(selectedCells.size);
+    removeExecutionNote.hidden = true;
+    renderCellChips(removeExecutionCells);
   }
 
   function renderConfirmation() {
@@ -140,11 +177,18 @@
     syncViewState();
   }
 
-  function showConfirmationView(actionLabel) {
+  function showConfirmationView(actionType, actionLabel) {
+    pendingActionType = actionType;
     pendingAction = actionLabel;
     isActionConfirmed = false;
     renderConfirmation();
     currentView = "confirmation";
+    syncViewState();
+  }
+
+  function showRemoveExecutionView() {
+    renderRemoveExecution();
+    currentView = "remove-execution";
     syncViewState();
   }
 
@@ -213,6 +257,10 @@
           if (currentView === "confirmation") {
             renderConfirmation();
           }
+
+          if (currentView === "remove-execution") {
+            renderRemoveExecution();
+          }
         });
 
         cellsGrid.appendChild(button);
@@ -229,14 +277,14 @@
     setStatusMessage("Четверть " + currentQuarter + "/4");
   }
 
-  function wireActionButton(button, actionLabel) {
+  function wireActionButton(button, actionType, actionLabel) {
     button.addEventListener("click", function () {
       if (selectedCells.size === 0) {
         setStatusMessage(actionLabel + ": выберите ячейки");
         return;
       }
 
-      showConfirmationView(actionLabel);
+      showConfirmationView(actionType, actionLabel);
     });
   }
 
@@ -258,8 +306,24 @@
   });
 
   confirmationConfirmButton.addEventListener("click", function () {
+    if (pendingActionType === "remove") {
+      showRemoveExecutionView();
+      setStatusMessage("Изъять: выполните изъятие по выбранным ячейкам");
+      return;
+    }
+
     isActionConfirmed = true;
     renderConfirmation();
+  });
+
+  removeExecutionCancelButton.addEventListener("click", function () {
+    showBoardView();
+    setStatusMessage("Изъять: выбор сохранен");
+  });
+
+  removeExecutionCompleteButton.addEventListener("click", function () {
+    removeExecutionNote.hidden = false;
+    setStatusMessage("Изъять: отмечено");
   });
 
   updateSelectionSummary();
@@ -267,6 +331,6 @@
   renderSectors();
   renderCells();
   syncViewState();
-  wireActionButton(removeButton, "Изъять");
-  wireActionButton(refillButton, "Пополнить");
+  wireActionButton(removeButton, "remove", "Изъять");
+  wireActionButton(refillButton, "refill", "Пополнить");
 })();

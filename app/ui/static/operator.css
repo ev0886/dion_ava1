@@ -321,6 +321,10 @@ a {
   grid-template-rows: 1fr;
 }
 
+.remove-execution-view {
+  grid-template-rows: 1fr;
+}
+
 .confirmation-card {
   min-height: 100%;
   padding: 18px 16px;
@@ -333,10 +337,29 @@ a {
     linear-gradient(180deg, rgba(245, 249, 240, 0.96) 0%, rgba(237, 243, 232, 0.98) 100%);
 }
 
+.execution-card {
+  min-height: 100%;
+  padding: 18px 16px;
+  display: grid;
+  align-content: start;
+  gap: 16px;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background:
+    linear-gradient(180deg, rgba(250, 246, 241, 0.96) 0%, rgba(243, 236, 228, 0.98) 100%);
+}
+
 .confirmation-kicker,
 .confirmation-title,
 .confirmation-note,
 .confirmation-cells-title {
+  margin: 0;
+}
+
+.execution-kicker,
+.execution-title,
+.execution-description,
+.execution-note {
   margin: 0;
 }
 
@@ -353,9 +376,32 @@ a {
   line-height: 1.12;
 }
 
+.execution-kicker {
+  color: var(--danger);
+  font-size: 0.78rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.execution-title {
+  font-size: 1.42rem;
+  line-height: 1.14;
+}
+
+.execution-description {
+  color: var(--muted);
+  font-size: 0.96rem;
+  line-height: 1.35;
+}
+
 .confirmation-details {
   display: grid;
   gap: 10px;
+}
+
+.execution-details {
+  gap: 8px;
 }
 
 .confirmation-row {
@@ -387,6 +433,10 @@ a {
   gap: 10px;
 }
 
+.execution-cells-block {
+  min-height: 0;
+}
+
 .confirmation-cells {
   max-height: 100%;
   min-height: 164px;
@@ -415,6 +465,15 @@ a {
 }
 
 .confirmation-note {
+  padding: 14px 16px;
+  border-radius: 16px;
+  background: rgba(27, 124, 101, 0.12);
+  color: var(--brand-strong);
+  font-size: 0.94rem;
+  font-weight: 800;
+}
+
+.execution-note {
   padding: 14px 16px;
   border-radius: 16px;
   background: rgba(27, 124, 101, 0.12);
@@ -493,8 +552,17 @@ a {
     gap: 12px;
   }
 
+  .execution-card {
+    padding: 14px 12px;
+    gap: 12px;
+  }
+
   .confirmation-title {
     font-size: 1.24rem;
+  }
+
+  .execution-title {
+    font-size: 1.18rem;
   }
 
   .confirmation-row {

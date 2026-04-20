@@ -60,6 +60,25 @@
       </div>
     </section>
 
+    <section class="operator-board operator-view remove-execution-view" id="operator-remove-execution-view" aria-labelledby="remove-execution-title" hidden>
+      <div class="execution-card">
+        <p class="execution-kicker">Изъятие</p>
+        <h2 class="execution-title" id="remove-execution-title">Осуществите изъятие остатков из выбранных ячеек</h2>
+        <p class="execution-description">Изъятие выполняется по выбранным ячейкам.</p>
+        <div class="confirmation-details execution-details">
+          <div class="confirmation-row">
+            <span class="confirmation-label">Выбрано</span>
+            <strong class="confirmation-value" id="remove-execution-count">0</strong>
+          </div>
+        </div>
+        <div class="confirmation-cells-block execution-cells-block">
+          <p class="confirmation-label confirmation-cells-title">Ячейки</p>
+          <div class="confirmation-cells execution-cells" id="remove-execution-cells" aria-live="polite"></div>
+        </div>
+        <p class="execution-note" id="remove-execution-note" hidden>Изъятие отмечено</p>
+      </div>
+    </section>
+
     <footer class="operator-actions">
       <div class="action-group operator-view is-active" id="operator-actions-main">
         <button class="action-button action-button-primary" id="remove-button" type="button">Изъять</button>
@@ -69,6 +88,10 @@
       <div class="action-group operator-view confirmation-actions" id="operator-actions-confirmation" hidden>
         <button class="action-button action-button-back" id="confirmation-back-button" type="button">Назад</button>
         <button class="action-button action-button-confirm" id="confirmation-confirm-button" type="button">Подтвердить</button>
+      </div>
+      <div class="action-group operator-view confirmation-actions" id="operator-actions-remove-execution" hidden>
+        <button class="action-button action-button-back" id="remove-execution-cancel-button" type="button">Отмена</button>
+        <button class="action-button action-button-confirm" id="remove-execution-complete-button" type="button">Изъято</button>
       </div>
     </footer>
   </main>
