@@ -335,7 +335,11 @@ a {
   grid-template-rows: 1fr;
 }
 
-.replenish-next-view {
+.replenish-execution-view {
+  grid-template-rows: 1fr;
+}
+
+.replenish-success-view {
   grid-template-rows: 1fr;
 }
 
@@ -383,9 +387,16 @@ a {
   grid-template-rows: auto auto auto minmax(0, 1fr);
 }
 
-.replenish-next-card {
+.replenish-execution-card {
   min-height: 100%;
   grid-template-rows: auto auto auto auto minmax(0, 1fr);
+}
+
+.replenish-success-card {
+  gap: 14px;
+  background:
+    radial-gradient(circle at top, rgba(212, 138, 49, 0.18), transparent 18rem),
+    linear-gradient(180deg, rgba(250, 247, 239, 0.98) 0%, rgba(240, 234, 221, 0.98) 100%);
 }
 
 .confirmation-kicker,
@@ -585,12 +596,18 @@ a {
   line-height: 1.25;
 }
 
-.replenish-next-summary {
+.replenish-execution-summary {
   gap: 12px;
 }
 
-.replenish-next-item {
+.replenish-execution-item {
   text-align: right;
+}
+
+.replenish-success-cells {
+  min-height: 88px;
+  max-height: 156px;
+  justify-content: center;
 }
 
 .action-button:disabled {

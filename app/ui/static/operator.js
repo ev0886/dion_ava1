@@ -4,6 +4,7 @@
   const CELLS_PER_QUARTER = SECTORS_PER_QUARTER * CELLS_PER_SECTOR;
   const TOTAL_QUARTERS = 4;
   const REMOVE_SUCCESS_RETURN_DELAY_MS = 1800;
+  const REPLENISH_SUCCESS_RETURN_DELAY_MS = 1800;
   const REPLENISH_SAMPLE_ITEMS = [
     { id: "item-01", name: "Вода негазированная 0,5 л", meta: "ПЭТ бутылка" },
     { id: "item-02", name: "Вода газированная 0,5 л", meta: "ПЭТ бутылка" },
@@ -21,6 +22,7 @@
   let pendingActionType = null;
   let isActionConfirmed = false;
   let removeSuccessTimerId = null;
+  let replenishSuccessTimerId = null;
   let selectedReplenishItemId = null;
 
   const selectedCells = new Set();
@@ -30,12 +32,13 @@
   const removeExecutionView = document.getElementById("operator-remove-execution-view");
   const removeSuccessView = document.getElementById("operator-remove-success-view");
   const replenishItemSelectView = document.getElementById("operator-replenish-item-select-view");
-  const replenishNextView = document.getElementById("operator-replenish-next-view");
+  const replenishExecutionView = document.getElementById("operator-replenish-execution-view");
+  const replenishSuccessView = document.getElementById("operator-replenish-success-view");
   const mainActions = document.getElementById("operator-actions-main");
   const confirmationActions = document.getElementById("operator-actions-confirmation");
   const removeExecutionActions = document.getElementById("operator-actions-remove-execution");
   const replenishItemSelectActions = document.getElementById("operator-actions-replenish-item-select");
-  const replenishNextActions = document.getElementById("operator-actions-replenish-next");
+  const replenishExecutionActions = document.getElementById("operator-actions-replenish-execution");
   const sectorGrid = document.getElementById("sector-grid");
   const cellsGrid = document.getElementById("cells-grid");
   const selectionSummary = document.getElementById("selection-summary");
@@ -63,11 +66,15 @@
   const replenishItemList = document.getElementById("replenish-item-list");
   const replenishItemSelectCancelButton = document.getElementById("replenish-item-select-cancel-button");
   const replenishItemSelectConfirmButton = document.getElementById("replenish-item-select-confirm-button");
-  const replenishNextCount = document.getElementById("replenish-next-count");
-  const replenishNextItem = document.getElementById("replenish-next-item");
-  const replenishNextCells = document.getElementById("replenish-next-cells");
-  const replenishNextBackButton = document.getElementById("replenish-next-back-button");
-  const replenishNextCloseButton = document.getElementById("replenish-next-close-button");
+  const replenishExecutionTitle = document.getElementById("replenish-execution-title");
+  const replenishExecutionDescription = document.getElementById("replenish-execution-description");
+  const replenishExecutionCount = document.getElementById("replenish-execution-count");
+  const replenishExecutionItem = document.getElementById("replenish-execution-item");
+  const replenishExecutionCells = document.getElementById("replenish-execution-cells");
+  const replenishExecutionCancelButton = document.getElementById("replenish-execution-cancel-button");
+  const replenishExecutionCompleteButton = document.getElementById("replenish-execution-complete-button");
+  const replenishSuccessMessage = document.getElementById("replenish-success-message");
+  const replenishSuccessCells = document.getElementById("replenish-success-cells");
 
   if (
     !boardView ||
@@ -75,12 +82,13 @@
     !removeExecutionView ||
     !removeSuccessView ||
     !replenishItemSelectView ||
-    !replenishNextView ||
+    !replenishExecutionView ||
+    !replenishSuccessView ||
     !mainActions ||
     !confirmationActions ||
     !removeExecutionActions ||
     !replenishItemSelectActions ||
-    !replenishNextActions ||
+    !replenishExecutionActions ||
     !sectorGrid ||
     !cellsGrid ||
     !selectionSummary ||
@@ -108,11 +116,15 @@
     !replenishItemList ||
     !replenishItemSelectCancelButton ||
     !replenishItemSelectConfirmButton ||
-    !replenishNextCount ||
-    !replenishNextItem ||
-    !replenishNextCells ||
-    !replenishNextBackButton ||
-    !replenishNextCloseButton
+    !replenishExecutionTitle ||
+    !replenishExecutionDescription ||
+    !replenishExecutionCount ||
+    !replenishExecutionItem ||
+    !replenishExecutionCells ||
+    !replenishExecutionCancelButton ||
+    !replenishExecutionCompleteButton ||
+    !replenishSuccessMessage ||
+    !replenishSuccessCells
   ) {
     return;
   }
@@ -161,11 +173,24 @@
     }
   }
 
-  function clearPendingActionState() {
+  function clearReplenishSuccessTimer() {
+    if (replenishSuccessTimerId !== null) {
+      window.clearTimeout(replenishSuccessTimerId);
+      replenishSuccessTimerId = null;
+    }
+  }
+
+  function clearPendingActionState(options) {
+    const settings = options || {};
+
     pendingAction = null;
     pendingActionType = null;
     isActionConfirmed = false;
     confirmationNote.hidden = true;
+
+    if (settings.preserveSelectedReplenishItem !== true) {
+      selectedReplenishItemId = null;
+    }
   }
 
   function syncViewState() {
@@ -174,31 +199,34 @@
     const showRemoveExecution = currentView === "remove-execution";
     const showRemoveSuccess = currentView === "remove-success";
     const showReplenishItemSelect = currentView === "replenish-item-select";
-    const showReplenishNext = currentView === "replenish-next";
+    const showReplenishExecution = currentView === "replenish-execution";
+    const showReplenishSuccess = currentView === "replenish-success";
 
     boardView.hidden = !showBoard;
     confirmationView.hidden = !showConfirmation;
     removeExecutionView.hidden = !showRemoveExecution;
     removeSuccessView.hidden = !showRemoveSuccess;
     replenishItemSelectView.hidden = !showReplenishItemSelect;
-    replenishNextView.hidden = !showReplenishNext;
+    replenishExecutionView.hidden = !showReplenishExecution;
+    replenishSuccessView.hidden = !showReplenishSuccess;
     mainActions.hidden = !showBoard;
     confirmationActions.hidden = !showConfirmation;
     removeExecutionActions.hidden = !showRemoveExecution;
     replenishItemSelectActions.hidden = !showReplenishItemSelect;
-    replenishNextActions.hidden = !showReplenishNext;
+    replenishExecutionActions.hidden = !showReplenishExecution;
 
     boardView.classList.toggle("is-active", showBoard);
     confirmationView.classList.toggle("is-active", showConfirmation);
     removeExecutionView.classList.toggle("is-active", showRemoveExecution);
     removeSuccessView.classList.toggle("is-active", showRemoveSuccess);
     replenishItemSelectView.classList.toggle("is-active", showReplenishItemSelect);
-    replenishNextView.classList.toggle("is-active", showReplenishNext);
+    replenishExecutionView.classList.toggle("is-active", showReplenishExecution);
+    replenishSuccessView.classList.toggle("is-active", showReplenishSuccess);
     mainActions.classList.toggle("is-active", showBoard);
     confirmationActions.classList.toggle("is-active", showConfirmation);
     removeExecutionActions.classList.toggle("is-active", showRemoveExecution);
     replenishItemSelectActions.classList.toggle("is-active", showReplenishItemSelect);
-    replenishNextActions.classList.toggle("is-active", showReplenishNext);
+    replenishExecutionActions.classList.toggle("is-active", showReplenishExecution);
   }
 
   function renderConfirmationCells() {
@@ -286,12 +314,26 @@
     syncReplenishConfirmState();
   }
 
-  function renderReplenishNext() {
+  function renderReplenishExecution() {
     const selectedItem = getSelectedReplenishItem();
+    const itemName = selectedItem ? selectedItem.name : "item #";
 
-    replenishNextCount.textContent = String(selectedCells.size);
-    replenishNextItem.textContent = selectedItem ? selectedItem.name : "-";
-    renderCellChips(replenishNextCells);
+    replenishExecutionTitle.textContent =
+      "Осуществите пополнение остатков выбранных ячеек товаром " + itemName;
+    replenishExecutionDescription.textContent =
+      "Товар " + itemName + " выбран для пополнения выбранных ячеек.";
+    replenishExecutionCount.textContent = String(selectedCells.size);
+    replenishExecutionItem.textContent = itemName;
+    renderCellChips(replenishExecutionCells);
+  }
+
+  function renderReplenishSuccess() {
+    const selectedItem = getSelectedReplenishItem();
+    const itemName = selectedItem ? selectedItem.name : "item #";
+
+    replenishSuccessMessage.textContent =
+      "Выбранные ячейки успешно пополнены товаром " + itemName;
+    renderCellChips(replenishSuccessCells);
   }
 
   function renderConfirmation() {
@@ -305,12 +347,14 @@
 
   function showBoardView() {
     clearRemoveSuccessTimer();
+    clearReplenishSuccessTimer();
     currentView = "board";
     syncViewState();
   }
 
   function showConfirmationView(actionType, actionLabel) {
     clearRemoveSuccessTimer();
+    clearReplenishSuccessTimer();
     pendingActionType = actionType;
     pendingAction = actionLabel;
     isActionConfirmed = false;
@@ -321,6 +365,7 @@
 
   function showRemoveExecutionView() {
     clearRemoveSuccessTimer();
+    clearReplenishSuccessTimer();
     renderRemoveExecution();
     currentView = "remove-execution";
     syncViewState();
@@ -328,15 +373,17 @@
 
   function showReplenishItemSelectView() {
     clearRemoveSuccessTimer();
+    clearReplenishSuccessTimer();
     renderReplenishItemSelect();
     currentView = "replenish-item-select";
     syncViewState();
   }
 
-  function showReplenishNextView() {
+  function showReplenishExecutionView() {
     clearRemoveSuccessTimer();
-    renderReplenishNext();
-    currentView = "replenish-next";
+    clearReplenishSuccessTimer();
+    renderReplenishExecution();
+    currentView = "replenish-execution";
     syncViewState();
   }
 
@@ -352,11 +399,33 @@
 
   function showRemoveSuccessView() {
     clearRemoveSuccessTimer();
+    clearReplenishSuccessTimer();
     currentView = "remove-success";
     syncViewState();
     removeSuccessTimerId = window.setTimeout(function () {
       returnToBoardAfterRemoveSuccess();
     }, REMOVE_SUCCESS_RETURN_DELAY_MS);
+  }
+
+  function returnToBoardAfterReplenishSuccess() {
+    clearReplenishSuccessTimer();
+    selectedCells.clear();
+    clearPendingActionState();
+    renderCells();
+    updateSelectionSummary();
+    showBoardView();
+    setStatusMessage("Выберите ячейки");
+  }
+
+  function showReplenishSuccessView() {
+    clearRemoveSuccessTimer();
+    clearReplenishSuccessTimer();
+    renderReplenishSuccess();
+    currentView = "replenish-success";
+    syncViewState();
+    replenishSuccessTimerId = window.setTimeout(function () {
+      returnToBoardAfterReplenishSuccess();
+    }, REPLENISH_SUCCESS_RETURN_DELAY_MS);
   }
 
   function renderSectors() {
@@ -431,6 +500,10 @@
 
           if (currentView === "replenish-item-select") {
             renderReplenishItemSelect();
+          }
+
+          if (currentView === "replenish-execution") {
+            renderReplenishExecution();
           }
         });
 
@@ -516,18 +589,23 @@
       return;
     }
 
-    showReplenishNextView();
-    setStatusMessage("Пополнить: подготовка к выполнению для товара " + selectedItem.name);
+    showReplenishExecutionView();
+    setStatusMessage("Пополнить: выполните пополнение для товара " + selectedItem.name);
   });
 
-  replenishNextBackButton.addEventListener("click", function () {
-    showReplenishItemSelectView();
-    setStatusMessage("Пополнить: можно изменить выбранный товар");
-  });
-
-  replenishNextCloseButton.addEventListener("click", function () {
+  replenishExecutionCancelButton.addEventListener("click", function () {
     showBoardView();
-    setStatusMessage("Пополнить: выбранный товар сохранен");
+    setStatusMessage("Пополнить: выбор ячеек сохранен");
+  });
+
+  replenishExecutionCompleteButton.addEventListener("click", function () {
+    const selectedItem = getSelectedReplenishItem();
+
+    showReplenishSuccessView();
+    setStatusMessage(
+      "Пополнить: выбранные ячейки пополнены" +
+        (selectedItem ? " товаром " + selectedItem.name : "")
+    );
   });
 
   updateSelectionSummary();

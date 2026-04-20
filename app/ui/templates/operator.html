@@ -107,25 +107,34 @@
       </div>
     </section>
 
-    <section class="operator-board operator-view replenish-next-view" id="operator-replenish-next-view" aria-labelledby="replenish-next-title" hidden>
-      <div class="execution-card replenish-next-card">
+    <section class="operator-board operator-view replenish-execution-view" id="operator-replenish-execution-view" aria-labelledby="replenish-execution-title" hidden>
+      <div class="execution-card replenish-execution-card">
         <p class="execution-kicker">Пополнение</p>
-        <h2 class="execution-title" id="replenish-next-title">Подтвердите выбранный товар для пополнения</h2>
-        <p class="execution-description">Товар выбран. Выбранные ячейки подготовлены для пополнения.</p>
-        <div class="confirmation-details replenish-next-summary">
+        <h2 class="execution-title" id="replenish-execution-title">Осуществите пополнение остатков выбранных ячеек товаром item #</h2>
+        <p class="execution-description" id="replenish-execution-description">Пополнение выполняется по выбранным ячейкам.</p>
+        <div class="confirmation-details replenish-execution-summary">
           <div class="confirmation-row">
             <span class="confirmation-label">Ячеек выбрано</span>
-            <strong class="confirmation-value" id="replenish-next-count">0</strong>
+            <strong class="confirmation-value" id="replenish-execution-count">0</strong>
           </div>
           <div class="confirmation-row">
             <span class="confirmation-label">Товар</span>
-            <strong class="confirmation-value replenish-next-item" id="replenish-next-item">-</strong>
+            <strong class="confirmation-value replenish-execution-item" id="replenish-execution-item">-</strong>
           </div>
         </div>
         <div class="confirmation-cells-block">
           <p class="confirmation-label confirmation-cells-title">Ячейки</p>
-          <div class="confirmation-cells replenish-item-cells" id="replenish-next-cells" aria-live="polite"></div>
+          <div class="confirmation-cells replenish-item-cells" id="replenish-execution-cells" aria-live="polite"></div>
         </div>
+      </div>
+    </section>
+
+    <section class="operator-board operator-view replenish-success-view" id="operator-replenish-success-view" aria-labelledby="replenish-success-title" hidden>
+      <div class="success-card replenish-success-card">
+        <p class="success-kicker">Пополнение</p>
+        <h2 class="success-title" id="replenish-success-title">Успешно!</h2>
+        <p class="success-message" id="replenish-success-message">Выбранные ячейки успешно пополнены товаром item #</p>
+        <div class="confirmation-cells replenish-item-cells replenish-success-cells" id="replenish-success-cells" aria-live="polite"></div>
       </div>
     </section>
 
@@ -147,9 +156,9 @@
         <button class="action-button action-button-back" id="replenish-item-select-cancel-button" type="button">Отмена</button>
         <button class="action-button action-button-confirm" id="replenish-item-select-confirm-button" type="button" disabled>Подтвердить</button>
       </div>
-      <div class="action-group operator-view confirmation-actions" id="operator-actions-replenish-next" hidden>
-        <button class="action-button action-button-back" id="replenish-next-back-button" type="button">К выбору</button>
-        <button class="action-button action-button-secondary" id="replenish-next-close-button" type="button">На доску</button>
+      <div class="action-group operator-view confirmation-actions" id="operator-actions-replenish-execution" hidden>
+        <button class="action-button action-button-back" id="replenish-execution-cancel-button" type="button">Отмена</button>
+        <button class="action-button action-button-confirm" id="replenish-execution-complete-button" type="button">Пополнено</button>
       </div>
     </footer>
   </main>
