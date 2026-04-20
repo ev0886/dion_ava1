@@ -1,5 +1,7 @@
 (function () {
   const config = window.DION_UI_CONFIG || {};
+  const UI_IDLE_TIMEOUT_MS = 30000;
+  const PRESENCE_COUNTDOWN_SECONDS = 30;
   const userDispenseWaitingDelayMs = 1800;
 
   const elements = {
@@ -11,6 +13,10 @@
     countdownValue: document.getElementById("countdown-value"),
     screenActions: document.getElementById("screen-actions"),
     screenCard: document.querySelector(".screen-card"),
+    presenceOverlay: document.getElementById("presence-overlay"),
+    presenceOverlayCountdown: document.getElementById("presence-overlay-countdown"),
+    presenceOverlayYesButton: document.getElementById("presence-overlay-yes-button"),
+    presenceOverlayNoButton: document.getElementById("presence-overlay-no-button"),
   };
 
   const state = {
@@ -21,6 +27,8 @@
     countdownIntervalId: null,
     countdownTimeoutId: null,
     countdownDeadline: null,
+    presencePreviousScreen: null,
+    isPresenceOverlayVisible: false,
     selectedUserItemId: null,
     userListExpanded: false,
   };
@@ -41,6 +49,7 @@
       actions: [
         { label: "\u041d\u0430\u0447\u0430\u0442\u044c", action: "go-auth", tone: "primary" },
       ],
+      enableIdleTimeout: true,
     },
     auth: {
       title: "\u041f\u0440\u0438\u043b\u043e\u0436\u0438\u0442\u0435 \u043a\u0430\u0440\u0442\u0443",
@@ -117,14 +126,6 @@
       enableIdleTimeout: true,
       roleTheme: "user",
     },
-    timeoutPrompt: {
-      title: "\u0412\u044b \u0435\u0449\u0435 \u0437\u0434\u0435\u0441\u044c?",
-      countdownSeconds: config.presenceCountdownSeconds,
-      actions: [
-        { label: "\u0414\u0430", action: "resume-previous", tone: "primary" },
-        { label: "\u041d\u0435\u0442", action: "go-start", tone: "secondary" },
-      ],
-    },
     exitPrompt: {
       title: "\u0412\u044b\u0439\u0442\u0438?",
       actions: [
@@ -155,6 +156,15 @@
     state.countdownDeadline = null;
   }
 
+  function canUseSharedInactivityTimeout(screenKey) {
+    return (
+      screenKey !== "authError" &&
+      screenKey !== "authSuccess" &&
+      screenKey !== "userItemSuccess" &&
+      screenKey !== "userItemUnavailable"
+    );
+  }
+
   function renderCountdown() {
     if (!state.countdownDeadline) {
       return;
@@ -162,30 +172,38 @@
 
     const remainingMs = Math.max(0, state.countdownDeadline - Date.now());
     const remainingSeconds = Math.ceil(remainingMs / 1000);
-    elements.countdownValue.textContent = String(remainingSeconds);
+    const text = String(remainingSeconds);
+    elements.countdownValue.textContent = text;
+
+    if (state.isPresenceOverlayVisible) {
+      elements.presenceOverlayCountdown.textContent = text;
+    }
   }
 
   function stopCountdown() {
     elements.countdownPanel.classList.add("hidden");
     elements.countdownValue.textContent = "0";
+    elements.presenceOverlayCountdown.textContent = String(PRESENCE_COUNTDOWN_SECONDS);
   }
 
   function startCountdown(durationSeconds, onExpire) {
     state.countdownDeadline = Date.now() + durationSeconds * 1000;
-    elements.countdownPanel.classList.remove("hidden");
+    if (!state.isPresenceOverlayVisible) {
+      elements.countdownPanel.classList.remove("hidden");
+    }
     renderCountdown();
     state.countdownIntervalId = window.setInterval(renderCountdown, 250);
     state.countdownTimeoutId = window.setTimeout(onExpire, durationSeconds * 1000);
   }
 
   function scheduleIdleTimeout() {
-    if (!config.uiIdleTimeoutMs) {
+    if (state.isPresenceOverlayVisible || !canUseSharedInactivityTimeout(state.currentScreen)) {
       return;
     }
 
     state.idleTimeoutId = window.setTimeout(function () {
       showTimeoutPrompt();
-    }, config.uiIdleTimeoutMs);
+    }, UI_IDLE_TIMEOUT_MS);
   }
 
   function maybeScheduleAutoTransition(screenKey) {
@@ -408,6 +426,7 @@
 
     clearTimers();
     stopCountdown();
+    hidePresenceOverlay();
 
     state.currentScreen = screenKey;
     elements.screenCard.dataset.roleTheme = screen.roleTheme || "default";
@@ -417,22 +436,60 @@
     renderScreenContent(screenKey);
     renderActions(screen);
 
-    if (screen.enableIdleTimeout) {
+    if (screen.enableIdleTimeout && canUseSharedInactivityTimeout(screenKey)) {
       scheduleIdleTimeout();
     }
     maybeScheduleAutoTransition(screenKey);
   }
 
   function showTimeoutPrompt() {
-    if (state.currentScreen === "start" || state.currentScreen === "timeoutPrompt") {
+    if (state.isPresenceOverlayVisible || !canUseSharedInactivityTimeout(state.currentScreen)) {
       return;
     }
 
-    state.previousScreen = state.currentScreen;
-    showScreen("timeoutPrompt");
-    startCountdown(config.presenceCountdownSeconds, function () {
-      showScreen("start");
+    clearTimers();
+    stopCountdown();
+    state.presencePreviousScreen = state.currentScreen;
+    state.isPresenceOverlayVisible = true;
+    elements.presenceOverlay.hidden = false;
+    elements.presenceOverlay.setAttribute("aria-hidden", "false");
+    elements.presenceOverlayCountdown.textContent = String(PRESENCE_COUNTDOWN_SECONDS);
+    document.body.classList.add("presence-overlay-active");
+    startCountdown(PRESENCE_COUNTDOWN_SECONDS, function () {
+      handleAction("go-start");
     });
+    elements.presenceOverlayYesButton.focus();
+  }
+
+  function hidePresenceOverlay() {
+    state.isPresenceOverlayVisible = false;
+    elements.presenceOverlay.hidden = true;
+    elements.presenceOverlay.setAttribute("aria-hidden", "true");
+    elements.presenceOverlayCountdown.textContent = String(PRESENCE_COUNTDOWN_SECONDS);
+    document.body.classList.remove("presence-overlay-active");
+  }
+
+  function resetIdleTimeoutFromInteraction(event) {
+    const target = event.target;
+
+    if (!(target instanceof Element)) {
+      return;
+    }
+
+    if (target.closest("#presence-overlay")) {
+      return;
+    }
+
+    if (state.isPresenceOverlayVisible || !canUseSharedInactivityTimeout(state.currentScreen)) {
+      return;
+    }
+
+    if (state.idleTimeoutId) {
+      window.clearTimeout(state.idleTimeoutId);
+      state.idleTimeoutId = null;
+    }
+
+    scheduleIdleTimeout();
   }
 
   function handleAction(action) {
@@ -482,11 +539,23 @@
       return;
     }
     if (action === "go-start") {
+      state.previousScreen = null;
+      state.presencePreviousScreen = null;
       showScreen("start");
+      return;
+    }
+    if (action === "presence-resume") {
+      const previousScreen = state.presencePreviousScreen || "start";
+      state.presencePreviousScreen = null;
+      showScreen(previousScreen);
     }
   }
 
   document.addEventListener("keydown", function (event) {
+    if (!state.isPresenceOverlayVisible) {
+      resetIdleTimeoutFromInteraction(event);
+    }
+
     if (state.currentScreen !== "auth") {
       return;
     }
@@ -502,6 +571,17 @@
     if (event.key === "Escape") {
       handleAction("confirm-exit");
     }
+  });
+
+  document.addEventListener("pointerdown", resetIdleTimeoutFromInteraction, true);
+  document.addEventListener("touchstart", resetIdleTimeoutFromInteraction, true);
+
+  elements.presenceOverlayYesButton.addEventListener("click", function () {
+    handleAction("presence-resume");
+  });
+
+  elements.presenceOverlayNoButton.addEventListener("click", function () {
+    handleAction("go-start");
   });
 
   showScreen("start");
