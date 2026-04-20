@@ -5,6 +5,7 @@
     screenKicker: document.getElementById("screen-kicker"),
     screenTitle: document.getElementById("screen-title"),
     screenMessage: document.getElementById("screen-message"),
+    screenBody: document.querySelector(".screen-body"),
     countdownPanel: document.getElementById("countdown-panel"),
     countdownValue: document.getElementById("countdown-value"),
     screenActions: document.getElementById("screen-actions"),
@@ -19,7 +20,19 @@
     countdownIntervalId: null,
     countdownTimeoutId: null,
     countdownDeadline: null,
+    selectedUserItemId: null,
+    userListExpanded: false,
   };
+
+  const userItems = [
+    { id: "item-1", name: "Перчатки защитные" },
+    { id: "item-2", name: "Очки защитные" },
+    { id: "item-3", name: "Каска" },
+    { id: "item-4", name: "Жилет сигнальный" },
+    { id: "item-5", name: "Респиратор" },
+    { id: "item-6", name: "Ботинки рабочие" },
+    { id: "item-7", name: "Наушники защитные" },
+  ];
 
   const screens = {
     start: {
@@ -60,12 +73,24 @@
       enableIdleTimeout: true,
       roleTheme: "role-select",
     },
-    userHome: {
-      kicker: "\u041f\u0440\u0438\u0432\u0435\u0442\u0441\u0442\u0432\u0438\u0435",
-      title: "\u041f\u043e\u043b\u044c\u0437\u043e\u0432\u0430\u0442\u0435\u043b\u044c",
-      message: "\u0412\u044b \u043c\u043e\u0436\u0435\u0442\u0435 \u043f\u0440\u043e\u0434\u043e\u043b\u0436\u0438\u0442\u044c \u0440\u0430\u0431\u043e\u0442\u0443 \u0432 \u043e\u0441\u043d\u043e\u0432\u043d\u043e\u043c \u0441\u0446\u0435\u043d\u0430\u0440\u0438\u0438.",
+    userItemSelect: {
+      kicker: "\u0412\u044b\u0431\u043e\u0440 \u0442\u043e\u0432\u0430\u0440\u0430",
+      title: "\u0412\u044b\u0431\u0435\u0440\u0438\u0442\u0435 \u0434\u043e\u0441\u0442\u0443\u043f\u043d\u044b\u0439 \u0442\u043e\u0432\u0430\u0440",
+      message: "\u041e\u0442\u043c\u0435\u0442\u044c\u0442\u0435 \u043e\u0434\u043d\u0443 \u043f\u043e\u0437\u0438\u0446\u0438\u044e \u0434\u043b\u044f \u043f\u0440\u043e\u0434\u043e\u043b\u0436\u0435\u043d\u0438\u044f.",
       actions: [
-        { label: "\u041d\u0430 \u0433\u043b\u0430\u0432\u043d\u0443\u044e", action: "go-start", tone: "primary" },
+        { label: "\u041e\u0442\u043c\u0435\u043d\u0430", action: "go-start", tone: "ghost" },
+        { label: "\u041f\u043e\u043b\u0443\u0447\u0438\u0442\u044c", action: "go-user-item-next", tone: "primary", disabled: isUserItemSelectionEmpty },
+      ],
+      enableIdleTimeout: true,
+      roleTheme: "user",
+    },
+    userItemNext: {
+      kicker: "\u0412\u044b\u0431\u0440\u0430\u043d\u043d\u044b\u0439 \u0442\u043e\u0432\u0430\u0440",
+      title: "\u0412\u044b \u0432\u044b\u0431\u0440\u0430\u043b\u0438 \u0442\u043e\u0432\u0430\u0440",
+      message: getSelectedUserItemMessage,
+      actions: [
+        { label: "\u041d\u0430\u0437\u0430\u0434", action: "back-to-user-items", tone: "secondary" },
+        { label: "\u041d\u0430 \u0433\u043b\u0430\u0432\u043d\u0443\u044e", action: "go-start", tone: "ghost" },
       ],
       enableIdleTimeout: true,
       roleTheme: "user",
@@ -156,12 +181,42 @@
     }, screen.autoReturnMs);
   }
 
+  function ensureScreenContent() {
+    let screenContent = document.getElementById("screen-content");
+    if (!screenContent) {
+      screenContent = document.createElement("div");
+      screenContent.id = "screen-content";
+      screenContent.className = "screen-content hidden";
+      elements.screenBody.insertBefore(screenContent, elements.countdownPanel);
+    }
+    return screenContent;
+  }
+
+  function isUserItemSelectionEmpty() {
+    return !state.selectedUserItemId;
+  }
+
+  function getSelectedUserItem() {
+    return userItems.find(function (item) {
+      return item.id === state.selectedUserItemId;
+    }) || null;
+  }
+
+  function getSelectedUserItemMessage() {
+    const selectedItem = getSelectedUserItem();
+    if (!selectedItem) {
+      return "\u0412\u044b\u0431\u0435\u0440\u0438\u0442\u0435 \u043f\u043e\u0437\u0438\u0446\u0438\u044e \u0438 \u0432\u0435\u0440\u043d\u0438\u0442\u0435\u0441\u044c \u043a \u0441\u043f\u0438\u0441\u043a\u0443.";
+    }
+    return selectedItem.name;
+  }
+
   function createActionButton(action) {
     const button = document.createElement("button");
     button.type = "button";
     button.className = "action-button action-button-" + (action.tone || "secondary");
     button.textContent = action.label;
     button.dataset.action = action.action;
+    button.disabled = typeof action.disabled === "function" ? action.disabled() : Boolean(action.disabled);
     button.addEventListener("click", function () {
       handleAction(action.action);
     });
@@ -176,9 +231,65 @@
   }
 
   function renderText(node, value) {
-    const text = value || "";
+    const text = typeof value === "function" ? value() : (value || "");
     node.textContent = text;
     node.classList.toggle("hidden", text === "");
+  }
+
+  function createUserItemButton(item) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "item-option";
+    button.textContent = item.name;
+    button.dataset.itemId = item.id;
+    button.setAttribute("aria-pressed", item.id === state.selectedUserItemId ? "true" : "false");
+    if (item.id === state.selectedUserItemId) {
+      button.classList.add("is-selected");
+    }
+    button.addEventListener("click", function () {
+      state.selectedUserItemId = item.id;
+      showScreen("userItemSelect");
+    });
+    return button;
+  }
+
+  function renderUserItemSelection() {
+    const screenContent = ensureScreenContent();
+    const visibleItems = state.userListExpanded ? userItems : userItems.slice(0, 5);
+    screenContent.innerHTML = "";
+    screenContent.classList.remove("hidden");
+
+    const list = document.createElement("div");
+    list.className = "item-list" + (state.userListExpanded ? " item-list-expanded" : "");
+    visibleItems.forEach(function (item) {
+      list.appendChild(createUserItemButton(item));
+    });
+    screenContent.appendChild(list);
+
+    if (userItems.length > 5) {
+      const toggleButton = document.createElement("button");
+      toggleButton.type = "button";
+      toggleButton.className = "list-toggle-button";
+      toggleButton.textContent = state.userListExpanded
+        ? "\u0421\u0432\u0435\u0440\u043d\u0443\u0442\u044c \u0441\u043f\u0438\u0441\u043e\u043a"
+        : "\u041f\u043e\u043a\u0430\u0437\u0430\u0442\u044c \u0432\u0435\u0441\u044c \u0441\u043f\u0438\u0441\u043e\u043a";
+      toggleButton.addEventListener("click", function () {
+        state.userListExpanded = !state.userListExpanded;
+        showScreen("userItemSelect");
+      });
+      screenContent.appendChild(toggleButton);
+    }
+  }
+
+  function renderScreenContent(screenKey) {
+    const screenContent = ensureScreenContent();
+    screenContent.innerHTML = "";
+    screenContent.classList.add("hidden");
+    elements.screenBody.classList.toggle("screen-body-list", screenKey === "userItemSelect");
+
+    if (screenKey === "userItemSelect") {
+      renderUserItemSelection();
+    }
   }
 
   function showScreen(screenKey) {
@@ -195,6 +306,7 @@
     renderText(elements.screenKicker, screen.kicker);
     elements.screenTitle.textContent = screen.title;
     renderText(elements.screenMessage, screen.message);
+    renderScreenContent(screenKey);
     renderActions(screen);
 
     if (screen.enableIdleTimeout) {
@@ -229,7 +341,7 @@
       return;
     }
     if (action === "go-user-role") {
-      showScreen("userHome");
+      showScreen("userItemSelect");
       return;
     }
     if (action === "go-operator-role") {
@@ -247,6 +359,18 @@
     }
     if (action === "resume-previous") {
       showScreen(state.previousScreen || "start");
+      return;
+    }
+    if (action === "go-user-item-next") {
+      if (!state.selectedUserItemId) {
+        showScreen("userItemSelect");
+        return;
+      }
+      showScreen("userItemNext");
+      return;
+    }
+    if (action === "back-to-user-items") {
+      showScreen("userItemSelect");
       return;
     }
     if (action === "go-start") {

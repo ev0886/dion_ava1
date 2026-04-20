@@ -100,6 +100,10 @@ body {
   text-align: center;
 }
 
+.screen-body.screen-body-list {
+  align-content: start;
+}
+
 .screen-title {
   margin: 0;
   font-size: clamp(2.4rem, 8vw, 4rem);
@@ -112,6 +116,65 @@ body {
   font-size: 1.02rem;
   line-height: 1.4;
   color: #31422d;
+}
+
+.screen-content {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.item-list {
+  display: grid;
+  gap: 0.65rem;
+}
+
+.item-list-expanded {
+  max-height: 17.5rem;
+  padding-right: 0.3rem;
+  overflow-y: auto;
+}
+
+.item-option,
+.list-toggle-button {
+  width: 100%;
+  border-radius: 1rem;
+  font-size: 1rem;
+  cursor: pointer;
+  transition: transform 120ms ease, box-shadow 120ms ease, background 120ms ease, border-color 120ms ease;
+}
+
+.item-option {
+  min-height: 3.45rem;
+  padding: 0.85rem 1rem;
+  border: 1px solid rgba(72, 95, 54, 0.14);
+  background: rgba(255, 255, 255, 0.92);
+  color: var(--text);
+  font-weight: 700;
+  text-align: left;
+}
+
+.item-option.is-selected {
+  background: rgba(110, 171, 37, 0.14);
+  border-color: rgba(88, 139, 27, 0.42);
+  box-shadow: inset 0 0 0 1px rgba(88, 139, 27, 0.16);
+}
+
+.item-option:hover,
+.item-option:focus-visible,
+.list-toggle-button:hover,
+.list-toggle-button:focus-visible {
+  transform: translateY(-1px);
+  box-shadow: 0 10px 24px rgba(56, 74, 41, 0.12);
+  outline: none;
+}
+
+.list-toggle-button {
+  min-height: 2.9rem;
+  padding: 0.75rem 1rem;
+  border: 1px solid rgba(72, 95, 54, 0.18);
+  background: transparent;
+  color: var(--text);
+  font-weight: 700;
 }
 
 .countdown-panel {
@@ -151,6 +214,13 @@ body {
   transform: translateY(-1px);
   box-shadow: 0 10px 24px rgba(56, 74, 41, 0.12);
   outline: none;
+}
+
+.action-button:disabled {
+  opacity: 0.45;
+  cursor: default;
+  transform: none;
+  box-shadow: none;
 }
 
 .action-button-primary {
