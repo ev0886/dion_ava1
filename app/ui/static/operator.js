@@ -4,6 +4,15 @@
   const CELLS_PER_QUARTER = SECTORS_PER_QUARTER * CELLS_PER_SECTOR;
   const TOTAL_QUARTERS = 4;
   const REMOVE_SUCCESS_RETURN_DELAY_MS = 1800;
+  const REPLENISH_SAMPLE_ITEMS = [
+    { id: "item-01", name: "Вода негазированная 0,5 л", meta: "ПЭТ бутылка" },
+    { id: "item-02", name: "Вода газированная 0,5 л", meta: "ПЭТ бутылка" },
+    { id: "item-03", name: "Сок яблочный 0,33 л", meta: "Пакет" },
+    { id: "item-04", name: "Сок апельсиновый 0,33 л", meta: "Пакет" },
+    { id: "item-05", name: "Холодный чай лимон 0,5 л", meta: "ПЭТ бутылка" },
+    { id: "item-06", name: "Энергетический напиток 0,25 л", meta: "Жестяная банка" },
+    { id: "item-07", name: "Минеральная вода 0,75 л", meta: "ПЭТ бутылка" }
+  ];
 
   let currentQuarter = 1;
   let activeSector = 1;
@@ -12,6 +21,7 @@
   let pendingActionType = null;
   let isActionConfirmed = false;
   let removeSuccessTimerId = null;
+  let selectedReplenishItemId = null;
 
   const selectedCells = new Set();
 
@@ -19,9 +29,11 @@
   const confirmationView = document.getElementById("operator-confirmation-view");
   const removeExecutionView = document.getElementById("operator-remove-execution-view");
   const removeSuccessView = document.getElementById("operator-remove-success-view");
+  const replenishItemSelectView = document.getElementById("operator-replenish-item-select-view");
   const mainActions = document.getElementById("operator-actions-main");
   const confirmationActions = document.getElementById("operator-actions-confirmation");
   const removeExecutionActions = document.getElementById("operator-actions-remove-execution");
+  const replenishItemSelectActions = document.getElementById("operator-actions-replenish-item-select");
   const sectorGrid = document.getElementById("sector-grid");
   const cellsGrid = document.getElementById("cells-grid");
   const selectionSummary = document.getElementById("selection-summary");
@@ -44,15 +56,22 @@
   const removeExecutionCells = document.getElementById("remove-execution-cells");
   const removeExecutionCancelButton = document.getElementById("remove-execution-cancel-button");
   const removeExecutionCompleteButton = document.getElementById("remove-execution-complete-button");
+  const replenishItemSelectCount = document.getElementById("replenish-item-select-count");
+  const replenishItemSelectCells = document.getElementById("replenish-item-select-cells");
+  const replenishItemList = document.getElementById("replenish-item-list");
+  const replenishItemSelectCancelButton = document.getElementById("replenish-item-select-cancel-button");
+  const replenishItemSelectConfirmButton = document.getElementById("replenish-item-select-confirm-button");
 
   if (
     !boardView ||
     !confirmationView ||
     !removeExecutionView ||
     !removeSuccessView ||
+    !replenishItemSelectView ||
     !mainActions ||
     !confirmationActions ||
     !removeExecutionActions ||
+    !replenishItemSelectActions ||
     !sectorGrid ||
     !cellsGrid ||
     !selectionSummary ||
@@ -74,7 +93,12 @@
     !removeExecutionCount ||
     !removeExecutionCells ||
     !removeExecutionCancelButton ||
-    !removeExecutionCompleteButton
+    !removeExecutionCompleteButton ||
+    !replenishItemSelectCount ||
+    !replenishItemSelectCells ||
+    !replenishItemList ||
+    !replenishItemSelectCancelButton ||
+    !replenishItemSelectConfirmButton
   ) {
     return;
   }
@@ -135,22 +159,27 @@
     const showConfirmation = currentView === "confirmation";
     const showRemoveExecution = currentView === "remove-execution";
     const showRemoveSuccess = currentView === "remove-success";
+    const showReplenishItemSelect = currentView === "replenish-item-select";
 
     boardView.hidden = !showBoard;
     confirmationView.hidden = !showConfirmation;
     removeExecutionView.hidden = !showRemoveExecution;
     removeSuccessView.hidden = !showRemoveSuccess;
+    replenishItemSelectView.hidden = !showReplenishItemSelect;
     mainActions.hidden = !showBoard;
     confirmationActions.hidden = !showConfirmation;
     removeExecutionActions.hidden = !showRemoveExecution;
+    replenishItemSelectActions.hidden = !showReplenishItemSelect;
 
     boardView.classList.toggle("is-active", showBoard);
     confirmationView.classList.toggle("is-active", showConfirmation);
     removeExecutionView.classList.toggle("is-active", showRemoveExecution);
     removeSuccessView.classList.toggle("is-active", showRemoveSuccess);
+    replenishItemSelectView.classList.toggle("is-active", showReplenishItemSelect);
     mainActions.classList.toggle("is-active", showBoard);
     confirmationActions.classList.toggle("is-active", showConfirmation);
     removeExecutionActions.classList.toggle("is-active", showRemoveExecution);
+    replenishItemSelectActions.classList.toggle("is-active", showReplenishItemSelect);
   }
 
   function renderConfirmationCells() {
@@ -179,6 +208,61 @@
   function renderRemoveExecution() {
     removeExecutionCount.textContent = String(selectedCells.size);
     renderCellChips(removeExecutionCells);
+  }
+
+  function getSelectedReplenishItem() {
+    return REPLENISH_SAMPLE_ITEMS.find(function (item) {
+      return item.id === selectedReplenishItemId;
+    }) || null;
+  }
+
+  function syncReplenishConfirmState() {
+    replenishItemSelectConfirmButton.disabled = selectedReplenishItemId === null;
+  }
+
+  function renderReplenishItemOptions() {
+    replenishItemList.innerHTML = "";
+
+    REPLENISH_SAMPLE_ITEMS.forEach(function (item) {
+      const option = document.createElement("button");
+      const isSelected = item.id === selectedReplenishItemId;
+      const name = document.createElement("span");
+      const meta = document.createElement("span");
+
+      option.type = "button";
+      option.className = "replenish-item-option";
+      option.dataset.itemId = item.id;
+      option.setAttribute("role", "option");
+      option.setAttribute("aria-selected", isSelected ? "true" : "false");
+
+      if (isSelected) {
+        option.classList.add("is-selected");
+      }
+
+      name.className = "replenish-item-name";
+      name.textContent = item.name;
+      meta.className = "replenish-item-meta";
+      meta.textContent = item.meta;
+
+      option.appendChild(name);
+      option.appendChild(meta);
+
+      option.addEventListener("click", function () {
+        selectedReplenishItemId = item.id;
+        renderReplenishItemOptions();
+        syncReplenishConfirmState();
+        setStatusMessage("Пополнить: выбран товар");
+      });
+
+      replenishItemList.appendChild(option);
+    });
+  }
+
+  function renderReplenishItemSelect() {
+    replenishItemSelectCount.textContent = String(selectedCells.size);
+    renderCellChips(replenishItemSelectCells);
+    renderReplenishItemOptions();
+    syncReplenishConfirmState();
   }
 
   function renderConfirmation() {
@@ -210,6 +294,13 @@
     clearRemoveSuccessTimer();
     renderRemoveExecution();
     currentView = "remove-execution";
+    syncViewState();
+  }
+
+  function showReplenishItemSelectView() {
+    clearRemoveSuccessTimer();
+    renderReplenishItemSelect();
+    currentView = "replenish-item-select";
     syncViewState();
   }
 
@@ -301,6 +392,10 @@
           if (currentView === "remove-execution") {
             renderRemoveExecution();
           }
+
+          if (currentView === "replenish-item-select") {
+            renderReplenishItemSelect();
+          }
         });
 
         cellsGrid.appendChild(button);
@@ -352,6 +447,12 @@
       return;
     }
 
+    if (pendingActionType === "refill") {
+      showReplenishItemSelectView();
+      setStatusMessage("Пополнить: выберите товар для выбранных ячеек");
+      return;
+    }
+
     isActionConfirmed = true;
     renderConfirmation();
   });
@@ -364,6 +465,22 @@
   removeExecutionCompleteButton.addEventListener("click", function () {
     showRemoveSuccessView();
     setStatusMessage("Изъять: остатки удалены");
+  });
+
+  replenishItemSelectCancelButton.addEventListener("click", function () {
+    showBoardView();
+    setStatusMessage("Пополнить: выбор ячеек сохранен");
+  });
+
+  replenishItemSelectConfirmButton.addEventListener("click", function () {
+    const selectedItem = getSelectedReplenishItem();
+
+    if (!selectedItem) {
+      syncReplenishConfirmState();
+      return;
+    }
+
+    setStatusMessage("Пополнить: выбран товар " + selectedItem.name);
   });
 
   updateSelectionSummary();

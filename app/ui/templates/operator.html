@@ -86,6 +86,27 @@
       </div>
     </section>
 
+    <section class="operator-board operator-view replenish-item-select-view" id="operator-replenish-item-select-view" aria-labelledby="replenish-item-select-title" hidden>
+      <div class="confirmation-card replenish-item-card">
+        <p class="confirmation-kicker">Пополнение</p>
+        <h2 class="confirmation-title" id="replenish-item-select-title">Выберите пополняемый товар</h2>
+        <div class="confirmation-details replenish-item-summary">
+          <div class="confirmation-row">
+            <span class="confirmation-label">Выбрано ячеек</span>
+            <strong class="confirmation-value" id="replenish-item-select-count">0</strong>
+          </div>
+        </div>
+        <div class="confirmation-cells-block">
+          <p class="confirmation-label confirmation-cells-title">Ячейки</p>
+          <div class="confirmation-cells replenish-item-cells" id="replenish-item-select-cells" aria-live="polite"></div>
+        </div>
+        <div class="replenish-item-list-block">
+          <p class="confirmation-label replenish-item-list-title">Номенклатура</p>
+          <div class="replenish-item-list" id="replenish-item-list" role="listbox" aria-label="Выбор пополняемого товара"></div>
+        </div>
+      </div>
+    </section>
+
     <footer class="operator-actions">
       <div class="action-group operator-view is-active" id="operator-actions-main">
         <button class="action-button action-button-primary" id="remove-button" type="button">Изъять</button>
@@ -99,6 +120,10 @@
       <div class="action-group operator-view confirmation-actions" id="operator-actions-remove-execution" hidden>
         <button class="action-button action-button-back" id="remove-execution-cancel-button" type="button">Отмена</button>
         <button class="action-button action-button-confirm" id="remove-execution-complete-button" type="button">Изъято</button>
+      </div>
+      <div class="action-group operator-view confirmation-actions" id="operator-actions-replenish-item-select" hidden>
+        <button class="action-button action-button-back" id="replenish-item-select-cancel-button" type="button">Отмена</button>
+        <button class="action-button action-button-confirm" id="replenish-item-select-confirm-button" type="button" disabled>Подтвердить</button>
       </div>
     </footer>
   </main>

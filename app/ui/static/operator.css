@@ -325,6 +325,14 @@ a {
   grid-template-rows: 1fr;
 }
 
+.remove-success-view {
+  grid-template-rows: 1fr;
+}
+
+.replenish-item-select-view {
+  grid-template-rows: 1fr;
+}
+
 .confirmation-card {
   min-height: 100%;
   padding: 18px 16px;
@@ -349,6 +357,26 @@ a {
     linear-gradient(180deg, rgba(250, 246, 241, 0.96) 0%, rgba(243, 236, 228, 0.98) 100%);
 }
 
+.success-card {
+  min-height: 100%;
+  padding: 22px 18px;
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  gap: 16px;
+  text-align: center;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background:
+    radial-gradient(circle at top, rgba(27, 124, 101, 0.18), transparent 18rem),
+    linear-gradient(180deg, rgba(242, 249, 243, 0.98) 0%, rgba(231, 241, 232, 0.98) 100%);
+}
+
+.replenish-item-card {
+  min-height: 100%;
+  grid-template-rows: auto auto auto minmax(0, 1fr);
+}
+
 .confirmation-kicker,
 .confirmation-title,
 .confirmation-note,
@@ -360,6 +388,12 @@ a {
 .execution-title,
 .execution-description,
 .execution-note {
+  margin: 0;
+}
+
+.success-kicker,
+.success-title,
+.success-message {
   margin: 0;
 }
 
@@ -393,6 +427,29 @@ a {
   color: var(--muted);
   font-size: 0.96rem;
   line-height: 1.35;
+}
+
+.success-kicker {
+  color: var(--brand);
+  font-size: 0.8rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.success-title {
+  max-width: 11ch;
+  font-size: 2rem;
+  line-height: 1;
+  color: var(--brand-strong);
+}
+
+.success-message {
+  max-width: 22ch;
+  color: var(--text);
+  font-size: 1.08rem;
+  line-height: 1.4;
+  font-weight: 600;
 }
 
 .confirmation-details {
@@ -451,6 +508,76 @@ a {
   background: rgba(255, 255, 255, 0.82);
 }
 
+.replenish-item-cells {
+  min-height: 96px;
+  max-height: 128px;
+}
+
+.replenish-item-list-block {
+  min-height: 0;
+  display: grid;
+  gap: 10px;
+}
+
+.replenish-item-list-title {
+  margin: 0;
+}
+
+.replenish-item-list {
+  min-height: 0;
+  max-height: 100%;
+  padding: 8px;
+  display: grid;
+  gap: 8px;
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.82);
+}
+
+.replenish-item-option {
+  width: 100%;
+  min-height: 68px;
+  padding: 14px 16px;
+  display: grid;
+  gap: 4px;
+  align-content: center;
+  justify-items: start;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: #fff;
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+  transition: transform 120ms ease, border-color 120ms ease, background 120ms ease, box-shadow 120ms ease;
+}
+
+.replenish-item-option.is-selected {
+  border-color: rgba(18, 86, 69, 0.5);
+  background: linear-gradient(180deg, rgba(27, 124, 101, 0.12) 0%, rgba(27, 124, 101, 0.2) 100%);
+  box-shadow: inset 0 0 0 1px rgba(18, 86, 69, 0.14);
+}
+
+.replenish-item-name {
+  font-size: 0.98rem;
+  font-weight: 800;
+  line-height: 1.25;
+}
+
+.replenish-item-meta {
+  color: var(--muted);
+  font-size: 0.84rem;
+  line-height: 1.25;
+}
+
+.action-button:disabled {
+  cursor: default;
+  opacity: 0.48;
+  box-shadow: none;
+  transform: none;
+  filter: none;
+}
+
 .confirmation-cell-chip {
   min-height: 38px;
   padding: 8px 12px;
@@ -489,7 +616,9 @@ a {
 .cell-button:hover,
 .cell-button:focus-visible,
 .quarter-button:hover,
-.quarter-button:focus-visible {
+.quarter-button:focus-visible,
+.replenish-item-option:hover,
+.replenish-item-option:focus-visible {
   transform: translateY(-1px);
   box-shadow: 0 10px 22px rgba(31, 49, 39, 0.12);
   outline: none;
@@ -557,12 +686,25 @@ a {
     gap: 12px;
   }
 
+  .success-card {
+    padding: 18px 14px;
+    gap: 14px;
+  }
+
   .confirmation-title {
     font-size: 1.24rem;
   }
 
   .execution-title {
     font-size: 1.18rem;
+  }
+
+  .success-title {
+    font-size: 1.62rem;
+  }
+
+  .success-message {
+    font-size: 0.98rem;
   }
 
   .confirmation-row {
@@ -572,6 +714,24 @@ a {
   .confirmation-cells {
     min-height: 148px;
     padding: 10px;
+  }
+
+  .replenish-item-cells {
+    min-height: 88px;
+    max-height: 120px;
+  }
+
+  .replenish-item-option {
+    min-height: 62px;
+    padding: 12px 14px;
+  }
+
+  .replenish-item-name {
+    font-size: 0.9rem;
+  }
+
+  .replenish-item-meta {
+    font-size: 0.78rem;
   }
 
   .confirmation-cell-chip {
