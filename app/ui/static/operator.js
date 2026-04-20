@@ -1,117 +1,173 @@
 (function () {
-  const totalCells = 120;
+  const SECTORS_PER_QUARTER = 8;
+  const CELLS_PER_SECTOR = 15;
+  const CELLS_PER_QUARTER = SECTORS_PER_QUARTER * CELLS_PER_SECTOR;
+  const TOTAL_QUARTERS = 4;
+
+  let currentQuarter = 1;
+  let activeSector = 1;
+
   const selectedCells = new Set();
 
   const sectorGrid = document.getElementById("sector-grid");
   const cellsGrid = document.getElementById("cells-grid");
   const selectionSummary = document.getElementById("selection-summary");
   const statusMessage = document.getElementById("status-message");
+  const operatorSummary = document.getElementById("operator-summary");
+  const quarterIndicator = document.getElementById("quarter-indicator");
+  const quarterPrev = document.getElementById("quarter-prev");
+  const quarterNext = document.getElementById("quarter-next");
   const removeButton = document.getElementById("remove-button");
   const refillButton = document.getElementById("refill-button");
 
-  if (!sectorGrid || !cellsGrid || !selectionSummary || !statusMessage || !removeButton || !refillButton) {
+  if (
+    !sectorGrid ||
+    !cellsGrid ||
+    !selectionSummary ||
+    !statusMessage ||
+    !operatorSummary ||
+    !quarterIndicator ||
+    !quarterPrev ||
+    !quarterNext ||
+    !removeButton ||
+    !refillButton
+  ) {
     return;
   }
 
-  function formatCellNumber(cellNumber) {
-    return String(cellNumber).padStart(3, "0");
+  function getQuarterCellStart(quarter) {
+    return (quarter - 1) * CELLS_PER_QUARTER + 1;
+  }
+
+  function getQuarterSectorStart(quarter) {
+    return (quarter - 1) * SECTORS_PER_QUARTER + 1;
+  }
+
+  function getVisibleCellNumber(quarter, columnIndex, rowIndex) {
+    return getQuarterCellStart(quarter) + columnIndex * CELLS_PER_SECTOR + rowIndex;
   }
 
   function updateSelectionSummary() {
-    selectionSummary.textContent = "Выбрано ячеек: " + selectedCells.size;
+    selectionSummary.textContent = "Выбрано: " + selectedCells.size;
   }
 
   function setStatusMessage(message) {
     statusMessage.textContent = message;
   }
 
-  function renderSectors() {
-    const sectors = [
-      { id: 1, label: "Сектор 1", range: "001-030" },
-      { id: 2, label: "Сектор 2", range: "031-060" },
-      { id: 3, label: "Сектор 3", range: "061-090" },
-      { id: 4, label: "Сектор 4", range: "091-120" },
-    ];
+  function updateQuarterMeta() {
+    const sectorStart = getQuarterSectorStart(currentQuarter);
+    const sectorEnd = sectorStart + SECTORS_PER_QUARTER - 1;
+    const cellStart = getQuarterCellStart(currentQuarter);
+    const cellEnd = cellStart + CELLS_PER_QUARTER - 1;
 
-    sectors.forEach(function (sector, index) {
+    operatorSummary.textContent =
+      "Секторы " + sectorStart + "-" + sectorEnd + " • Ячейки " + cellStart + "-" + cellEnd;
+    quarterIndicator.textContent = currentQuarter + "/4";
+  }
+
+  function renderSectors() {
+    sectorGrid.innerHTML = "";
+
+    for (let index = 0; index < SECTORS_PER_QUARTER; index += 1) {
+      const sectorNumber = getQuarterSectorStart(currentQuarter) + index;
       const button = document.createElement("button");
       button.type = "button";
       button.className = "sector-chip";
-      button.dataset.sector = String(sector.id);
-      button.setAttribute("aria-pressed", index === 0 ? "true" : "false");
-      if (index === 0) {
+      button.textContent = String(index + 1);
+      button.dataset.sector = String(sectorNumber);
+      button.setAttribute("aria-label", "Сектор " + sectorNumber);
+      button.setAttribute("aria-pressed", sectorNumber === activeSector ? "true" : "false");
+
+      if (sectorNumber === activeSector) {
         button.classList.add("is-active");
       }
-      button.innerHTML = "<strong>" + sector.label + "</strong><span>" + sector.range + "</span>";
+
       button.addEventListener("click", function () {
-        sectorGrid.querySelectorAll(".sector-chip").forEach(function (chip) {
-          chip.classList.remove("is-active");
-          chip.setAttribute("aria-pressed", "false");
-        });
-        button.classList.add("is-active");
-        button.setAttribute("aria-pressed", "true");
-        setStatusMessage(sector.label + " выбран.");
+        activeSector = sectorNumber;
+        renderSectors();
+        setStatusMessage("Сектор " + sectorNumber + " выбран");
       });
+
       sectorGrid.appendChild(button);
-    });
+    }
   }
 
   function renderCells() {
-    for (let cellNumber = 1; cellNumber <= totalCells; cellNumber += 1) {
-      const button = document.createElement("button");
-      button.type = "button";
-      button.className = "cell-button";
-      button.dataset.cell = String(cellNumber);
-      button.setAttribute("role", "gridcell");
-      button.setAttribute("aria-pressed", "false");
-      button.setAttribute("aria-label", "Ячейка " + formatCellNumber(cellNumber));
-      button.innerHTML =
-        '<span class="cell-button-content">' +
-        '<span class="cell-number">' + cellNumber + "</span>" +
-        '<span class="cell-label">ячейка</span>' +
-        "</span>";
+    cellsGrid.innerHTML = "";
 
-      button.addEventListener("click", function () {
-        const isSelected = selectedCells.has(cellNumber);
+    for (let rowIndex = 0; rowIndex < CELLS_PER_SECTOR; rowIndex += 1) {
+      for (let columnIndex = 0; columnIndex < SECTORS_PER_QUARTER; columnIndex += 1) {
+        const cellNumber = getVisibleCellNumber(currentQuarter, columnIndex, rowIndex);
+        const button = document.createElement("button");
 
-        if (isSelected) {
-          selectedCells.delete(cellNumber);
-          button.classList.remove("is-selected");
-          button.setAttribute("aria-pressed", "false");
-          setStatusMessage("Ячейка " + formatCellNumber(cellNumber) + " снята с выделения.");
-        } else {
-          selectedCells.add(cellNumber);
+        button.type = "button";
+        button.className = "cell-button";
+        button.dataset.cell = String(cellNumber);
+        button.setAttribute("role", "gridcell");
+        button.setAttribute("aria-pressed", selectedCells.has(cellNumber) ? "true" : "false");
+        button.setAttribute("aria-label", "Ячейка " + cellNumber);
+        button.textContent = String(cellNumber);
+
+        if (selectedCells.has(cellNumber)) {
           button.classList.add("is-selected");
-          button.setAttribute("aria-pressed", "true");
-          setStatusMessage("Ячейка " + formatCellNumber(cellNumber) + " выбрана.");
         }
 
-        updateSelectionSummary();
-      });
+        button.addEventListener("click", function () {
+          if (selectedCells.has(cellNumber)) {
+            selectedCells.delete(cellNumber);
+            button.classList.remove("is-selected");
+            button.setAttribute("aria-pressed", "false");
+            setStatusMessage("Ячейка " + cellNumber + " снята");
+          } else {
+            selectedCells.add(cellNumber);
+            button.classList.add("is-selected");
+            button.setAttribute("aria-pressed", "true");
+            setStatusMessage("Ячейка " + cellNumber + " выбрана");
+          }
 
-      cellsGrid.appendChild(button);
+          updateSelectionSummary();
+        });
+
+        cellsGrid.appendChild(button);
+      }
     }
+  }
+
+  function setQuarter(nextQuarter) {
+    currentQuarter = nextQuarter;
+    activeSector = getQuarterSectorStart(currentQuarter);
+    updateQuarterMeta();
+    renderSectors();
+    renderCells();
+    setStatusMessage("Четверть " + currentQuarter + "/4");
   }
 
   function wirePlaceholderAction(button, actionLabel) {
     button.addEventListener("click", function () {
       if (selectedCells.size === 0) {
-        setStatusMessage(actionLabel + ": выберите хотя бы одну ячейку.");
+        setStatusMessage(actionLabel + ": выберите ячейки");
         return;
       }
 
-      setStatusMessage(
-        actionLabel +
-          ": выбрано " +
-          selectedCells.size +
-          " ячеек. Подтвердите следующее действие на следующем экране."
-      );
+      setStatusMessage(actionLabel + ": выбрано " + selectedCells.size);
     });
   }
 
+  quarterPrev.addEventListener("click", function () {
+    const nextQuarter = currentQuarter === 1 ? TOTAL_QUARTERS : currentQuarter - 1;
+    setQuarter(nextQuarter);
+  });
+
+  quarterNext.addEventListener("click", function () {
+    const nextQuarter = currentQuarter === TOTAL_QUARTERS ? 1 : currentQuarter + 1;
+    setQuarter(nextQuarter);
+  });
+
+  updateSelectionSummary();
+  updateQuarterMeta();
   renderSectors();
   renderCells();
-  updateSelectionSummary();
   wirePlaceholderAction(removeButton, "Изъять");
   wirePlaceholderAction(refillButton, "Пополнить");
 })();

@@ -9,42 +9,33 @@
 <body>
   <main class="operator-shell" data-role="operator">
     <header class="operator-header">
-      <div>
+      <div class="operator-header-copy">
         <p class="operator-kicker">DION ABA1</p>
-        <h1 class="operator-title">Навигация оператора по ячейкам</h1>
-        <p class="operator-subtitle">Выберите ячейки и подготовьте следующее действие.</p>
+        <h1 class="operator-title">Оператор</h1>
+        <p class="visually-hidden">Навигация оператора по ячейкам</p>
+        <p class="visually-hidden">4 сектора / 120 ячеек</p>
       </div>
-      <div class="operator-badge">4 сектора / 120 ячеек</div>
+      <p class="operator-summary" id="operator-summary">Секторы 1-8 • Ячейки 1-120</p>
     </header>
 
-    <section class="operator-section operator-sectors" aria-labelledby="sectors-title">
-      <div class="section-heading">
-        <div>
-          <p class="section-kicker">Барабан</p>
-          <h2 id="sectors-title">Секторы</h2>
-        </div>
-        <p class="section-caption">Выберите сектор для просмотра группы ячеек</p>
+    <section class="operator-board" aria-labelledby="cells-title">
+      <div class="board-topline">
+        <p class="selection-summary" id="selection-summary">Выбрано: 0</p>
+        <p class="status-message" id="status-message">Выберите ячейки</p>
       </div>
-      <div class="sector-grid" id="sector-grid" role="list" aria-label="Секторы барабана"></div>
-    </section>
 
-    <section class="operator-section operator-status" aria-live="polite">
-      <div>
-        <p class="section-kicker">Статус</p>
-        <p class="selection-summary" id="selection-summary">Выбрано ячеек: 0</p>
-      </div>
-      <p class="status-message" id="status-message">Коснитесь ячейки, чтобы выбрать ее. Повторное касание снимает выделение.</p>
-    </section>
+      <div class="sector-grid" id="sector-grid" role="list" aria-label="Секторы текущей четверти"></div>
 
-    <section class="operator-section operator-cells" aria-labelledby="cells-title">
-      <div class="section-heading">
-        <div>
-          <p class="section-kicker">Карта ячеек</p>
-          <h2 id="cells-title">120 ячеек</h2>
-        </div>
-        <p class="section-caption">Отметьте ячейки для следующего действия</p>
+      <div class="matrix-wrap">
+        <h2 class="visually-hidden" id="cells-title">Матрица ячеек</h2>
+        <div class="cells-grid" id="cells-grid" role="grid" aria-labelledby="cells-title"></div>
       </div>
-      <div class="cells-grid" id="cells-grid" role="grid" aria-label="Сетка ячеек"></div>
+
+      <div class="quarter-nav" aria-label="Навигация по четвертям барабана">
+        <button class="quarter-button" id="quarter-prev" type="button" aria-label="Предыдущая четверть">&#8249;</button>
+        <p class="quarter-indicator" id="quarter-indicator">1/4</p>
+        <button class="quarter-button" id="quarter-next" type="button" aria-label="Следующая четверть">&#8250;</button>
+      </div>
     </section>
 
     <footer class="operator-actions">
