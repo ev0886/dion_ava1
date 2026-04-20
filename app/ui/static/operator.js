@@ -30,10 +30,12 @@
   const removeExecutionView = document.getElementById("operator-remove-execution-view");
   const removeSuccessView = document.getElementById("operator-remove-success-view");
   const replenishItemSelectView = document.getElementById("operator-replenish-item-select-view");
+  const replenishNextView = document.getElementById("operator-replenish-next-view");
   const mainActions = document.getElementById("operator-actions-main");
   const confirmationActions = document.getElementById("operator-actions-confirmation");
   const removeExecutionActions = document.getElementById("operator-actions-remove-execution");
   const replenishItemSelectActions = document.getElementById("operator-actions-replenish-item-select");
+  const replenishNextActions = document.getElementById("operator-actions-replenish-next");
   const sectorGrid = document.getElementById("sector-grid");
   const cellsGrid = document.getElementById("cells-grid");
   const selectionSummary = document.getElementById("selection-summary");
@@ -61,6 +63,11 @@
   const replenishItemList = document.getElementById("replenish-item-list");
   const replenishItemSelectCancelButton = document.getElementById("replenish-item-select-cancel-button");
   const replenishItemSelectConfirmButton = document.getElementById("replenish-item-select-confirm-button");
+  const replenishNextCount = document.getElementById("replenish-next-count");
+  const replenishNextItem = document.getElementById("replenish-next-item");
+  const replenishNextCells = document.getElementById("replenish-next-cells");
+  const replenishNextBackButton = document.getElementById("replenish-next-back-button");
+  const replenishNextCloseButton = document.getElementById("replenish-next-close-button");
 
   if (
     !boardView ||
@@ -68,10 +75,12 @@
     !removeExecutionView ||
     !removeSuccessView ||
     !replenishItemSelectView ||
+    !replenishNextView ||
     !mainActions ||
     !confirmationActions ||
     !removeExecutionActions ||
     !replenishItemSelectActions ||
+    !replenishNextActions ||
     !sectorGrid ||
     !cellsGrid ||
     !selectionSummary ||
@@ -98,7 +107,12 @@
     !replenishItemSelectCells ||
     !replenishItemList ||
     !replenishItemSelectCancelButton ||
-    !replenishItemSelectConfirmButton
+    !replenishItemSelectConfirmButton ||
+    !replenishNextCount ||
+    !replenishNextItem ||
+    !replenishNextCells ||
+    !replenishNextBackButton ||
+    !replenishNextCloseButton
   ) {
     return;
   }
@@ -160,26 +174,31 @@
     const showRemoveExecution = currentView === "remove-execution";
     const showRemoveSuccess = currentView === "remove-success";
     const showReplenishItemSelect = currentView === "replenish-item-select";
+    const showReplenishNext = currentView === "replenish-next";
 
     boardView.hidden = !showBoard;
     confirmationView.hidden = !showConfirmation;
     removeExecutionView.hidden = !showRemoveExecution;
     removeSuccessView.hidden = !showRemoveSuccess;
     replenishItemSelectView.hidden = !showReplenishItemSelect;
+    replenishNextView.hidden = !showReplenishNext;
     mainActions.hidden = !showBoard;
     confirmationActions.hidden = !showConfirmation;
     removeExecutionActions.hidden = !showRemoveExecution;
     replenishItemSelectActions.hidden = !showReplenishItemSelect;
+    replenishNextActions.hidden = !showReplenishNext;
 
     boardView.classList.toggle("is-active", showBoard);
     confirmationView.classList.toggle("is-active", showConfirmation);
     removeExecutionView.classList.toggle("is-active", showRemoveExecution);
     removeSuccessView.classList.toggle("is-active", showRemoveSuccess);
     replenishItemSelectView.classList.toggle("is-active", showReplenishItemSelect);
+    replenishNextView.classList.toggle("is-active", showReplenishNext);
     mainActions.classList.toggle("is-active", showBoard);
     confirmationActions.classList.toggle("is-active", showConfirmation);
     removeExecutionActions.classList.toggle("is-active", showRemoveExecution);
     replenishItemSelectActions.classList.toggle("is-active", showReplenishItemSelect);
+    replenishNextActions.classList.toggle("is-active", showReplenishNext);
   }
 
   function renderConfirmationCells() {
@@ -217,7 +236,9 @@
   }
 
   function syncReplenishConfirmState() {
-    replenishItemSelectConfirmButton.disabled = selectedReplenishItemId === null;
+    const isReady = selectedReplenishItemId !== null;
+    replenishItemSelectConfirmButton.disabled = !isReady;
+    replenishItemSelectConfirmButton.classList.toggle("is-ready", isReady);
   }
 
   function renderReplenishItemOptions() {
@@ -265,6 +286,14 @@
     syncReplenishConfirmState();
   }
 
+  function renderReplenishNext() {
+    const selectedItem = getSelectedReplenishItem();
+
+    replenishNextCount.textContent = String(selectedCells.size);
+    replenishNextItem.textContent = selectedItem ? selectedItem.name : "-";
+    renderCellChips(replenishNextCells);
+  }
+
   function renderConfirmation() {
     confirmationAction.textContent = pendingAction || "-";
     confirmationCount.textContent = String(selectedCells.size);
@@ -301,6 +330,13 @@
     clearRemoveSuccessTimer();
     renderReplenishItemSelect();
     currentView = "replenish-item-select";
+    syncViewState();
+  }
+
+  function showReplenishNextView() {
+    clearRemoveSuccessTimer();
+    renderReplenishNext();
+    currentView = "replenish-next";
     syncViewState();
   }
 
@@ -480,7 +516,18 @@
       return;
     }
 
-    setStatusMessage("Пополнить: выбран товар " + selectedItem.name);
+    showReplenishNextView();
+    setStatusMessage("Пополнить: подготовка к выполнению для товара " + selectedItem.name);
+  });
+
+  replenishNextBackButton.addEventListener("click", function () {
+    showReplenishItemSelectView();
+    setStatusMessage("Пополнить: можно изменить выбранный товар");
+  });
+
+  replenishNextCloseButton.addEventListener("click", function () {
+    showBoardView();
+    setStatusMessage("Пополнить: выбранный товар сохранен");
   });
 
   updateSelectionSummary();

@@ -313,8 +313,10 @@ a {
 }
 
 .action-button-confirm {
-  background: var(--brand);
+  border-color: rgba(18, 86, 69, 0.28);
+  background: linear-gradient(180deg, #239173 0%, var(--brand) 100%);
   color: #fff;
+  box-shadow: 0 10px 22px rgba(27, 124, 101, 0.26);
 }
 
 .confirmation-view {
@@ -330,6 +332,10 @@ a {
 }
 
 .replenish-item-select-view {
+  grid-template-rows: 1fr;
+}
+
+.replenish-next-view {
   grid-template-rows: 1fr;
 }
 
@@ -375,6 +381,11 @@ a {
 .replenish-item-card {
   min-height: 100%;
   grid-template-rows: auto auto auto minmax(0, 1fr);
+}
+
+.replenish-next-card {
+  min-height: 100%;
+  grid-template-rows: auto auto auto auto minmax(0, 1fr);
 }
 
 .confirmation-kicker,
@@ -524,12 +535,15 @@ a {
 }
 
 .replenish-item-list {
+  --replenish-item-row-height: 72px;
   min-height: 0;
-  max-height: 100%;
+  max-height: calc((var(--replenish-item-row-height) * 5) + (8px * 4) + 16px);
   padding: 8px;
   display: grid;
+  grid-auto-rows: var(--replenish-item-row-height);
   gap: 8px;
-  overflow: auto;
+  overflow-x: hidden;
+  overflow-y: auto;
   border: 1px solid var(--line);
   border-radius: 16px;
   background: rgba(255, 255, 255, 0.82);
@@ -537,7 +551,8 @@ a {
 
 .replenish-item-option {
   width: 100%;
-  min-height: 68px;
+  min-height: 0;
+  height: 100%;
   padding: 14px 16px;
   display: grid;
   gap: 4px;
@@ -570,12 +585,34 @@ a {
   line-height: 1.25;
 }
 
+.replenish-next-summary {
+  gap: 12px;
+}
+
+.replenish-next-item {
+  text-align: right;
+}
+
 .action-button:disabled {
   cursor: default;
-  opacity: 0.48;
+  opacity: 1;
+  border-color: rgba(100, 120, 109, 0.18);
+  background: linear-gradient(180deg, #dce3dc 0%, #c6d0c7 100%);
+  color: rgba(25, 49, 38, 0.52);
   box-shadow: none;
   transform: none;
   filter: none;
+}
+
+#replenish-item-select-confirm-button {
+  border-width: 2px;
+}
+
+#replenish-item-select-confirm-button.is-ready {
+  border-color: rgba(18, 86, 69, 0.34);
+  background: linear-gradient(180deg, #27a280 0%, #1b7c65 100%);
+  color: #fff;
+  box-shadow: 0 12px 24px rgba(18, 86, 69, 0.3);
 }
 
 .confirmation-cell-chip {

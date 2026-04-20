@@ -107,6 +107,28 @@
       </div>
     </section>
 
+    <section class="operator-board operator-view replenish-next-view" id="operator-replenish-next-view" aria-labelledby="replenish-next-title" hidden>
+      <div class="execution-card replenish-next-card">
+        <p class="execution-kicker">Пополнение</p>
+        <h2 class="execution-title" id="replenish-next-title">Подтвердите выбранный товар для пополнения</h2>
+        <p class="execution-description">Товар выбран. Выбранные ячейки подготовлены для пополнения.</p>
+        <div class="confirmation-details replenish-next-summary">
+          <div class="confirmation-row">
+            <span class="confirmation-label">Ячеек выбрано</span>
+            <strong class="confirmation-value" id="replenish-next-count">0</strong>
+          </div>
+          <div class="confirmation-row">
+            <span class="confirmation-label">Товар</span>
+            <strong class="confirmation-value replenish-next-item" id="replenish-next-item">-</strong>
+          </div>
+        </div>
+        <div class="confirmation-cells-block">
+          <p class="confirmation-label confirmation-cells-title">Ячейки</p>
+          <div class="confirmation-cells replenish-item-cells" id="replenish-next-cells" aria-live="polite"></div>
+        </div>
+      </div>
+    </section>
+
     <footer class="operator-actions">
       <div class="action-group operator-view is-active" id="operator-actions-main">
         <button class="action-button action-button-primary" id="remove-button" type="button">Изъять</button>
@@ -124,6 +146,10 @@
       <div class="action-group operator-view confirmation-actions" id="operator-actions-replenish-item-select" hidden>
         <button class="action-button action-button-back" id="replenish-item-select-cancel-button" type="button">Отмена</button>
         <button class="action-button action-button-confirm" id="replenish-item-select-confirm-button" type="button" disabled>Подтвердить</button>
+      </div>
+      <div class="action-group operator-view confirmation-actions" id="operator-actions-replenish-next" hidden>
+        <button class="action-button action-button-back" id="replenish-next-back-button" type="button">К выбору</button>
+        <button class="action-button action-button-secondary" id="replenish-next-close-button" type="button">На доску</button>
       </div>
     </footer>
   </main>
