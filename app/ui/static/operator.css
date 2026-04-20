@@ -618,6 +618,11 @@ a {
   text-align: right;
 }
 
+.replenish-execution-view .replenish-item-cells {
+  max-height: none;
+  overflow: visible;
+}
+
 .replenish-success-cells {
   min-height: 88px;
   max-height: 156px;
@@ -787,6 +792,10 @@ a {
   .replenish-item-cells {
     min-height: 88px;
     max-height: 120px;
+  }
+
+  .replenish-execution-view .replenish-item-cells {
+    max-height: none;
   }
 
   .replenish-item-option {
