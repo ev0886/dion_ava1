@@ -6,9 +6,16 @@
 
   let currentQuarter = 1;
   let activeSector = 1;
+  let currentView = "board";
+  let pendingAction = null;
+  let isActionConfirmed = false;
 
   const selectedCells = new Set();
 
+  const boardView = document.getElementById("operator-board-view");
+  const confirmationView = document.getElementById("operator-confirmation-view");
+  const mainActions = document.getElementById("operator-actions-main");
+  const confirmationActions = document.getElementById("operator-actions-confirmation");
   const sectorGrid = document.getElementById("sector-grid");
   const cellsGrid = document.getElementById("cells-grid");
   const selectionSummary = document.getElementById("selection-summary");
@@ -19,8 +26,20 @@
   const quarterNext = document.getElementById("quarter-next");
   const removeButton = document.getElementById("remove-button");
   const refillButton = document.getElementById("refill-button");
+  const confirmationAction = document.getElementById("confirmation-action");
+  const confirmationCount = document.getElementById("confirmation-count");
+  const confirmationCells = document.getElementById("confirmation-cells");
+  const confirmationKicker = document.getElementById("confirmation-kicker");
+  const confirmationTitle = document.getElementById("confirmation-title");
+  const confirmationNote = document.getElementById("confirmation-note");
+  const confirmationBackButton = document.getElementById("confirmation-back-button");
+  const confirmationConfirmButton = document.getElementById("confirmation-confirm-button");
 
   if (
+    !boardView ||
+    !confirmationView ||
+    !mainActions ||
+    !confirmationActions ||
     !sectorGrid ||
     !cellsGrid ||
     !selectionSummary ||
@@ -30,7 +49,15 @@
     !quarterPrev ||
     !quarterNext ||
     !removeButton ||
-    !refillButton
+    !refillButton ||
+    !confirmationAction ||
+    !confirmationCount ||
+    !confirmationCells ||
+    !confirmationKicker ||
+    !confirmationTitle ||
+    !confirmationNote ||
+    !confirmationBackButton ||
+    !confirmationConfirmButton
   ) {
     return;
   }
@@ -45,6 +72,12 @@
 
   function getVisibleCellNumber(quarter, columnIndex, rowIndex) {
     return getQuarterCellStart(quarter) + columnIndex * CELLS_PER_SECTOR + rowIndex;
+  }
+
+  function getSelectedCellNumbers() {
+    return Array.from(selectedCells).sort(function (left, right) {
+      return left - right;
+    });
   }
 
   function updateSelectionSummary() {
@@ -64,6 +97,55 @@
     operatorSummary.textContent =
       "Секторы " + sectorStart + "-" + sectorEnd + " • Ячейки " + cellStart + "-" + cellEnd;
     quarterIndicator.textContent = currentQuarter + "/4";
+  }
+
+  function syncViewState() {
+    const showBoard = currentView === "board";
+
+    boardView.hidden = !showBoard;
+    confirmationView.hidden = showBoard;
+    mainActions.hidden = !showBoard;
+    confirmationActions.hidden = showBoard;
+
+    boardView.classList.toggle("is-active", showBoard);
+    confirmationView.classList.toggle("is-active", !showBoard);
+    mainActions.classList.toggle("is-active", showBoard);
+    confirmationActions.classList.toggle("is-active", !showBoard);
+  }
+
+  function renderConfirmationCells() {
+    const cellNumbers = getSelectedCellNumbers();
+
+    confirmationCells.innerHTML = "";
+
+    cellNumbers.forEach(function (cellNumber) {
+      const chip = document.createElement("span");
+      chip.className = "confirmation-cell-chip";
+      chip.textContent = String(cellNumber);
+      confirmationCells.appendChild(chip);
+    });
+  }
+
+  function renderConfirmation() {
+    confirmationAction.textContent = pendingAction || "-";
+    confirmationCount.textContent = String(selectedCells.size);
+    confirmationKicker.textContent = pendingAction || "Подтверждение";
+    confirmationTitle.textContent = isActionConfirmed ? "Действие подтверждено" : "Подтвердите действие";
+    confirmationNote.hidden = !isActionConfirmed;
+    renderConfirmationCells();
+  }
+
+  function showBoardView() {
+    currentView = "board";
+    syncViewState();
+  }
+
+  function showConfirmationView(actionLabel) {
+    pendingAction = actionLabel;
+    isActionConfirmed = false;
+    renderConfirmation();
+    currentView = "confirmation";
+    syncViewState();
   }
 
   function renderSectors() {
@@ -127,6 +209,10 @@
           }
 
           updateSelectionSummary();
+
+          if (currentView === "confirmation") {
+            renderConfirmation();
+          }
         });
 
         cellsGrid.appendChild(button);
@@ -143,14 +229,14 @@
     setStatusMessage("Четверть " + currentQuarter + "/4");
   }
 
-  function wirePlaceholderAction(button, actionLabel) {
+  function wireActionButton(button, actionLabel) {
     button.addEventListener("click", function () {
       if (selectedCells.size === 0) {
         setStatusMessage(actionLabel + ": выберите ячейки");
         return;
       }
 
-      setStatusMessage(actionLabel + ": выбрано " + selectedCells.size);
+      showConfirmationView(actionLabel);
     });
   }
 
@@ -164,10 +250,23 @@
     setQuarter(nextQuarter);
   });
 
+  confirmationBackButton.addEventListener("click", function () {
+    showBoardView();
+    if (pendingAction) {
+      setStatusMessage(pendingAction + ": выбор сохранен");
+    }
+  });
+
+  confirmationConfirmButton.addEventListener("click", function () {
+    isActionConfirmed = true;
+    renderConfirmation();
+  });
+
   updateSelectionSummary();
   updateQuarterMeta();
   renderSectors();
   renderCells();
-  wirePlaceholderAction(removeButton, "Изъять");
-  wirePlaceholderAction(refillButton, "Пополнить");
+  syncViewState();
+  wireActionButton(removeButton, "Изъять");
+  wireActionButton(refillButton, "Пополнить");
 })();

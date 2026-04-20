@@ -18,7 +18,7 @@
       <p class="operator-summary" id="operator-summary">Секторы 1-8 • Ячейки 1-120</p>
     </header>
 
-    <section class="operator-board" aria-labelledby="cells-title">
+    <section class="operator-board operator-view is-active" id="operator-board-view" aria-labelledby="cells-title">
       <div class="board-topline">
         <p class="selection-summary" id="selection-summary">Выбрано: 0</p>
         <p class="status-message" id="status-message">Выберите ячейки</p>
@@ -38,10 +38,38 @@
       </div>
     </section>
 
+    <section class="operator-board operator-view confirmation-view" id="operator-confirmation-view" aria-labelledby="confirmation-title" hidden>
+      <div class="confirmation-card">
+        <p class="confirmation-kicker" id="confirmation-kicker">Подтверждение</p>
+        <h2 class="confirmation-title" id="confirmation-title">Подтвердите действие</h2>
+        <div class="confirmation-details">
+          <div class="confirmation-row">
+            <span class="confirmation-label">Операция</span>
+            <strong class="confirmation-value" id="confirmation-action">-</strong>
+          </div>
+          <div class="confirmation-row">
+            <span class="confirmation-label">Выбрано</span>
+            <strong class="confirmation-value" id="confirmation-count">0</strong>
+          </div>
+        </div>
+        <div class="confirmation-cells-block">
+          <p class="confirmation-label confirmation-cells-title">Ячейки</p>
+          <div class="confirmation-cells" id="confirmation-cells" aria-live="polite"></div>
+        </div>
+        <p class="confirmation-note" id="confirmation-note" hidden>Действие подтверждено</p>
+      </div>
+    </section>
+
     <footer class="operator-actions">
-      <button class="action-button action-button-primary" id="remove-button" type="button">Изъять</button>
-      <button class="action-button action-button-secondary" id="refill-button" type="button">Пополнить</button>
-      <a class="action-button action-button-exit" href="/ui/user">Выход</a>
+      <div class="action-group operator-view is-active" id="operator-actions-main">
+        <button class="action-button action-button-primary" id="remove-button" type="button">Изъять</button>
+        <button class="action-button action-button-secondary" id="refill-button" type="button">Пополнить</button>
+        <a class="action-button action-button-exit" href="/ui/user">Выход</a>
+      </div>
+      <div class="action-group operator-view confirmation-actions" id="operator-actions-confirmation" hidden>
+        <button class="action-button action-button-back" id="confirmation-back-button" type="button">Назад</button>
+        <button class="action-button action-button-confirm" id="confirmation-confirm-button" type="button">Подтвердить</button>
+      </div>
     </footer>
   </main>
 
