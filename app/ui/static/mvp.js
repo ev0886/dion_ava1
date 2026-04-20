@@ -8,6 +8,7 @@
     countdownPanel: document.getElementById("countdown-panel"),
     countdownValue: document.getElementById("countdown-value"),
     screenActions: document.getElementById("screen-actions"),
+    screenCard: document.querySelector(".screen-card"),
   };
 
   const state = {
@@ -45,6 +46,29 @@
       title: "\u0423\u0441\u043f\u0435\u0448\u043d\u043e!",
       autoReturnMs: config.authSuccessRouteDelayMs,
       actions: [],
+    },
+    roleSelect: {
+      kicker: "\u0412\u044b\u0431\u0435\u0440\u0438\u0442\u0435 \u0440\u0435\u0436\u0438\u043c",
+      title: "\u041a\u0443\u0434\u0430 \u043f\u0435\u0440\u0435\u0439\u0442\u0438?",
+      message: "\u041f\u0440\u043e\u0434\u043e\u043b\u0436\u0438\u0442\u0435 \u0440\u0430\u0431\u043e\u0442\u0443 \u0432 \u043d\u0443\u0436\u043d\u043e\u043c \u0440\u0430\u0437\u0434\u0435\u043b\u0435.",
+      actions: [
+        { label: "\u041f\u043e\u043b\u044c\u0437\u043e\u0432\u0430\u0442\u0435\u043b\u044c", action: "go-user-role", tone: "primary" },
+        { label: "\u041e\u043f\u0435\u0440\u0430\u0442\u043e\u0440", action: "go-operator-role", tone: "secondary" },
+        { label: "\u0410\u0434\u043c\u0438\u043d\u0438\u0441\u0442\u0440\u0430\u0442\u043e\u0440", action: "go-admin-role", tone: "ghost" },
+        { label: "\u0412\u044b\u0439\u0442\u0438", action: "confirm-exit", tone: "ghost" },
+      ],
+      enableIdleTimeout: true,
+      roleTheme: "role-select",
+    },
+    userHome: {
+      kicker: "\u041f\u0440\u0438\u0432\u0435\u0442\u0441\u0442\u0432\u0438\u0435",
+      title: "\u041f\u043e\u043b\u044c\u0437\u043e\u0432\u0430\u0442\u0435\u043b\u044c",
+      message: "\u0412\u044b \u043c\u043e\u0436\u0435\u0442\u0435 \u043f\u0440\u043e\u0434\u043e\u043b\u0436\u0438\u0442\u044c \u0440\u0430\u0431\u043e\u0442\u0443 \u0432 \u043e\u0441\u043d\u043e\u0432\u043d\u043e\u043c \u0441\u0446\u0435\u043d\u0430\u0440\u0438\u0438.",
+      actions: [
+        { label: "\u041d\u0430 \u0433\u043b\u0430\u0432\u043d\u0443\u044e", action: "go-start", tone: "primary" },
+      ],
+      enableIdleTimeout: true,
+      roleTheme: "user",
     },
     timeoutPrompt: {
       title: "\u0412\u044b \u0435\u0449\u0435 \u0437\u0434\u0435\u0441\u044c?",
@@ -124,6 +148,10 @@
     }
 
     state.delayedTransitionId = window.setTimeout(function () {
+      if (screenKey === "authSuccess") {
+        showScreen("roleSelect");
+        return;
+      }
       showScreen("start");
     }, screen.autoReturnMs);
   }
@@ -163,6 +191,7 @@
     stopCountdown();
 
     state.currentScreen = screenKey;
+    elements.screenCard.dataset.roleTheme = screen.roleTheme || "default";
     renderText(elements.screenKicker, screen.kicker);
     elements.screenTitle.textContent = screen.title;
     renderText(elements.screenMessage, screen.message);
@@ -197,6 +226,18 @@
     }
     if (action === "auth-error") {
       showScreen("authError");
+      return;
+    }
+    if (action === "go-user-role") {
+      showScreen("userHome");
+      return;
+    }
+    if (action === "go-operator-role") {
+      window.location.assign("/ui/operator");
+      return;
+    }
+    if (action === "go-admin-role") {
+      window.location.assign("/ui/admin");
       return;
     }
     if (action === "confirm-exit") {
