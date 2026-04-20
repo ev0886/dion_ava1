@@ -24,11 +24,11 @@ def render_user_page(settings: AppSettings) -> HTMLResponse:
     template = _MVP_TEMPLATE_PATH.read_text(encoding="utf-8")
     ui_config = {
         "uiRole": "user",
-        "authEndpoint": "/auth/read-and-resolve-rfid",
-        "dispenseEndpoint": "/operations/dispense",
-        "optionsEndpoint": "/inventory/kiosk-dispense-options",
-        "autoResetTimeoutMs": 15000,
-        "dispenseQuantity": 1,
+        "uiFlowMode": "mock-auth-shell",
+        "uiIdleTimeoutMs": 30000,
+        "authErrorReturnTimeoutMs": 10000,
+        "authSuccessRouteDelayMs": 1000,
+        "presenceCountdownSeconds": 30,
     }
     return HTMLResponse(
         template.replace(

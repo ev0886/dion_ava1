@@ -8,116 +8,27 @@
 </head>
 <body>
   <main class="app-shell">
-    <header class="topbar">
-      <div>
+    <section class="screen-card">
+      <header class="screen-header">
         <p class="eyebrow">DION ABA1</p>
-        <p class="eyebrow">User UI</p>
-        <h1>Готово к выдаче</h1>
-      </div>
-      <div class="topbar-meta">
-        <div class="meta-chip">
-          <span class="meta-label">Выбрано</span>
-          <strong id="dispense-target">Выберите товар</strong>
-        </div>
-        <div class="meta-chip">
-          <span class="meta-label">Варианты</span>
-          <strong id="inventory-quantity">Загрузка...</strong>
-        </div>
-      </div>
-    </header>
+      </header>
 
-    <section class="status-panel status-neutral" id="status-panel" aria-live="polite">
-      <div class="status-header">
-        <div>
-          <span class="status-label">Состояние автомата</span>
-          <strong id="machine-state">Ожидание</strong>
-        </div>
-        <span id="idle-return-chip" class="idle-return-chip hidden">Скоро сброс</span>
-      </div>
-      <p id="status-message">Готово для следующего пользователя. Приложите карту и начните авторизацию.</p>
-    </section>
+      <section class="screen-body" aria-live="polite">
+        <p id="screen-kicker" class="screen-kicker hidden"></p>
+        <h1 id="screen-title" class="screen-title"></h1>
+        <p id="screen-message" class="screen-message hidden"></p>
 
-    <section class="main-layout">
-      <section class="card action-card">
-        <h2>Сценарий пользователя</h2>
-        <div class="actions primary-actions">
-          <button id="start-auth-button" class="action-button action-button-primary" type="button">
-            Начать RFID-сканирование
-          </button>
-          <button id="reset-button" class="action-button action-button-secondary" type="button">
-            Сброс
-          </button>
+        <div id="countdown-panel" class="countdown-panel hidden">
+          <span class="countdown-label">&#1042;&#1086;&#1079;&#1074;&#1088;&#1072;&#1090; &#1095;&#1077;&#1088;&#1077;&#1079;</span>
+          <strong id="countdown-value" class="countdown-value">0</strong>
         </div>
-        <p class="hint">Нажмите старт, приложите карту, затем выполните выдачу.</p>
       </section>
 
-      <section class="card user-section">
-        <div class="section-heading">
-          <h2>Сессия выдачи</h2>
-          <span id="user-state-pill" class="state-pill">Ожидание</span>
-        </div>
-        <div id="user-card" class="user-card user-card-empty">
-          <p class="user-placeholder">Нет активной пользовательской сессии.</p>
-          <dl class="user-details hidden" id="user-details">
-            <div>
-              <dt>Имя</dt>
-              <dd id="user-name"></dd>
-            </div>
-            <div>
-              <dt>Код пользователя</dt>
-              <dd id="user-code"></dd>
-            </div>
-            <div>
-              <dt>ID пользователя</dt>
-              <dd id="user-id"></dd>
-            </div>
-            <div>
-              <dt>Роль</dt>
-              <dd id="user-role"></dd>
-            </div>
-            <div>
-              <dt>RFID UID</dt>
-              <dd id="rfid-uid"></dd>
-            </div>
-          </dl>
-        </div>
-        <div class="option-section">
-          <div class="section-heading">
-            <h2>Товары в наличии</h2>
-            <span id="option-count-pill" class="state-pill">0 доступно</span>
-          </div>
-          <p id="options-empty-state" class="options-empty-state">Загрузка доступных остатков.</p>
-          <div id="dispense-options" class="dispense-options" aria-label="Доступные варианты выдачи"></div>
-        </div>
-        <button id="dispense-button" class="action-button action-button-primary" type="button" disabled>
-          Выдать выбранный товар
-        </button>
-      </section>
-
-      <section class="card result-card">
-        <div class="section-heading">
-          <h2>Результат операции</h2>
-          <span id="result-state-pill" class="state-pill">Ожидание</span>
-        </div>
-        <div id="result-panel" class="result-panel result-neutral">
-        <p id="result-title">Операций пока не было.</p>
-        <p id="result-detail">Здесь появится результат последней выдачи.</p>
-        </div>
-        <dl class="result-metrics">
-          <div>
-            <dt>Состояние</dt>
-            <dd id="operation-state">n/a</dd>
-          </div>
-          <div>
-            <dt>Кол-во</dt>
-            <dd id="confirmed-qty">n/a</dd>
-          </div>
-          <div>
-            <dt>Ошибка</dt>
-            <dd id="error-code">n/a</dd>
-          </div>
-        </dl>
-      </section>
+      <section
+        id="screen-actions"
+        class="screen-actions"
+        aria-label="&#1044;&#1077;&#1081;&#1089;&#1090;&#1074;&#1080;&#1103; &#1101;&#1082;&#1088;&#1072;&#1085;&#1072;"
+      ></section>
     </section>
   </main>
 

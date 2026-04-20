@@ -103,14 +103,18 @@ def test_ui_user_page_serves_configured_dispense_flow(tmp_path: Path) -> None:
 
     assert response.status_code == 200
     assert "User UI" in response.text
-    assert "Начать RFID-сканирование" in response.text
-    assert "Готово к выдаче" in response.text
+    assert 'id="screen-title"' in response.text
     assert '"uiRole": "user"' in response.text
-    assert '"/inventory/kiosk-dispense-options"' in response.text
-    assert '"dispenseQuantity": 1' in response.text
-    assert '"autoResetTimeoutMs": 15000' in response.text
-    assert '"authEndpoint": "/auth/read-and-resolve-rfid"' in response.text
-    assert '"dispenseEndpoint": "/operations/dispense"' in response.text
+    assert '"uiFlowMode": "mock-auth-shell"' in response.text
+    assert '"uiIdleTimeoutMs": 30000' in response.text
+    assert '"authErrorReturnTimeoutMs": 10000' in response.text
+    assert '"authSuccessRouteDelayMs": 1000' in response.text
+    assert '"presenceCountdownSeconds": 30' in response.text
+    assert '"/inventory/kiosk-dispense-options"' not in response.text
+    assert '"/auth/read-and-resolve-rfid"' not in response.text
+    assert '"/operations/dispense"' not in response.text
+    assert "UI-only shell" not in response.text
+    assert "Mock UI routing only" not in response.text
     assert "usb-status-title" not in response.text
     assert "usb-export-operations-button" not in response.text
     assert "usb-export-users-button" not in response.text
@@ -144,7 +148,10 @@ def test_ui_mvp_route_remains_backward_compatible_alias_to_user_ui(tmp_path: Pat
     assert response.status_code == 200
     assert "User UI" in response.text
     assert '"uiRole": "user"' in response.text
-    assert "Готово к выдаче" in response.text
+    assert 'id="screen-title"' in response.text
+    assert '"uiFlowMode": "mock-auth-shell"' in response.text
+    assert "UI-only shell" not in response.text
+    assert "Mock UI routing only" not in response.text
     assert "usb-status-title" not in response.text
     assert "usb-export-operations-button" not in response.text
     assert "usb-export-users-button" not in response.text
@@ -201,15 +208,17 @@ def test_ui_user_static_assets_no_longer_include_usb_admin_handlers(tmp_path: Pa
         response = client.get("/ui-assets/mvp.js")
 
     assert response.status_code == 200
-    assert "startAuth" in response.text
-    assert "startDispense" in response.text
-    assert "resetToIdle" in response.text
-    assert "refreshOptions" in response.text
-    assert "scheduleAutoReset" in response.text
-    assert "syncDispenseButton" in response.text
-    assert "refreshUsbStatus" not in response.text
-    assert "exportOperationsToUsb" not in response.text
-    assert "exportUsersToUsb" not in response.text
+    assert "showScreen" in response.text
+    assert "showTimeoutPrompt" in response.text
+    assert "handleAction" in response.text
+    assert "startCountdown" in response.text
+    assert "scheduleIdleTimeout" in response.text
+    assert "startAuth" not in response.text
+    assert "startDispense" not in response.text
+    assert "refreshOptions" not in response.text
+    assert "scheduleAutoReset" not in response.text
+    assert "authEndpoint" not in response.text
+    assert "dispenseEndpoint" not in response.text
     assert "importUsersFromUsb" not in response.text
     assert "usbStatusEndpoint" not in response.text
     assert "localUsbOperationsExportEndpoint" not in response.text
@@ -224,9 +233,8 @@ def test_ui_mvp_static_assets_are_served(tmp_path: Path) -> None:
         response = client.get("/ui-assets/mvp.js")
 
     assert response.status_code == 200
-    assert "resetToIdle" in response.text
-    assert "scheduleAutoReset" in response.text
-
+    assert "showScreen" in response.text
+    assert "startCountdown" in response.text
 
 def test_ui_admin_static_assets_are_served(tmp_path: Path) -> None:
     app = create_app(_settings(tmp_path, "api_ui_admin_assets.sqlite3"))
