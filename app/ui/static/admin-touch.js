@@ -22,6 +22,9 @@
     from: config.operationsDefaultDateFrom || "01.04.2026",
     to: config.operationsDefaultDateTo || "21.04.2026",
   };
+  const importUsersState = {
+    nextCheckResult: "confirm",
+  };
 
   function clearTimers() {
     timers.forEach((timerId) => window.clearTimeout(timerId));
@@ -81,6 +84,21 @@
     setView("export-users-confirm");
   }
 
+  function showImportUsersPrecheck() {
+    clearTimers();
+    setView("import-users-precheck");
+  }
+
+  function showImportUsersConfirmation() {
+    clearTimers();
+    setView("import-users-confirm");
+  }
+
+  function showImportUsersError() {
+    clearTimers();
+    setView("import-users-error");
+  }
+
   function showBalancesConfirmation() {
     clearTimers();
     setView("export-balances-confirm");
@@ -114,6 +132,22 @@
 
   function startExportUsersFlow() {
     startTimedFlow("export-users-progress", "export-users-success");
+  }
+
+  function runImportUsersCheck() {
+    const shouldConfirm = importUsersState.nextCheckResult === "confirm";
+    importUsersState.nextCheckResult = shouldConfirm ? "error" : "confirm";
+
+    if (shouldConfirm) {
+      showImportUsersConfirmation();
+      return;
+    }
+
+    showImportUsersError();
+  }
+
+  function startImportUsersFlow() {
+    startTimedFlow("import-users-progress", "import-users-success");
   }
 
   function startExportBalancesFlow() {
@@ -151,6 +185,11 @@
       return;
     }
 
+    if (action === "import-users") {
+      showImportUsersPrecheck();
+      return;
+    }
+
     if (action === "export-operations") {
       showOperationsPeriodSelection();
       return;
@@ -166,8 +205,23 @@
       return;
     }
 
+    if (action === "retry-import-users") {
+      showImportUsersPrecheck();
+      return;
+    }
+
+    if (action === "check-import-users") {
+      runImportUsersCheck();
+      return;
+    }
+
     if (action === "continue-export-operations") {
       showOperationsConfirmation();
+      return;
+    }
+
+    if (action === "start-import-users") {
+      startImportUsersFlow();
       return;
     }
 

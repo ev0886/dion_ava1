@@ -41,7 +41,13 @@
           >
             Экспорт пользователей
           </button>
-          <button class="admin-touch-action admin-touch-action-import" type="button">Импорт пользователей</button>
+          <button
+            class="admin-touch-action admin-touch-action-import"
+            type="button"
+            data-action="import-users"
+          >
+            Импорт пользователей
+          </button>
         </section>
       </section>
 
@@ -205,6 +211,101 @@
           Остатки экспортированы на USB носитель.
         </p>
         <p class="admin-touch-flow-note">Возврат на главный экран через несколько секунд.</p>
+      </section>
+
+      <section
+        class="admin-touch-view admin-touch-flow-card"
+        data-view="import-users-precheck"
+        hidden
+        aria-labelledby="import-users-precheck-title"
+      >
+        <header class="admin-touch-flow-header">
+          <p class="admin-touch-kicker">Импорт</p>
+          <h2 class="admin-touch-flow-title" id="import-users-precheck-title">Импорт пользователей</h2>
+        </header>
+
+        <p class="admin-touch-flow-text">
+          Вставьте USB носитель с файлом пользователей.
+        </p>
+
+        <div class="admin-touch-flow-actions">
+          <button class="admin-touch-secondary-button" type="button" data-action="back-to-landing">Назад</button>
+          <button class="admin-touch-primary-button" type="button" data-action="check-import-users">Проверить</button>
+        </div>
+      </section>
+
+      <section
+        class="admin-touch-view admin-touch-flow-card"
+        data-view="import-users-confirm"
+        hidden
+        aria-labelledby="import-users-confirm-title"
+      >
+        <header class="admin-touch-flow-header">
+          <p class="admin-touch-kicker">Импорт</p>
+          <h2 class="admin-touch-flow-title" id="import-users-confirm-title">Импорт пользователей</h2>
+        </header>
+
+        <p class="admin-touch-flow-text">
+          Пользователи с USB носителя будут импортированы на устройство.
+        </p>
+
+        <div class="admin-touch-flow-actions">
+          <button class="admin-touch-secondary-button" type="button" data-action="back-to-landing">Отмена</button>
+          <button class="admin-touch-primary-button" type="button" data-action="start-import-users">Импортировать</button>
+        </div>
+      </section>
+
+      <section
+        class="admin-touch-view admin-touch-flow-card admin-touch-flow-status"
+        data-view="import-users-progress"
+        hidden
+        aria-labelledby="import-users-progress-title"
+      >
+        <div class="admin-touch-spinner" aria-hidden="true"></div>
+        <header class="admin-touch-flow-header">
+          <p class="admin-touch-kicker">Подождите</p>
+          <h2 class="admin-touch-flow-title" id="import-users-progress-title">Подготовка импорта пользователей</h2>
+        </header>
+        <p class="admin-touch-flow-text">
+          Идёт подготовка импорта пользователей с USB носителя.
+        </p>
+      </section>
+
+      <section
+        class="admin-touch-view admin-touch-flow-card admin-touch-flow-status"
+        data-view="import-users-success"
+        hidden
+        aria-labelledby="import-users-success-title"
+      >
+        <div class="admin-touch-success-mark" aria-hidden="true">✓</div>
+        <header class="admin-touch-flow-header">
+          <p class="admin-touch-kicker">Готово</p>
+          <h2 class="admin-touch-flow-title" id="import-users-success-title">Успешно!</h2>
+        </header>
+        <p class="admin-touch-flow-text">
+          Пользователи импортированы с USB носителя.
+        </p>
+        <p class="admin-touch-flow-note">Возврат на главный экран через несколько секунд.</p>
+      </section>
+
+      <section
+        class="admin-touch-view admin-touch-flow-card admin-touch-flow-status"
+        data-view="import-users-error"
+        hidden
+        aria-labelledby="import-users-error-title"
+      >
+        <div class="admin-touch-error-mark" aria-hidden="true">!</div>
+        <header class="admin-touch-flow-header">
+          <p class="admin-touch-kicker">Импорт</p>
+          <h2 class="admin-touch-flow-title" id="import-users-error-title">Файл не найден</h2>
+        </header>
+        <p class="admin-touch-flow-text">
+          Файл пользователей на USB носителе не найден.
+        </p>
+        <div class="admin-touch-flow-actions">
+          <button class="admin-touch-secondary-button" type="button" data-action="retry-import-users">Назад</button>
+          <button class="admin-touch-primary-button" type="button" data-action="back-to-landing">На главный экран</button>
+        </div>
       </section>
 
       <section

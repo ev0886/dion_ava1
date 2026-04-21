@@ -276,7 +276,8 @@ button {
 }
 
 .admin-touch-spinner,
-.admin-touch-success-mark {
+.admin-touch-success-mark,
+.admin-touch-error-mark {
   width: 108px;
   height: 108px;
   display: grid;
@@ -296,6 +297,14 @@ button {
   font-size: 3rem;
   font-weight: 900;
   border: 1px solid rgba(18, 86, 69, 0.18);
+}
+
+.admin-touch-error-mark {
+  background: rgba(165, 91, 42, 0.14);
+  color: var(--import);
+  font-size: 3rem;
+  font-weight: 900;
+  border: 1px solid rgba(165, 91, 42, 0.2);
 }
 
 @keyframes admin-touch-spin {
@@ -368,7 +377,8 @@ button {
   }
 
   .admin-touch-spinner,
-  .admin-touch-success-mark {
+  .admin-touch-success-mark,
+  .admin-touch-error-mark {
     width: 92px;
     height: 92px;
   }
