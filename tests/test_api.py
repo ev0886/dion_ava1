@@ -107,15 +107,16 @@ def test_ui_user_page_serves_configured_dispense_flow(tmp_path: Path) -> None:
     assert "User UI" in response.text
     assert 'id="screen-title"' in response.text
     assert '"uiRole": "user"' in response.text
-    assert '"uiFlowMode": "mock-auth-shell"' in response.text
+    assert '"uiFlowMode": "rfid-auth-shell"' in response.text
     assert '"uiIdleTimeoutMs": 30000' in response.text
     assert '"authErrorReturnTimeoutMs": 2400' in response.text
     assert '"authSuccessRouteDelayMs": 1000' in response.text
     assert '"presenceCountdownSeconds": 30' in response.text
+    assert '"/auth/read-and-resolve-rfid"' in response.text
+    assert '"touchRoleRoutes": {"user": "/ui/user", "operator": "/ui/operator", "admin": "/ui/admin-touch"}' in response.text
     assert '"listTouchNomenclatureEndpoint": "/touch/nomenclature"' in response.text
     assert '"emptyNomenclatureMessage": "\\u041d\\u043e\\u043c\\u0435\\u043d\\u043a\\u043b\\u0430\\u0442\\u0443\\u0440\\u0430 \\u043d\\u0435 \\u043d\\u0430\\u0441\\u0442\\u0440\\u043e\\u0435\\u043d\\u0430"' in response.text
     assert '"/inventory/kiosk-dispense-options"' not in response.text
-    assert '"/auth/read-and-resolve-rfid"' not in response.text
     assert '"/operations/dispense"' not in response.text
     assert "UI-only shell" not in response.text
     assert "Mock UI routing only" not in response.text
@@ -159,7 +160,8 @@ def test_ui_mvp_route_remains_backward_compatible_alias_to_user_ui(tmp_path: Pat
     assert "User UI" in response.text
     assert '"uiRole": "user"' in response.text
     assert 'id="screen-title"' in response.text
-    assert '"uiFlowMode": "mock-auth-shell"' in response.text
+    assert '"uiFlowMode": "rfid-auth-shell"' in response.text
+    assert '"/auth/read-and-resolve-rfid"' in response.text
     assert "UI-only shell" not in response.text
     assert "Mock UI routing only" not in response.text
     assert "usb-status-title" not in response.text
@@ -318,6 +320,24 @@ def test_ui_admin_touch_javascript_asset_is_served(tmp_path: Path) -> None:
     assert 'action === "exit-admin-touch"' in response.text
     assert "operationsDefaultDateFrom" in response.text
     assert "successReturnDelayMs" in response.text
+
+
+def test_ui_mvp_javascript_asset_uses_rfid_auth_and_explicit_touch_role_routes(tmp_path: Path) -> None:
+    app = create_app(_settings(tmp_path, "api_ui_mvp_js.sqlite3"))
+
+    with TestClient(app) as client:
+        response = client.get("/ui-assets/mvp.js")
+
+    assert response.status_code == 200
+    assert "AUTH_READ_AND_RESOLVE_RFID_ENDPOINT" in response.text
+    assert 'window.fetch(AUTH_READ_AND_RESOLVE_RFID_ENDPOINT' in response.text
+    assert "TOUCH_ROLE_ROUTES" in response.text
+    assert 'window.location.assign(routePath)' in response.text
+    assert 'showScreen("userItemSelect")' in response.text
+    assert "go-user-role" not in response.text
+    assert "go-operator-role" not in response.text
+    assert "go-admin-role" not in response.text
+    assert "roleSelect" not in response.text
 
 
 def test_admin_touch_balances_export_endpoint_writes_aggregated_csv_to_usb(tmp_path: Path, monkeypatch) -> None:
@@ -706,6 +726,57 @@ def test_auth_read_and_resolve_rfid_api_retries_past_partial_read(
 
     assert response.status_code == 200
     assert response.json()["rfid_uid"] == "000FE2767C0045"
+
+
+def test_auth_read_and_resolve_rfid_returns_admin_role_for_touch_routing(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    app = create_app(_settings(tmp_path, "api_auth_rfid_admin.sqlite3"))
+    _seed_base_domain(app)
+    with app.state.session_factory() as session:
+        role = Role(code=RoleCode.ADMIN, name="Admin")
+        session.add(role)
+        session.flush()
+        user = User(
+            role_id=role.id,
+            user_code="admin-1",
+            full_name="Admin One",
+            status=UserStatus.ACTIVE,
+            dispense_restriction_policy=DispenseRestrictionPolicy.UNLIMITED,
+            is_active=True,
+        )
+        session.add(user)
+        session.flush()
+        session.add(
+            UserRfidCard(
+                user_id=user.id,
+                card_uid="AA11BB22CC33DD",
+                is_active=True,
+                issued_at=user.created_at,
+                revoked_at=None,
+            )
+        )
+        session.commit()
+
+    rfid_reader = MockRfidAdapter()
+    rfid_reader.queue_card("aa 11-bb 22 cc 33 dd")
+    hardware_bundle = HardwareBundle(
+        provider=HardwareProvider.MOCK,
+        drum_controller=MockDrumAdapter(),
+        lock_controller=MockLockAdapter(lock_states={(1, 1): LockState.LOCKED}),
+        rfid_reader=rfid_reader,
+        facade=HardwareFacade(
+            drum_controller=MockDrumAdapter(),
+            lock_controller=MockLockAdapter(lock_states={(1, 1): LockState.LOCKED}),
+            rfid_reader=rfid_reader,
+        ),
+    )
+    monkeypatch.setattr("app.application.composition.create_hardware_bundle", lambda _settings: hardware_bundle)
+
+    with TestClient(app) as client:
+        response = client.post("/auth/read-and-resolve-rfid", json={})
+
+    assert response.status_code == 200
+    assert response.json()["rfid_uid"] == "AA11BB22CC33DD"
+    assert response.json()["user"]["role_code"] == "admin"
 
 
 

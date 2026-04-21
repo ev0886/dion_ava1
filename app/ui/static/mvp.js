@@ -3,8 +3,15 @@
   const UI_IDLE_TIMEOUT_MS = 30000;
   const PRESENCE_COUNTDOWN_SECONDS = 30;
   const userDispenseWaitingDelayMs = 1800;
+  const AUTH_READ_AND_RESOLVE_RFID_ENDPOINT = config.authReadAndResolveRfidEndpoint || "";
+  const TOUCH_ROLE_ROUTES = config.touchRoleRoutes || {};
   const TOUCH_NOMENCLATURE_ENDPOINT = config.listTouchNomenclatureEndpoint || "";
-  const EMPTY_NOMENCLATURE_MESSAGE = config.emptyNomenclatureMessage || "Номенклатура не настроена";
+  const EMPTY_NOMENCLATURE_MESSAGE =
+    config.emptyNomenclatureMessage || "\u041d\u043e\u043c\u0435\u043d\u043a\u043b\u0430\u0442\u0443\u0440\u0430 \u043d\u0435 \u043d\u0430\u0441\u0442\u0440\u043e\u0435\u043d\u0430";
+  const DEFAULT_AUTH_ERROR_TITLE = "\u041f\u043e\u043b\u044c\u0437\u043e\u0432\u0430\u0442\u0435\u043b\u044c \u043d\u0435 \u043d\u0430\u0439\u0434\u0435\u043d";
+  const INACTIVE_AUTH_ERROR_TITLE = "\u041f\u043e\u043b\u044c\u0437\u043e\u0432\u0430\u0442\u0435\u043b\u044c \u043d\u0435\u0430\u043a\u0442\u0438\u0432\u0435\u043d";
+  const UNSUPPORTED_ROLE_AUTH_ERROR_TITLE =
+    "\u0420\u043e\u043b\u044c \u043f\u043e\u043b\u044c\u0437\u043e\u0432\u0430\u0442\u0435\u043b\u044f \u043d\u0435 \u043f\u043e\u0434\u0434\u0435\u0440\u0436\u0438\u0432\u0430\u0435\u0442\u0441\u044f";
 
   const elements = {
     screenKicker: document.getElementById("screen-kicker"),
@@ -34,49 +41,34 @@
     selectedUserItemId: null,
     userListExpanded: false,
     userItems: [],
+    authErrorTitle: DEFAULT_AUTH_ERROR_TITLE,
+    authResolvedUser: null,
+    pendingRoutePath: null,
+    authRequestToken: 0,
   };
-
 
   const screens = {
     start: {
       title: "\u0413\u043e\u0442\u043e\u0432 \u043a \u0432\u044b\u0434\u0430\u0447\u0435",
-      actions: [
-        { label: "\u041d\u0430\u0447\u0430\u0442\u044c", action: "go-auth", tone: "primary" },
-      ],
+      actions: [{ label: "\u041d\u0430\u0447\u0430\u0442\u044c", action: "go-auth", tone: "primary" }],
       enableIdleTimeout: true,
     },
     auth: {
       title: "\u041f\u0440\u0438\u043b\u043e\u0436\u0438\u0442\u0435 \u043a\u0430\u0440\u0442\u0443",
-      actions: [
-        { label: "\u0423\u0441\u043f\u0435\u0448\u043d\u043e", action: "auth-success", tone: "primary" },
-        { label: "\u041d\u0435 \u043d\u0430\u0439\u0434\u0435\u043d", action: "auth-error", tone: "secondary" },
-        { label: "\u0412\u044b\u0439\u0442\u0438", action: "confirm-exit", tone: "ghost" },
-      ],
+      actions: [{ label: "\u0412\u044b\u0439\u0442\u0438", action: "confirm-exit", tone: "ghost" }],
       enableIdleTimeout: true,
     },
     authError: {
-      title: "\u041f\u043e\u043b\u044c\u0437\u043e\u0432\u0430\u0442\u0435\u043b\u044c \u043d\u0435 \u043d\u0430\u0439\u0434\u0435\u043d",
+      title: function () {
+        return state.authErrorTitle || DEFAULT_AUTH_ERROR_TITLE;
+      },
       autoReturnMs: config.authErrorReturnTimeoutMs,
       actions: [],
     },
     authSuccess: {
       title: "\u0423\u0441\u043f\u0435\u0448\u043d\u043e!",
       autoReturnMs: config.authSuccessRouteDelayMs,
-      autoReturnTarget: "roleSelect",
-      actions: [],
-    },
-    roleSelect: {
-      kicker: "\u0412\u044b\u0431\u0435\u0440\u0438\u0442\u0435 \u0440\u0435\u0436\u0438\u043c",
-      title: "\u041a\u0443\u0434\u0430 \u043f\u0435\u0440\u0435\u0439\u0442\u0438?",
-      message: "\u041f\u0440\u043e\u0434\u043e\u043b\u0436\u0438\u0442\u0435 \u0440\u0430\u0431\u043e\u0442\u0443 \u0432 \u043d\u0443\u0436\u043d\u043e\u043c \u0440\u0430\u0437\u0434\u0435\u043b\u0435.",
-      actions: [
-        { label: "\u041f\u043e\u043b\u044c\u0437\u043e\u0432\u0430\u0442\u0435\u043b\u044c", action: "go-user-role", tone: "primary" },
-        { label: "\u041e\u043f\u0435\u0440\u0430\u0442\u043e\u0440", action: "go-operator-role", tone: "secondary" },
-        { label: "\u0410\u0434\u043c\u0438\u043d\u0438\u0441\u0442\u0440\u0430\u0442\u043e\u0440", action: "go-admin-role", tone: "ghost" },
-        { label: "\u0412\u044b\u0439\u0442\u0438", action: "confirm-exit", tone: "ghost" },
-      ],
-      enableIdleTimeout: true,
-      roleTheme: "role-select",
+      actions: [{ label: "\u041e\u0442\u043c\u0435\u043d\u0430", action: "go-start", tone: "ghost" }],
     },
     userItemSelect: {
       kicker: "\u0412\u044b\u0431\u043e\u0440 \u0442\u043e\u0432\u0430\u0440\u0430",
@@ -103,15 +95,14 @@
       kicker: "\u0413\u043e\u0442\u043e\u0432\u043e",
       title: "\u041f\u043e\u043b\u0443\u0447\u0435\u043d\u0438\u0435 \u0437\u0430\u0432\u0435\u0440\u0448\u0435\u043d\u043e",
       message: getUserItemSuccessMessage,
-      actions: [
-        { label: "\u041d\u0430 \u0433\u043b\u0430\u0432\u043d\u0443\u044e", action: "go-start", tone: "primary" },
-      ],
+      actions: [{ label: "\u041d\u0430 \u0433\u043b\u0430\u0432\u043d\u0443\u044e", action: "go-start", tone: "primary" }],
       enableIdleTimeout: true,
       roleTheme: "user",
     },
     userItemUnavailable: {
       kicker: "\u041f\u043e\u043b\u0443\u0447\u0435\u043d\u0438\u0435 \u043d\u0435\u0434\u043e\u0441\u0442\u0443\u043f\u043d\u043e",
-      title: "\u041f\u043e\u043b\u0443\u0447\u0435\u043d\u0438\u0435 \u0432 \u0434\u0430\u043d\u043d\u044b\u0439 \u043c\u043e\u043c\u0435\u043d\u0442 \u043d\u0435\u0434\u043e\u0441\u0442\u0443\u043f\u043d\u043e",
+      title:
+        "\u041f\u043e\u043b\u0443\u0447\u0435\u043d\u0438\u0435 \u0432 \u0434\u0430\u043d\u043d\u044b\u0439 \u043c\u043e\u043c\u0435\u043d\u0442 \u043d\u0435\u0434\u043e\u0441\u0442\u0443\u043f\u043d\u043e",
       message: getUnavailableUserItemMessage,
       actions: [
         { label: "\u041a \u0442\u043e\u0432\u0430\u0440\u0430\u043c", action: "back-to-user-items", tone: "secondary" },
@@ -209,6 +200,10 @@
     }
 
     state.delayedTransitionId = window.setTimeout(function () {
+      if (typeof screen.autoReturnAction === "function") {
+        screen.autoReturnAction();
+        return;
+      }
       showScreen(screen.autoReturnTarget || "start");
     }, screen.autoReturnMs);
   }
@@ -238,20 +233,16 @@
     return state.userItems.length > 0;
   }
 
-  function getSelectedUserItemMessage() {
-    const selectedItem = getSelectedUserItem();
-    if (!selectedItem) {
-      return "\u0412\u044b\u0431\u0435\u0440\u0438\u0442\u0435 \u043f\u043e\u0437\u0438\u0446\u0438\u044e \u0438 \u0432\u0435\u0440\u043d\u0438\u0442\u0435\u0441\u044c \u043a \u0441\u043f\u0438\u0441\u043a\u0443.";
-    }
-    return selectedItem.name;
-  }
-
   function getAvailableUserItemMessage() {
     const selectedItem = getSelectedUserItem();
     if (!selectedItem) {
       return "\u0412\u044b\u0431\u0435\u0440\u0438\u0442\u0435 \u0442\u043e\u0432\u0430\u0440, \u0447\u0442\u043e\u0431\u044b \u043f\u0435\u0440\u0435\u0439\u0442\u0438 \u043a \u0441\u043b\u0435\u0434\u0443\u044e\u0449\u0435\u043c\u0443 \u0448\u0430\u0433\u0443.";
     }
-    return "\u0414\u043b\u044f \u0442\u043e\u0432\u0430\u0440\u0430 \u00ab" + selectedItem.name + "\u00bb \u0441\u0435\u0439\u0447\u0430\u0441 \u043e\u0442\u043a\u0440\u043e\u0435\u0442\u0441\u044f \u044d\u043a\u0440\u0430\u043d \u043f\u043e\u043b\u0443\u0447\u0435\u043d\u0438\u044f.";
+    return (
+      "\u0414\u043b\u044f \u0442\u043e\u0432\u0430\u0440\u0430 \u00ab" +
+      selectedItem.name +
+      "\u00bb \u0441\u0435\u0439\u0447\u0430\u0441 \u043e\u0442\u043a\u0440\u043e\u0435\u0442\u0441\u044f \u044d\u043a\u0440\u0430\u043d \u043f\u043e\u043b\u0443\u0447\u0435\u043d\u0438\u044f."
+    );
   }
 
   function getUserItemSuccessMessage() {
@@ -259,7 +250,11 @@
     if (!selectedItem) {
       return "\u0417\u0430\u0431\u0435\u0440\u0438\u0442\u0435 \u0442\u043e\u0432\u0430\u0440, \u0437\u0430\u043a\u0440\u043e\u0439\u0442\u0435 \u044f\u0447\u0435\u0439\u043a\u0443 \u0438 \u043d\u0430\u0436\u043c\u0438\u0442\u0435 \u00ab\u041d\u0430 \u0433\u043b\u0430\u0432\u043d\u0443\u044e\u00bb.";
     }
-    return "\u0417\u0430\u0431\u0435\u0440\u0438\u0442\u0435 \u00ab" + selectedItem.name + "\u00bb, \u0437\u0430\u043a\u0440\u043e\u0439\u0442\u0435 \u044f\u0447\u0435\u0439\u043a\u0443 \u0438 \u0441\u043f\u0430\u0441\u0438\u0431\u043e \u0437\u0430 \u043e\u0431\u0440\u0430\u0449\u0435\u043d\u0438\u0435.";
+    return (
+      "\u0417\u0430\u0431\u0435\u0440\u0438\u0442\u0435 \u00ab" +
+      selectedItem.name +
+      "\u00bb, \u0437\u0430\u043a\u0440\u043e\u0439\u0442\u0435 \u044f\u0447\u0435\u0439\u043a\u0443 \u0438 \u0441\u043f\u0430\u0441\u0438\u0431\u043e \u0437\u0430 \u043e\u0431\u0440\u0430\u0449\u0435\u043d\u0438\u0435."
+    );
   }
 
   function getUnavailableUserItemMessage() {
@@ -267,7 +262,11 @@
     if (!selectedItem) {
       return "\u0412\u044b\u0431\u0435\u0440\u0438\u0442\u0435 \u0442\u043e\u0432\u0430\u0440 \u0438 \u043f\u043e\u0432\u0442\u043e\u0440\u0438\u0442\u0435 \u043f\u043e\u043f\u044b\u0442\u043a\u0443.";
     }
-    return "\u0422\u043e\u0432\u0430\u0440 \u00ab" + selectedItem.name + "\u00bb \u0441\u0435\u0439\u0447\u0430\u0441 \u043d\u0435\u043b\u044c\u0437\u044f \u043f\u043e\u043b\u0443\u0447\u0438\u0442\u044c. \u0412\u0435\u0440\u043d\u0438\u0442\u0435\u0441\u044c \u043a \u0441\u043f\u0438\u0441\u043a\u0443 \u0438 \u0432\u044b\u0431\u0435\u0440\u0438\u0442\u0435 \u0434\u0440\u0443\u0433\u0443\u044e \u043f\u043e\u0437\u0438\u0446\u0438\u044e.";
+    return (
+      "\u0422\u043e\u0432\u0430\u0440 \u00ab" +
+      selectedItem.name +
+      "\u00bb \u0441\u0435\u0439\u0447\u0430\u0441 \u043d\u0435\u043b\u044c\u0437\u044f \u043f\u043e\u043b\u0443\u0447\u0438\u0442\u044c. \u0412\u0435\u0440\u043d\u0438\u0442\u0435\u0441\u044c \u043a \u0441\u043f\u0438\u0441\u043a\u0443 \u0438 \u0432\u044b\u0431\u0435\u0440\u0438\u0442\u0435 \u0434\u0440\u0443\u0433\u0443\u044e \u043f\u043e\u0437\u0438\u0446\u0438\u044e."
+    );
   }
 
   function createActionButton(action) {
@@ -291,7 +290,7 @@
   }
 
   function renderText(node, value) {
-    const text = typeof value === "function" ? value() : (value || "");
+    const text = typeof value === "function" ? value() : value || "";
     node.textContent = text;
     node.classList.toggle("hidden", text === "");
   }
@@ -319,17 +318,19 @@
     screenContent.classList.remove("hidden");
 
     if (!hasUserItems()) {
-      screenContent.appendChild(createStatusPanel({
-        tone: "empty",
-        badge: "Номенклатура",
-        heading: EMPTY_NOMENCLATURE_MESSAGE,
-        detail: "Обратитесь к администратору для настройки доступных позиций.",
-      }));
+      screenContent.appendChild(
+        createStatusPanel({
+          tone: "empty",
+          badge: "\u041d\u043e\u043c\u0435\u043d\u043a\u043b\u0430\u0442\u0443\u0440\u0430",
+          heading: EMPTY_NOMENCLATURE_MESSAGE,
+          detail:
+            "\u041e\u0431\u0440\u0430\u0442\u0438\u0442\u0435\u0441\u044c \u043a \u0430\u0434\u043c\u0438\u043d\u0438\u0441\u0442\u0440\u0430\u0442\u043e\u0440\u0443 \u0434\u043b\u044f \u043d\u0430\u0441\u0442\u0440\u043e\u0439\u043a\u0438 \u0434\u043e\u0441\u0442\u0443\u043f\u043d\u044b\u0445 \u043f\u043e\u0437\u0438\u0446\u0438\u0439.",
+        })
+      );
       return;
     }
 
     const visibleItems = state.userListExpanded ? state.userItems : state.userItems.slice(0, 5);
-
     const list = document.createElement("div");
     list.className = "item-list" + (state.userListExpanded ? " item-list-expanded" : "");
     visibleItems.forEach(function (item) {
@@ -380,18 +381,34 @@
     return panel;
   }
 
+  function renderAuthWaitingShell() {
+    const screenContent = ensureScreenContent();
+    screenContent.innerHTML = "";
+    screenContent.classList.remove("hidden");
+    screenContent.appendChild(
+      createStatusPanel({
+        tone: "waiting",
+        badge: "RFID",
+        heading: "\u0421\u0447\u0438\u0442\u044b\u0432\u0430\u0435\u043c \u043a\u0430\u0440\u0442\u0443",
+        detail: "\u041f\u0440\u0438\u043b\u043e\u0436\u0438\u0442\u0435 RFID-\u043a\u0430\u0440\u0442\u0443 \u043a \u0441\u0447\u0438\u0442\u044b\u0432\u0430\u0442\u0435\u043b\u044e.",
+      })
+    );
+  }
+
   function renderUserItemAvailableShell() {
     const selectedItem = getSelectedUserItem();
     const screenContent = ensureScreenContent();
     screenContent.innerHTML = "";
     screenContent.classList.remove("hidden");
-
-    screenContent.appendChild(createStatusPanel({
-      tone: "waiting",
-      badge: "\u041f\u043e\u043b\u0443\u0447\u0435\u043d\u0438\u0435",
-      heading: selectedItem ? selectedItem.name : "\u0412\u044b\u0431\u0440\u0430\u043d\u043d\u044b\u0439 \u0442\u043e\u0432\u0430\u0440",
-      detail: "\u041e\u0441\u0442\u0430\u0432\u0430\u0439\u0442\u0435\u0441\u044c \u0443 \u044d\u043a\u0440\u0430\u043d\u0430. \u0421\u043b\u0435\u0434\u0443\u044e\u0449\u0430\u044f \u043f\u043e\u0434\u0441\u043a\u0430\u0437\u043a\u0430 \u043f\u043e\u044f\u0432\u0438\u0442\u0441\u044f \u0430\u0432\u0442\u043e\u043c\u0430\u0442\u0438\u0447\u0435\u0441\u043a\u0438."
-    }));
+    screenContent.appendChild(
+      createStatusPanel({
+        tone: "waiting",
+        badge: "\u041f\u043e\u043b\u0443\u0447\u0435\u043d\u0438\u0435",
+        heading: selectedItem ? selectedItem.name : "\u0412\u044b\u0431\u0440\u0430\u043d\u043d\u044b\u0439 \u0442\u043e\u0432\u0430\u0440",
+        detail:
+          "\u041e\u0441\u0442\u0430\u0432\u0430\u0439\u0442\u0435\u0441\u044c \u0443 \u044d\u043a\u0440\u0430\u043d\u0430. \u0421\u043b\u0435\u0434\u0443\u044e\u0449\u0430\u044f \u043f\u043e\u0434\u0441\u043a\u0430\u0437\u043a\u0430 \u043f\u043e\u044f\u0432\u0438\u0442\u0441\u044f \u0430\u0432\u0442\u043e\u043c\u0430\u0442\u0438\u0447\u0435\u0441\u043a\u0438.",
+      })
+    );
   }
 
   function renderUserItemSuccessShell() {
@@ -399,13 +416,15 @@
     const screenContent = ensureScreenContent();
     screenContent.innerHTML = "";
     screenContent.classList.remove("hidden");
-
-    screenContent.appendChild(createStatusPanel({
-      tone: "success",
-      badge: "\u0421\u043f\u0430\u0441\u0438\u0431\u043e",
-      heading: selectedItem ? selectedItem.name : "\u0422\u043e\u0432\u0430\u0440",
-      detail: "\u0417\u0430\u0431\u0435\u0440\u0438\u0442\u0435 \u0442\u043e\u0432\u0430\u0440, \u0430\u043a\u043a\u0443\u0440\u0430\u0442\u043d\u043e \u0437\u0430\u043a\u0440\u043e\u0439\u0442\u0435 \u044f\u0447\u0435\u0439\u043a\u0443 \u0438 \u0437\u0430\u0432\u0435\u0440\u0448\u0438\u0442\u0435 \u0440\u0430\u0431\u043e\u0442\u0443 \u043a\u043d\u043e\u043f\u043a\u043e\u0439 \u043d\u0438\u0436\u0435."
-    }));
+    screenContent.appendChild(
+      createStatusPanel({
+        tone: "success",
+        badge: "\u0421\u043f\u0430\u0441\u0438\u0431\u043e",
+        heading: selectedItem ? selectedItem.name : "\u0422\u043e\u0432\u0430\u0440",
+        detail:
+          "\u0417\u0430\u0431\u0435\u0440\u0438\u0442\u0435 \u0442\u043e\u0432\u0430\u0440, \u0430\u043a\u043a\u0443\u0440\u0430\u0442\u043d\u043e \u0437\u0430\u043a\u0440\u043e\u0439\u0442\u0435 \u044f\u0447\u0435\u0439\u043a\u0443 \u0438 \u0437\u0430\u0432\u0435\u0440\u0448\u0438\u0442\u0435 \u0440\u0430\u0431\u043e\u0442\u0443 \u043a\u043d\u043e\u043f\u043a\u043e\u0439 \u043d\u0438\u0436\u0435.",
+      })
+    );
   }
 
   function renderScreenContent(screenKey) {
@@ -414,16 +433,18 @@
     screenContent.classList.add("hidden");
     elements.screenBody.classList.toggle("screen-body-list", screenKey === "userItemSelect");
 
+    if (screenKey === "auth") {
+      renderAuthWaitingShell();
+      return;
+    }
     if (screenKey === "userItemSelect") {
       renderUserItemSelection();
       return;
     }
-
     if (screenKey === "userItemAvailable") {
       renderUserItemAvailableShell();
       return;
     }
-
     if (screenKey === "userItemSuccess") {
       renderUserItemSuccessShell();
     }
@@ -442,10 +463,14 @@
     state.currentScreen = screenKey;
     elements.screenCard.dataset.roleTheme = screen.roleTheme || "default";
     renderText(elements.screenKicker, screen.kicker);
-    elements.screenTitle.textContent = screen.title;
+    renderText(elements.screenTitle, screen.title);
     renderText(elements.screenMessage, screen.message);
     renderScreenContent(screenKey);
     renderActions(screen);
+
+    if (screenKey === "auth") {
+      void readAndResolveRfid();
+    }
 
     if (screen.enableIdleTimeout && canUseSharedInactivityTimeout(screenKey)) {
       scheduleIdleTimeout();
@@ -482,50 +507,116 @@
 
   function resetIdleTimeoutFromInteraction(event) {
     const target = event.target;
-
     if (!(target instanceof Element)) {
       return;
     }
-
     if (target.closest("#presence-overlay")) {
       return;
     }
-
     if (state.isPresenceOverlayVisible || !canUseSharedInactivityTimeout(state.currentScreen)) {
       return;
     }
-
     if (state.idleTimeoutId) {
       window.clearTimeout(state.idleTimeoutId);
       state.idleTimeoutId = null;
     }
-
     scheduleIdleTimeout();
+  }
+
+  function resolveTouchRoute(roleCode) {
+    if (!roleCode || typeof roleCode !== "string") {
+      return null;
+    }
+    return TOUCH_ROLE_ROUTES[roleCode] || null;
+  }
+
+  function showAuthError(title) {
+    state.authErrorTitle = title || DEFAULT_AUTH_ERROR_TITLE;
+    state.authResolvedUser = null;
+    state.pendingRoutePath = null;
+    showScreen("authError");
+  }
+
+  function applyResolvedTouchRoute() {
+    if (state.pendingRoutePath === TOUCH_ROLE_ROUTES.user) {
+      state.pendingRoutePath = null;
+      showScreen("userItemSelect");
+      return;
+    }
+    if (state.pendingRoutePath) {
+      const routePath = state.pendingRoutePath;
+      state.pendingRoutePath = null;
+      window.location.assign(routePath);
+      return;
+    }
+    showScreen("start");
+  }
+
+  screens.authSuccess.autoReturnAction = applyResolvedTouchRoute;
+
+  async function readAndResolveRfid() {
+    if (!AUTH_READ_AND_RESOLVE_RFID_ENDPOINT) {
+      showAuthError(DEFAULT_AUTH_ERROR_TITLE);
+      return;
+    }
+
+    const requestToken = state.authRequestToken + 1;
+    state.authRequestToken = requestToken;
+
+    try {
+      const response = await window.fetch(AUTH_READ_AND_RESOLVE_RFID_ENDPOINT, {
+        method: "POST",
+        headers: {
+          Accept: "application/json",
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({}),
+      });
+
+      if (state.authRequestToken !== requestToken || state.currentScreen !== "auth") {
+        return;
+      }
+
+      const payload = await response.json().catch(function () {
+        return {};
+      });
+
+      if (!response.ok) {
+        if (response.status === 404) {
+          showAuthError(DEFAULT_AUTH_ERROR_TITLE);
+          return;
+        }
+        if (response.status === 403) {
+          if (payload && (payload.detail === "User is inactive" || payload.detail === "User status is inactive")) {
+            showAuthError(INACTIVE_AUTH_ERROR_TITLE);
+            return;
+          }
+        }
+        showAuthError(DEFAULT_AUTH_ERROR_TITLE);
+        return;
+      }
+
+      const resolvedUser = payload && payload.user ? payload.user : null;
+      const routePath = resolveTouchRoute(resolvedUser && resolvedUser.role_code);
+      if (!routePath) {
+        showAuthError(UNSUPPORTED_ROLE_AUTH_ERROR_TITLE);
+        return;
+      }
+
+      state.authResolvedUser = resolvedUser;
+      state.pendingRoutePath = routePath;
+      showScreen("authSuccess");
+    } catch (_error) {
+      if (state.authRequestToken !== requestToken || state.currentScreen !== "auth") {
+        return;
+      }
+      showAuthError(DEFAULT_AUTH_ERROR_TITLE);
+    }
   }
 
   function handleAction(action) {
     if (action === "go-auth") {
       showScreen("auth");
-      return;
-    }
-    if (action === "auth-success") {
-      showScreen("authSuccess");
-      return;
-    }
-    if (action === "auth-error") {
-      showScreen("authError");
-      return;
-    }
-    if (action === "go-user-role") {
-      showScreen("userItemSelect");
-      return;
-    }
-    if (action === "go-operator-role") {
-      window.location.assign("/ui/operator");
-      return;
-    }
-    if (action === "go-admin-role") {
-      window.location.assign("/ui/admin-touch");
       return;
     }
     if (action === "confirm-exit") {
@@ -552,6 +643,8 @@
     if (action === "go-start") {
       state.previousScreen = null;
       state.presencePreviousScreen = null;
+      state.authResolvedUser = null;
+      state.pendingRoutePath = null;
       showScreen("start");
       return;
     }
@@ -566,20 +659,7 @@
     if (!state.isPresenceOverlayVisible) {
       resetIdleTimeoutFromInteraction(event);
     }
-
-    if (state.currentScreen !== "auth") {
-      return;
-    }
-
-    if (event.key === "s" || event.key === "S") {
-      handleAction("auth-success");
-      return;
-    }
-    if (event.key === "e" || event.key === "E") {
-      handleAction("auth-error");
-      return;
-    }
-    if (event.key === "Escape") {
+    if (state.currentScreen === "auth" && event.key === "Escape") {
       handleAction("confirm-exit");
     }
   });
@@ -620,16 +700,18 @@
         return;
       }
 
-      state.userItems = payload.nomenclature.map(function (item) {
-        return {
-          id: "nomenclature-" + String(item.id),
-          name: String(item.name || ""),
-          isAvailable: true,
-        };
-      }).filter(function (item) {
-        return item.name !== "";
-      });
-    } catch (error) {
+      state.userItems = payload.nomenclature
+        .map(function (item) {
+          return {
+            id: "nomenclature-" + String(item.id),
+            name: String(item.name || ""),
+            isAvailable: true,
+          };
+        })
+        .filter(function (item) {
+          return item.name !== "";
+        });
+    } catch (_error) {
       state.userItems = [];
     }
   }

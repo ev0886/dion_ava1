@@ -36,11 +36,17 @@ def render_user_page(settings: AppSettings) -> HTMLResponse:
     template = _MVP_TEMPLATE_PATH.read_text(encoding="utf-8")
     ui_config = {
         "uiRole": "user",
-        "uiFlowMode": "mock-auth-shell",
+        "uiFlowMode": "rfid-auth-shell",
         "uiIdleTimeoutMs": 30000,
         "authErrorReturnTimeoutMs": 2400,
         "authSuccessRouteDelayMs": 1000,
         "presenceCountdownSeconds": 30,
+        "authReadAndResolveRfidEndpoint": "/auth/read-and-resolve-rfid",
+        "touchRoleRoutes": {
+            "user": "/ui/user",
+            "operator": "/ui/operator",
+            "admin": "/ui/admin-touch",
+        },
         "listTouchNomenclatureEndpoint": "/touch/nomenclature",
         "emptyNomenclatureMessage": "Номенклатура не настроена",
     }
