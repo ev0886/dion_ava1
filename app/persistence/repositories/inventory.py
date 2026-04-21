@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime
 
-from sqlalchemy import and_, case, select
+from sqlalchemy import and_, case, func, select
 
 from app.domain.enums import BindingType, ItemStatus, SlotStatus, SlotType
 from app.persistence.models import InventoryBalance, InventoryTransaction, Slot, SlotItemBinding
@@ -23,6 +23,12 @@ class AvailableDispenseOptionRecord:
     item_sku: str
     item_name: str
     item_unit: str
+
+
+@dataclass(frozen=True, slots=True)
+class FilledBalanceSummaryRecord:
+    item_name: str
+    quantity: int
 
 
 class InventoryRepository(Repository):
@@ -125,6 +131,28 @@ class InventoryRepository(Repository):
                 item_unit=row[10],
             )
             for row in rows
+        )
+
+    def list_filled_balance_summaries(self) -> tuple[FilledBalanceSummaryRecord, ...]:
+        from app.persistence.models import Item
+
+        statement = (
+            select(
+                Item.name,
+                func.sum(InventoryBalance.quantity),
+            )
+            .join(Item, Item.id == InventoryBalance.item_id)
+            .where(InventoryBalance.quantity > 0)
+            .group_by(Item.name)
+            .order_by(Item.name.asc())
+        )
+        rows = self.session.execute(statement).all()
+        return tuple(
+            FilledBalanceSummaryRecord(
+                item_name=item_name,
+                quantity=int(quantity),
+            )
+            for item_name, quantity in rows
         )
 
     def resolve_available_dispense_option(self, item_id: int) -> AvailableDispenseOptionRecord | None:

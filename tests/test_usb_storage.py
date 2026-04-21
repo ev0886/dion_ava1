@@ -17,7 +17,7 @@ from app.application.usb_storage_service import UsbStorageDiscoveryService
 from app.config import AppSettings
 from app.domain.enums import DispenseRestrictionPolicy, ItemStatus, OperationState, OperationType, RoleCode, SlotStatus, SlotType, UserStatus
 from app.persistence.base import Base
-from app.persistence.models import Item, Operation, Role, Slot, User, UserRfidCard
+from app.persistence.models import InventoryBalance, Item, Operation, Role, Slot, User, UserRfidCard
 from app.persistence.repositories.operations import OperationRepository
 from app.persistence.repositories.users import UserRepository
 
@@ -112,13 +112,10 @@ def test_local_usb_operations_export_service_blocks_when_usb_is_missing(tmp_path
     finally:
         session.close()
 
-    assert str(exc_info.value) == (
-        "USB-\u043d\u043e\u0441\u0438\u0442\u0435\u043b\u044c \u043d\u0435 \u043e\u0431\u043d\u0430\u0440\u0443\u0436\u0435\u043d. "
-        "\u042d\u043a\u0441\u043f\u043e\u0440\u0442 \u043d\u0435\u0434\u043e\u0441\u0442\u0443\u043f\u0435\u043d."
-    )
+    assert str(exc_info.value) == "USB-\u043d\u043e\u0441\u0438\u0442\u0435\u043b\u044c \u043d\u0435 \u043d\u0430\u0439\u0434\u0435\u043d"
 
 
-def test_local_usb_operations_export_service_writes_csv_file_to_usb_mount(tmp_path: Path) -> None:
+def test_local_usb_operations_export_service_writes_csv_file_to_usb_mount(tmp_path: Path, monkeypatch) -> None:
     admin_service, session = _build_admin_operations_service(tmp_path, "usb_export_service_write.sqlite3")
     usb_mount = tmp_path / "media" / "operator" / "USB_DISK"
     usb_mount.mkdir(parents=True)
@@ -135,6 +132,11 @@ def test_local_usb_operations_export_service_writes_csv_file_to_usb_mount(tmp_pa
         admin_operations=admin_service,
         admin_users=AdminUserService(UserRepository(session)),
     )
+    monkeypatch.setattr(
+        LocalUsbExportService,
+        "_timestamp_now",
+        staticmethod(lambda: datetime(2026, 4, 14, 12, 34, 56)),
+    )
 
     try:
         result = service.export_operations_csv(date_from=date(2026, 4, 14), date_to=date(2026, 4, 14))
@@ -143,9 +145,9 @@ def test_local_usb_operations_export_service_writes_csv_file_to_usb_mount(tmp_pa
 
     exported_path = Path(result.file_path)
     assert result.success is True
-    assert result.file_name == "dion-operations-20260414-20260414.csv"
+    assert result.file_name == "operations_14-04-2026_14-04-2026_12-34-56.csv"
     assert result.mount_path == str(usb_mount)
-    assert exported_path == usb_mount / "dion-operations-20260414-20260414.csv"
+    assert exported_path == usb_mount / "operations_14-04-2026_14-04-2026_12-34-56.csv"
     assert exported_path.read_text(encoding="utf-8-sig") == "\n".join(
         (
             "operation_id,started_at,finished_at,operation_type,operation_state,user_code,user_full_name,item_name,quantity,slot_code,result,error_code,error_message",
@@ -171,6 +173,11 @@ def test_local_usb_operations_export_endpoint_returns_success_payload_and_writes
             device_name="sda1",
         ),
     )
+    monkeypatch.setattr(
+        LocalUsbExportService,
+        "_timestamp_now",
+        staticmethod(lambda: datetime(2026, 4, 14, 12, 34, 56)),
+    )
     app = create_app(_settings(tmp_path, "api_local_usb_operations_export.sqlite3"))
     _seed_operations_export_domain(app)
 
@@ -180,12 +187,12 @@ def test_local_usb_operations_export_endpoint_returns_success_payload_and_writes
             json={"date_from": "2026-04-14", "date_to": "2026-04-14"},
         )
 
-    exported_path = usb_mount / "dion-operations-20260414-20260414.csv"
+    exported_path = usb_mount / "operations_14-04-2026_14-04-2026_12-34-56.csv"
     assert response.status_code == 200
     assert response.json() == {
         "success": True,
         "file_path": str(exported_path),
-        "file_name": "dion-operations-20260414-20260414.csv",
+        "file_name": "operations_14-04-2026_14-04-2026_12-34-56.csv",
         "mount_path": str(usb_mount),
     }
     assert exported_path.read_text(encoding="utf-8-sig") == "\n".join(
@@ -220,10 +227,7 @@ def test_local_usb_operations_export_endpoint_blocks_when_usb_is_missing(tmp_pat
     assert response.status_code == 400
     assert response.json() == {
         "error": "validation_error",
-        "detail": (
-            "USB-\u043d\u043e\u0441\u0438\u0442\u0435\u043b\u044c \u043d\u0435 \u043e\u0431\u043d\u0430\u0440\u0443\u0436\u0435\u043d. "
-            "\u042d\u043a\u0441\u043f\u043e\u0440\u0442 \u043d\u0435\u0434\u043e\u0441\u0442\u0443\u043f\u0435\u043d."
-        ),
+        "detail": "USB-\u043d\u043e\u0441\u0438\u0442\u0435\u043b\u044c \u043d\u0435 \u043d\u0430\u0439\u0434\u0435\u043d",
     }
 
 
@@ -249,8 +253,7 @@ def test_local_usb_users_export_service_blocks_when_usb_is_missing(tmp_path: Pat
         session.close()
 
     assert str(exc_info.value) == (
-        "USB-\u043d\u043e\u0441\u0438\u0442\u0435\u043b\u044c \u043d\u0435 \u043e\u0431\u043d\u0430\u0440\u0443\u0436\u0435\u043d. "
-        "\u042d\u043a\u0441\u043f\u043e\u0440\u0442 \u043d\u0435\u0434\u043e\u0441\u0442\u0443\u043f\u0435\u043d."
+        "USB-\u043d\u043e\u0441\u0438\u0442\u0435\u043b\u044c \u043d\u0435 \u043d\u0430\u0439\u0434\u0435\u043d"
     )
 
 
@@ -258,7 +261,11 @@ def test_local_usb_users_export_service_writes_csv_file_to_usb_mount(tmp_path: P
     admin_service, session = _build_admin_users_service(tmp_path, "usb_users_export_service_write.sqlite3")
     usb_mount = tmp_path / "media" / "operator" / "USB_DISK"
     usb_mount.mkdir(parents=True)
-    monkeypatch.setattr("app.application.local_usb_export_service.utc_now", lambda: datetime(2026, 4, 15, 12, 34, 56))
+    monkeypatch.setattr(
+        LocalUsbExportService,
+        "_timestamp_now",
+        staticmethod(lambda: datetime(2026, 4, 15, 12, 34, 56)),
+    )
     service = LocalUsbExportService(
         usb_storage=_StubUsbStorage(
             UsbStorageStatusDTO(
@@ -280,9 +287,9 @@ def test_local_usb_users_export_service_writes_csv_file_to_usb_mount(tmp_path: P
 
     exported_path = Path(result.file_path)
     assert result.success is True
-    assert result.file_name == "dion-users-20260415-123456.csv"
+    assert result.file_name == "users_export_15-04-2026_12-34-56.csv"
     assert result.mount_path == str(usb_mount)
-    assert exported_path == usb_mount / "dion-users-20260415-123456.csv"
+    assert exported_path == usb_mount / "users_export_15-04-2026_12-34-56.csv"
     assert exported_path.read_text(encoding="utf-8-sig") == "\n".join(
         (
             "user_code,full_name,role_code,rfid_uid,dispense_restriction_policy",
@@ -298,7 +305,11 @@ def test_local_usb_users_export_endpoint_returns_success_payload_and_writes_file
 ) -> None:
     usb_mount = tmp_path / "media" / "operator" / "USB_DISK"
     usb_mount.mkdir(parents=True)
-    monkeypatch.setattr("app.application.local_usb_export_service.utc_now", lambda: datetime(2026, 4, 15, 12, 34, 56))
+    monkeypatch.setattr(
+        LocalUsbExportService,
+        "_timestamp_now",
+        staticmethod(lambda: datetime(2026, 4, 15, 12, 34, 56)),
+    )
     monkeypatch.setattr(
         UsbStorageDiscoveryService,
         "get_status",
@@ -316,12 +327,12 @@ def test_local_usb_users_export_endpoint_returns_success_payload_and_writes_file
     with TestClient(app) as client:
         response = client.post("/local/usb/export/users", json={})
 
-    exported_path = usb_mount / "dion-users-20260415-123456.csv"
+    exported_path = usb_mount / "users_export_15-04-2026_12-34-56.csv"
     assert response.status_code == 200
     assert response.json() == {
         "success": True,
         "file_path": str(exported_path),
-        "file_name": "dion-users-20260415-123456.csv",
+        "file_name": "users_export_15-04-2026_12-34-56.csv",
         "mount_path": str(usb_mount),
     }
     assert exported_path.read_text(encoding="utf-8-sig") == "\n".join(
@@ -329,6 +340,97 @@ def test_local_usb_users_export_endpoint_returns_success_payload_and_writes_file
             "user_code,full_name,role_code,rfid_uid,dispense_restriction_policy",
             "user-1,User One,user,000FE2767C0045,unlimited",
             "operator-1,Operator One,operator,,once_per_day",
+            "",
+        )
+    )
+
+
+def test_local_usb_balances_export_service_writes_csv_file_to_usb_mount(tmp_path: Path, monkeypatch) -> None:
+    admin_service, session = _build_admin_users_service(tmp_path, "usb_balances_export_service_write.sqlite3")
+    _seed_balances_export_domain_for_session(session)
+    usb_mount = tmp_path / "media" / "operator" / "USB_DISK"
+    usb_mount.mkdir(parents=True)
+    monkeypatch.setattr(
+        LocalUsbExportService,
+        "_timestamp_now",
+        staticmethod(lambda: datetime(2026, 4, 16, 8, 9, 10)),
+    )
+    service = LocalUsbExportService(
+        usb_storage=_StubUsbStorage(
+            UsbStorageStatusDTO(
+                usb_available=True,
+                mount_path=str(usb_mount),
+                readable=True,
+                writable=True,
+                device_name="sda1",
+            )
+        ),
+        admin_operations=AdminOperationService(OperationRepository(session)),
+        admin_users=admin_service,
+    )
+
+    try:
+        result = service.export_balances_csv()
+    finally:
+        session.close()
+
+    exported_path = Path(result.file_path)
+    assert result.success is True
+    assert result.file_name == "balances_export_16-04-2026_08-09-10.csv"
+    assert result.mount_path == str(usb_mount)
+    assert exported_path == usb_mount / "balances_export_16-04-2026_08-09-10.csv"
+    assert exported_path.read_text(encoding="utf-8-sig") == "\n".join(
+        (
+            "Номенклатура,Количество",
+            "Item One,5",
+            "Item Two,2",
+            "",
+        )
+    )
+
+
+def test_local_usb_balances_export_endpoint_returns_success_payload_and_writes_file(
+    tmp_path: Path, monkeypatch
+) -> None:
+    usb_mount = tmp_path / "media" / "operator" / "USB_DISK"
+    usb_mount.mkdir(parents=True)
+    monkeypatch.setattr(
+        LocalUsbExportService,
+        "_timestamp_now",
+        staticmethod(lambda: datetime(2026, 4, 16, 8, 9, 10)),
+    )
+    monkeypatch.setattr(
+        UsbStorageDiscoveryService,
+        "get_status",
+        lambda self: UsbStorageStatusDTO(
+            usb_available=True,
+            mount_path=str(usb_mount),
+            readable=True,
+            writable=True,
+            device_name="sda1",
+        ),
+    )
+    app = create_app(_settings(tmp_path, "api_local_usb_balances_export.sqlite3"))
+    _seed_users_export_domain(app)
+    with app.state.session_factory() as session:
+        _seed_balances_export_domain_for_session(session)
+
+    with TestClient(app) as client:
+        response = client.post("/local/usb/export/balances", json={})
+
+    exported_path = usb_mount / "balances_export_16-04-2026_08-09-10.csv"
+    assert response.status_code == 200
+    assert response.json() == {
+        "success": True,
+        "file_path": str(exported_path),
+        "file_name": "balances_export_16-04-2026_08-09-10.csv",
+        "mount_path": str(usb_mount),
+    }
+    assert exported_path.read_text(encoding="utf-8-sig") == "\n".join(
+        (
+            "Номенклатура,Количество",
+            "Item One,5",
+            "Item Two,2",
             "",
         )
     )
@@ -355,7 +457,7 @@ def test_local_usb_users_import_service_blocks_when_usb_is_missing(tmp_path: Pat
     finally:
         session.close()
 
-    assert str(exc_info.value) == "USB-носитель не обнаружен. Импорт пользователей недоступен."
+    assert str(exc_info.value) == "USB-носитель не найден"
 
 
 def test_local_usb_users_import_service_blocks_when_users_csv_is_missing(tmp_path: Path) -> None:
@@ -382,14 +484,14 @@ def test_local_usb_users_import_service_blocks_when_users_csv_is_missing(tmp_pat
     finally:
         session.close()
 
-    assert str(exc_info.value) == "На USB-носителе не найден файл users.csv в корне накопителя."
+    assert str(exc_info.value) == "Файл users_import.csv не найден"
 
 
 def test_local_usb_users_import_service_reads_fixed_users_csv_and_returns_summary(tmp_path: Path) -> None:
     admin_service, session = _build_admin_users_service(tmp_path, "usb_users_import_service_success.sqlite3")
     usb_mount = tmp_path / "media" / "operator" / "USB_DISK"
     usb_mount.mkdir(parents=True)
-    import_file = usb_mount / "users.csv"
+    import_file = usb_mount / "users_import.csv"
     import_file.write_text(
         "\n".join(
             (
@@ -421,17 +523,17 @@ def test_local_usb_users_import_service_reads_fixed_users_csv_and_returns_summar
         session.close()
 
     assert result.success is True
-    assert result.file_name == "users.csv"
+    assert result.file_name == "users_import.csv"
     assert result.file_path == str(import_file)
     assert result.mount_path == str(usb_mount)
     assert result.created_count == 1
-    assert result.updated_count == 1
+    assert result.updated_count == 0
     assert result.total_rows == 2
     assert [user.user_code for user in users] == ["user-1", "operator-1", "user-2"]
     imported_users = {user.user_code: user for user in users}
-    assert imported_users["user-1"].full_name == "Updated User"
-    assert imported_users["user-1"].rfid_uid == "1122AABB"
-    assert imported_users["user-1"].dispense_restriction_policy is DispenseRestrictionPolicy.ONCE_PER_DAY
+    assert imported_users["user-1"].full_name == "User One"
+    assert imported_users["user-1"].rfid_uid == "000FE2767C0045"
+    assert imported_users["user-1"].dispense_restriction_policy is DispenseRestrictionPolicy.UNLIMITED
     assert imported_users["user-2"].full_name == "User Two"
     assert imported_users["user-2"].dispense_restriction_policy is DispenseRestrictionPolicy.UNLIMITED
 
@@ -439,7 +541,7 @@ def test_local_usb_users_import_service_reads_fixed_users_csv_and_returns_summar
 def test_local_usb_users_import_endpoint_returns_expected_payload(tmp_path: Path, monkeypatch) -> None:
     usb_mount = tmp_path / "media" / "operator" / "USB_DISK"
     usb_mount.mkdir(parents=True)
-    import_file = usb_mount / "users.csv"
+    import_file = usb_mount / "users_import.csv"
     import_file.write_text(
         "\n".join(
             (
@@ -472,10 +574,10 @@ def test_local_usb_users_import_endpoint_returns_expected_payload(tmp_path: Path
     assert response.json() == {
         "success": True,
         "file_path": str(import_file),
-        "file_name": "users.csv",
+        "file_name": "users_import.csv",
         "mount_path": str(usb_mount),
         "created_count": 1,
-        "updated_count": 1,
+        "updated_count": 0,
         "total_rows": 2,
     }
     assert list_response.status_code == 200
@@ -483,12 +585,12 @@ def test_local_usb_users_import_endpoint_returns_expected_payload(tmp_path: Path
         {
             "user_id": 1,
             "user_code": "user-1",
-            "full_name": "Updated User",
+            "full_name": "User One",
             "status": "active",
             "is_active": True,
             "role_code": "user",
-            "rfid_uid": "1122AABB",
-            "dispense_restriction_policy": "once_per_day",
+            "rfid_uid": "000FE2767C0045",
+            "dispense_restriction_policy": "unlimited",
         },
         {
             "user_id": 2,
@@ -538,11 +640,11 @@ def test_local_usb_users_import_endpoint_returns_clear_error_when_users_csv_is_m
     assert response.status_code == 400
     assert response.json() == {
         "error": "validation_error",
-        "detail": "На USB-носителе не найден файл users.csv в корне накопителя.",
+        "detail": "Файл users_import.csv не найден",
     }
 
 
-def test_ui_mvp_page_and_asset_include_usb_status_wiring(tmp_path: Path) -> None:
+def test_ui_mvp_page_and_asset_do_not_include_legacy_usb_status_wiring(tmp_path: Path) -> None:
     app = create_app(_settings(tmp_path, "api_ui_usb_status.sqlite3"))
 
     with TestClient(app) as client:
@@ -550,32 +652,32 @@ def test_ui_mvp_page_and_asset_include_usb_status_wiring(tmp_path: Path) -> None
         asset_response = client.get("/ui-assets/mvp.js")
 
     assert page_response.status_code == 200
-    assert '"usbStatusEndpoint": "/local/usb/status"' in page_response.text
-    assert '"localUsbOperationsExportEndpoint": "/local/usb/export/operations"' in page_response.text
-    assert '"localUsbUsersExportEndpoint": "/local/usb/export/users"' in page_response.text
-    assert '"localUsbUsersImportEndpoint": "/local/usb/import/users"' in page_response.text
-    assert 'id="usb-status-title"' in page_response.text
-    assert 'id="usb-status-detail"' in page_response.text
-    assert 'id="usb-export-date-from"' in page_response.text
-    assert 'id="usb-export-date-to"' in page_response.text
-    assert 'id="usb-export-operations-button"' in page_response.text
-    assert 'id="usb-export-users-button"' in page_response.text
-    assert 'id="usb-import-users-button"' in page_response.text
-    assert 'id="usb-users-import-result-detail"' in page_response.text
-    assert 'id="usb-users-export-result-detail"' in page_response.text
-    assert 'id="usb-export-result-detail"' in page_response.text
+    assert '"usbStatusEndpoint"' not in page_response.text
+    assert '"localUsbOperationsExportEndpoint"' not in page_response.text
+    assert '"localUsbUsersExportEndpoint"' not in page_response.text
+    assert '"localUsbUsersImportEndpoint"' not in page_response.text
+    assert 'id="usb-status-title"' not in page_response.text
+    assert 'id="usb-status-detail"' not in page_response.text
+    assert 'id="usb-export-date-from"' not in page_response.text
+    assert 'id="usb-export-date-to"' not in page_response.text
+    assert 'id="usb-export-operations-button"' not in page_response.text
+    assert 'id="usb-export-users-button"' not in page_response.text
+    assert 'id="usb-import-users-button"' not in page_response.text
+    assert 'id="usb-users-import-result-detail"' not in page_response.text
+    assert 'id="usb-users-export-result-detail"' not in page_response.text
+    assert 'id="usb-export-result-detail"' not in page_response.text
 
     assert asset_response.status_code == 200
-    assert "refreshUsbStatus" in asset_response.text
-    assert "renderUsbStatus" in asset_response.text
-    assert "usbStatusEndpoint" in asset_response.text
-    assert "localUsbOperationsExportEndpoint" in asset_response.text
-    assert "localUsbUsersExportEndpoint" in asset_response.text
-    assert "localUsbUsersImportEndpoint" in asset_response.text
-    assert "exportOperationsToUsb" in asset_response.text
-    assert "exportUsersToUsb" in asset_response.text
-    assert "importUsersFromUsb" in asset_response.text
-    assert "initializeUsbExportForm" in asset_response.text
+    assert "refreshUsbStatus" not in asset_response.text
+    assert "renderUsbStatus" not in asset_response.text
+    assert "usbStatusEndpoint" not in asset_response.text
+    assert "localUsbOperationsExportEndpoint" not in asset_response.text
+    assert "localUsbUsersExportEndpoint" not in asset_response.text
+    assert "localUsbUsersImportEndpoint" not in asset_response.text
+    assert "exportOperationsToUsb" not in asset_response.text
+    assert "exportUsersToUsb" not in asset_response.text
+    assert "importUsersFromUsb" not in asset_response.text
+    assert "initializeUsbExportForm" not in asset_response.text
 
 
 def _settings(tmp_path: Path, sqlite_filename: str) -> AppSettings:
@@ -717,6 +819,66 @@ def _seed_users_export_domain_for_session(session: Session) -> None:
             is_active=True,
             issued_at=datetime(2026, 4, 14, 9, 0, 0),
             revoked_at=None,
+        )
+    )
+    session.commit()
+
+
+def _seed_balances_export_domain_for_session(session: Session) -> None:
+    item_one = Item(
+        item_group_id=None,
+        sku="balance-item-1",
+        name="Item One",
+        description=None,
+        unit="pcs",
+        return_allowed=True,
+        min_level=0,
+        status=ItemStatus.ACTIVE,
+    )
+    item_two = Item(
+        item_group_id=None,
+        sku="balance-item-2",
+        name="Item Two",
+        description=None,
+        unit="pcs",
+        return_allowed=True,
+        min_level=0,
+        status=ItemStatus.ACTIVE,
+    )
+    slot_one = Slot(
+        code="balance-slot-1",
+        slot_type=SlotType.UNIVERSAL,
+        drum_position=2,
+        board_address=1,
+        lock_number=2,
+        capacity=10,
+        status=SlotStatus.ACTIVE,
+    )
+    slot_two = Slot(
+        code="balance-slot-2",
+        slot_type=SlotType.UNIVERSAL,
+        drum_position=3,
+        board_address=1,
+        lock_number=3,
+        capacity=10,
+        status=SlotStatus.ACTIVE,
+    )
+    slot_three = Slot(
+        code="balance-slot-3",
+        slot_type=SlotType.UNIVERSAL,
+        drum_position=4,
+        board_address=1,
+        lock_number=4,
+        capacity=10,
+        status=SlotStatus.ACTIVE,
+    )
+    session.add_all((item_one, item_two, slot_one, slot_two, slot_three))
+    session.flush()
+    session.add_all(
+        (
+            InventoryBalance(slot_id=slot_one.id, item_id=item_one.id, quantity=3),
+            InventoryBalance(slot_id=slot_two.id, item_id=item_one.id, quantity=2),
+            InventoryBalance(slot_id=slot_three.id, item_id=item_two.id, quantity=2),
         )
     )
     session.commit()

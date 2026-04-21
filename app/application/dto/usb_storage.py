@@ -29,6 +29,14 @@ class UsbUsersExportResultDTO:
 
 
 @dataclass(frozen=True, slots=True)
+class UsbBalancesExportResultDTO:
+    success: bool
+    file_path: str
+    file_name: str
+    mount_path: str
+
+
+@dataclass(frozen=True, slots=True)
 class UsbUsersImportResultDTO:
     success: bool
     file_path: str
@@ -37,3 +45,11 @@ class UsbUsersImportResultDTO:
     created_count: int
     updated_count: int
     total_rows: int
+
+
+@dataclass(frozen=True, slots=True)
+class UsbUsersImportCheckResultDTO:
+    success: bool
+    file_path: str
+    file_name: str
+    mount_path: str

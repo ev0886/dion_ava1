@@ -112,7 +112,10 @@ def build_services(
         recovery_service=recovery_service,
     )
     admin_users_service = AdminUserService(repositories.users)
-    admin_operations_service = AdminOperationService(repositories.operations)
+    admin_operations_service = AdminOperationService(
+        repositories.operations,
+        repositories.event_logs,
+    )
     usb_storage_service = UsbStorageDiscoveryService()
     return ServiceBundle(
         admin_users=admin_users_service,
@@ -151,6 +154,9 @@ def build_services(
             usb_storage=usb_storage_service,
             admin_operations=admin_operations_service,
             admin_users=admin_users_service,
+            inventory_repository=repositories.inventory,
+            event_log_repository=repositories.event_logs,
+            audit_log_repository=repositories.audit_logs,
         ),
     )
 

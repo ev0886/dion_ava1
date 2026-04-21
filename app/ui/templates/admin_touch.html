@@ -304,15 +304,15 @@
       >
         <div class="admin-touch-error-mark" aria-hidden="true">!</div>
         <header class="admin-touch-flow-header">
-          <p class="admin-touch-kicker">Импорт</p>
-          <h2 class="admin-touch-flow-title" id="import-users-error-title">Файл не найден</h2>
+          <p class="admin-touch-kicker" data-role="error-kicker">Импорт</p>
+          <h2 class="admin-touch-flow-title" id="import-users-error-title" data-role="error-title">Файл не найден</h2>
         </header>
-        <p class="admin-touch-flow-text">
+        <p class="admin-touch-flow-text" data-role="error-message">
           Файл пользователей на USB носителе не найден.
         </p>
         <div class="admin-touch-flow-actions">
-          <button class="admin-touch-secondary-button" type="button" data-action="retry-import-users">Назад</button>
-          <button class="admin-touch-primary-button" type="button" data-action="back-to-landing">На главный экран</button>
+          <button class="admin-touch-secondary-button" type="button" data-action="retry-import-users" data-role="error-retry">Назад</button>
+          <button class="admin-touch-primary-button" type="button" data-action="back-to-landing" data-role="error-exit">На главный экран</button>
         </div>
       </section>
 

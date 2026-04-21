@@ -106,6 +106,11 @@ def render_admin_touch_page(settings: AppSettings) -> HTMLResponse:
         "uiIdleTimeoutMs": 30000,
         "presenceCountdownSeconds": 30,
         "startScreenRoute": "/ui/user",
+        "exportBalancesEndpoint": "/local/usb/export/balances",
+        "exportOperationsEndpoint": "/local/usb/export/operations",
+        "exportUsersEndpoint": "/local/usb/export/users",
+        "checkImportUsersEndpoint": "/local/usb/import/users/check",
+        "importUsersEndpoint": "/local/usb/import/users",
     }
     return HTMLResponse(
         template

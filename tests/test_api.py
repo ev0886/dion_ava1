@@ -8,6 +8,8 @@ from fastapi.testclient import TestClient
 from sqlalchemy import text
 
 from app.api import create_app
+from app.application.local_usb_export_service import LocalUsbExportService
+from app.application.usb_storage_service import UsbStorageDiscoveryService
 from app.config import AppSettings, HardwareProvider
 from app.domain.enums import HardwareEndpointType
 from app.hardware import HardwareFacade, LockState, MockDrumAdapter, MockLockAdapter, MockRfidAdapter
@@ -250,11 +252,15 @@ def test_ui_admin_touch_page_serves_separate_touch_shell(tmp_path: Path) -> None
     assert '"availableActions"' in response.text
     assert '"operationsDefaultDateFrom": "01.04.2026"' in response.text
     assert '"operationsDefaultDateTo": "21.04.2026"' in response.text
-    assert '"progressAdvanceDelayMs": 1800' in response.text
     assert '"successReturnDelayMs": 2400' in response.text
     assert '"uiIdleTimeoutMs": 30000' in response.text
     assert '"presenceCountdownSeconds": 30' in response.text
     assert '"startScreenRoute": "/ui/user"' in response.text
+    assert '"/local/usb/export/balances"' in response.text
+    assert '"/local/usb/export/operations"' in response.text
+    assert '"/local/usb/export/users"' in response.text
+    assert '"/local/usb/import/users/check"' in response.text
+    assert '"/local/usb/import/users"' in response.text
     assert "latest system actions" not in response.text
     assert "operations requiring attention" not in response.text
     assert '"/admin/system/status"' not in response.text
@@ -289,17 +295,157 @@ def test_ui_admin_touch_javascript_asset_is_served(tmp_path: Path) -> None:
     assert 'setView("export-balances-confirm")' in response.text
     assert 'setView("export-operations-period")' in response.text
     assert 'setView("export-operations-confirm")' in response.text
-    assert 'startTimedFlow("export-balances-progress", "export-balances-success")' in response.text
-    assert 'startTimedFlow("export-operations-progress", "export-operations-success")' in response.text
     assert 'setView("export-users-confirm")' in response.text
-    assert 'startTimedFlow("export-users-progress", "export-users-success")' in response.text
+    assert "postJson(EXPORT_BALANCES_ENDPOINT" in response.text
+    assert "postJson(EXPORT_OPERATIONS_ENDPOINT" in response.text
+    assert "postJson(EXPORT_USERS_ENDPOINT" in response.text
+    assert "postJson(CHECK_IMPORT_USERS_ENDPOINT" in response.text
+    assert "postJson(IMPORT_USERS_ENDPOINT" in response.text
+    assert "showErrorScreen" in response.text
     assert "showPresenceOverlay" in response.text
     assert "canUseSharedInactivityTimeout" in response.text
     assert "window.location.assign(START_SCREEN_ROUTE)" in response.text
     assert 'action === "exit-admin-touch"' in response.text
     assert "operationsDefaultDateFrom" in response.text
-    assert "progressAdvanceDelayMs" in response.text
     assert "successReturnDelayMs" in response.text
+
+
+def test_admin_touch_balances_export_endpoint_writes_aggregated_csv_to_usb(tmp_path: Path, monkeypatch) -> None:
+    usb_mount = tmp_path / "media" / "pi" / "USB1"
+    usb_mount.mkdir(parents=True)
+    monkeypatch.setattr(
+        LocalUsbExportService,
+        "_timestamp_now",
+        staticmethod(lambda: datetime(2026, 4, 21, 10, 11, 12)),
+    )
+    monkeypatch.setattr(
+        UsbStorageDiscoveryService,
+        "get_status",
+        lambda self: type("UsbStatus", (), {
+            "usb_available": True,
+            "mount_path": str(usb_mount),
+            "readable": True,
+            "writable": True,
+            "device_name": "sda1",
+        })(),
+    )
+    app = create_app(_settings(tmp_path, "api_admin_touch_balances.sqlite3"))
+    _seed_base_domain(app)
+    _seed_additional_slot_for_same_item(app)
+
+    with TestClient(app) as client:
+        response = client.post("/local/usb/export/balances", json={})
+
+    assert response.status_code == 200
+    exported_path = usb_mount / "balances_export_21-04-2026_10-11-12.csv"
+    assert response.json() == {
+        "success": True,
+        "file_path": str(exported_path),
+        "file_name": "balances_export_21-04-2026_10-11-12.csv",
+        "mount_path": str(usb_mount),
+    }
+    assert exported_path.read_text(encoding="utf-8-sig") == "\n".join(
+        (
+            "Номенклатура,Количество",
+            "Item One,8",
+            "",
+        )
+    )
+
+
+def test_admin_touch_import_users_check_returns_missing_fixed_filename_message(tmp_path: Path, monkeypatch) -> None:
+    usb_mount = tmp_path / "media" / "pi" / "USB1"
+    usb_mount.mkdir(parents=True)
+    monkeypatch.setattr(
+        UsbStorageDiscoveryService,
+        "get_status",
+        lambda self: type("UsbStatus", (), {
+            "usb_available": True,
+            "mount_path": str(usb_mount),
+            "readable": True,
+            "writable": True,
+            "device_name": "sda1",
+        })(),
+    )
+    app = create_app(_settings(tmp_path, "api_admin_touch_import_check.sqlite3"))
+    _seed_base_domain(app)
+
+    with TestClient(app) as client:
+        response = client.post("/local/usb/import/users/check", json={})
+
+    assert response.status_code == 400
+    assert response.json() == {
+        "error": "validation_error",
+        "detail": "Файл users_import.csv не найден",
+    }
+
+
+def test_admin_touch_import_users_skips_existing_user_codes_and_preserves_existing_user_data(
+    tmp_path: Path, monkeypatch
+) -> None:
+    usb_mount = tmp_path / "media" / "pi" / "USB1"
+    usb_mount.mkdir(parents=True)
+    (usb_mount / "users_import.csv").write_text(
+        "\n".join(
+            (
+                "user_code,full_name,role_code,rfid_uid,dispense_restriction_policy",
+                "user-1,Updated User,user,11 22 aa bb,once_per_day",
+                "user-2,User Two,user,,unlimited",
+            )
+        ),
+        encoding="utf-8-sig",
+    )
+    monkeypatch.setattr(
+        UsbStorageDiscoveryService,
+        "get_status",
+        lambda self: type("UsbStatus", (), {
+            "usb_available": True,
+            "mount_path": str(usb_mount),
+            "readable": True,
+            "writable": True,
+            "device_name": "sda1",
+        })(),
+    )
+    app = create_app(_settings(tmp_path, "api_admin_touch_import_users.sqlite3"))
+    _seed_base_domain(app)
+
+    with TestClient(app) as client:
+        response = client.post("/local/usb/import/users", json={})
+        users_response = client.get("/admin/users")
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "success": True,
+        "file_path": str(usb_mount / "users_import.csv"),
+        "file_name": "users_import.csv",
+        "mount_path": str(usb_mount),
+        "created_count": 1,
+        "updated_count": 0,
+        "total_rows": 2,
+    }
+    assert users_response.status_code == 200
+    assert users_response.json()["users"] == [
+        {
+            "user_id": 1,
+            "user_code": "user-1",
+            "full_name": "User One",
+            "status": "active",
+            "is_active": True,
+            "role_code": "user",
+            "rfid_uid": "000FE2767C0045",
+            "dispense_restriction_policy": "unlimited",
+        },
+        {
+            "user_id": 2,
+            "user_code": "user-2",
+            "full_name": "User Two",
+            "status": "active",
+            "is_active": True,
+            "role_code": "user",
+            "rfid_uid": None,
+            "dispense_restriction_policy": "unlimited",
+        },
+    ]
 
 
 def test_ui_user_static_assets_no_longer_include_usb_admin_handlers(tmp_path: Path) -> None:

@@ -103,6 +103,26 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
             )
         )
 
+    @app.post("/local/usb/export/balances")
+    def local_usb_export_balances(
+        container: ApplicationContainer = Depends(get_application_container),
+    ) -> JSONResponse:
+        return JSONResponse(
+            to_api_payload(
+                container.services.local_usb_exports.export_balances_csv()
+            )
+        )
+
+    @app.post("/local/usb/import/users/check")
+    def local_usb_import_users_check(
+        container: ApplicationContainer = Depends(get_application_container),
+    ) -> JSONResponse:
+        return JSONResponse(
+            to_api_payload(
+                container.services.local_usb_exports.check_users_import_csv()
+            )
+        )
+
     @app.post("/local/usb/import/users")
     def local_usb_import_users(
         container: ApplicationContainer = Depends(get_application_container),

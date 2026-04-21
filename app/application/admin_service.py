@@ -17,6 +17,7 @@ from app.config import AppSettings
 from app.application.exceptions import NotFoundError, ValidationError
 from app.domain.enums import DispenseRestrictionPolicy, RoleCode, UserStatus
 from app.persistence.models import User
+from app.persistence.repositories.logs import EventLogRepository
 from app.persistence.repositories.operations import OperationRepository
 from app.persistence.repositories.users import UserRepository
 
@@ -88,6 +89,12 @@ class AdminUserService:
         return self.user_repository.get_admin_record(user.id)
 
     def import_users_csv(self, csv_text: str) -> AdminUserImportResultDTO:
+        return self._import_users_csv(csv_text, update_existing=True)
+
+    def import_new_users_csv(self, csv_text: str) -> AdminUserImportResultDTO:
+        return self._import_users_csv(csv_text, update_existing=False)
+
+    def _import_users_csv(self, csv_text: str, *, update_existing: bool) -> AdminUserImportResultDTO:
         rows = self._parse_csv_rows(csv_text)
         created_count = 0
         updated_count = 0
@@ -112,6 +119,8 @@ class AdminUserService:
                         self.user_repository.session.add(user)
                         self.user_repository.session.flush()
                         created_count += 1
+                    elif not update_existing:
+                        continue
                     else:
                         user.role_id = role.id
                         user.full_name = row.full_name
@@ -281,8 +290,13 @@ class AdminOperationService:
         "error_message",
     )
 
-    def __init__(self, operation_repository: OperationRepository) -> None:
+    def __init__(
+        self,
+        operation_repository: OperationRepository,
+        event_log_repository: EventLogRepository | None = None,
+    ) -> None:
         self.operation_repository = operation_repository
+        self.event_log_repository = event_log_repository
 
     def list_recent_operations(self, *, limit: int = 20) -> list[AdminRecentOperationDTO]:
         return self.operation_repository.list_recent_for_admin(limit=limit)
@@ -291,16 +305,60 @@ class AdminOperationService:
         return self.operation_repository.list_problem_for_admin(limit=limit)
 
     def export_operations_csv(self, *, date_from: date, date_to: date) -> str:
+        self._validate_export_range(date_from=date_from, date_to=date_to)
+        rows = [
+            self._csv_row_values(row)
+            for row in self.operation_repository.list_for_admin_export(date_from=date_from, date_to=date_to)
+        ]
+        return self._render_csv(rows)
+
+    def export_operations_csv_for_admin_touch(self, *, date_from: date, date_to: date) -> str:
+        self._validate_export_range(date_from=date_from, date_to=date_to)
+        rows = [
+            self._csv_row_values(row)
+            for row in self.operation_repository.list_for_admin_export(date_from=date_from, date_to=date_to)
+        ]
+        rows.extend(self._data_exchange_csv_rows(date_from=date_from, date_to=date_to))
+        rows.sort(key=self._csv_sort_key)
+        return self._render_csv(rows)
+
+    @staticmethod
+    def _validate_export_range(*, date_from: date, date_to: date) -> None:
         if date_from > date_to:
             raise ValidationError("date_from must be less than or equal to date_to")
 
-        rows = self.operation_repository.list_for_admin_export(date_from=date_from, date_to=date_to)
+    def _render_csv(self, rows: list[tuple[object, ...]]) -> str:
         output = StringIO()
         writer = csv.writer(output, lineterminator="\n")
         writer.writerow(self._CSV_COLUMNS)
         for row in rows:
-            writer.writerow(self._csv_row_values(row))
+            writer.writerow(row)
         return output.getvalue()
+
+    def _data_exchange_csv_rows(self, *, date_from: date, date_to: date) -> list[tuple[object, ...]]:
+        if self.event_log_repository is None:
+            return []
+
+        rows: list[tuple[object, ...]] = []
+        for event in self.event_log_repository.list_data_exchange_events(date_from=date_from, date_to=date_to):
+            rows.append(
+                (
+                    "",
+                    event.created_at.isoformat(),
+                    event.created_at.isoformat(),
+                    "data_transfer",
+                    "completed" if event.result == "success" else "failed",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    event.result or "",
+                    "",
+                    event.message or event.comment or "",
+                )
+            )
+        return rows
 
     @staticmethod
     def _csv_row_values(row: AdminOperationExportRowDTO) -> tuple[object, ...]:
@@ -319,6 +377,10 @@ class AdminOperationService:
             row.error_code or "",
             row.error_message or "",
         )
+
+    @staticmethod
+    def _csv_sort_key(row: tuple[object, ...]) -> tuple[str, str]:
+        return (str(row[1] or row[2] or ""), str(row[0] or ""))
 
 
 class AdminSystemStatusService:
