@@ -217,10 +217,17 @@ def test_ui_admin_touch_page_serves_separate_touch_shell(tmp_path: Path) -> None
     assert 'data-view="export-balances-confirm"' in response.text
     assert 'data-view="export-balances-progress"' in response.text
     assert 'data-view="export-balances-success"' in response.text
+    assert 'data-view="export-operations-period"' in response.text
+    assert 'data-view="export-operations-confirm"' in response.text
+    assert 'data-view="export-operations-progress"' in response.text
+    assert 'data-view="export-operations-success"' in response.text
     assert 'data-view="export-users-confirm"' in response.text
     assert 'data-view="export-users-progress"' in response.text
     assert 'data-view="export-users-success"' in response.text
     assert 'data-action="export-balances"' in response.text
+    assert 'data-action="export-operations"' in response.text
+    assert 'data-action="continue-export-operations"' in response.text
+    assert 'data-action="start-export-operations"' in response.text
     assert 'data-action="start-export-balances"' in response.text
     assert 'data-action="export-users"' in response.text
     assert 'data-action="start-export-users"' in response.text
@@ -230,10 +237,12 @@ def test_ui_admin_touch_page_serves_separate_touch_shell(tmp_path: Path) -> None
     assert "Экспорт операций" in response.text
     assert "Экспорт пользователей" in response.text
     assert "Импорт пользователей" in response.text
-    assert '"/ui-assets/admin-touch.css"' in response.text
-    assert '"/ui-assets/admin-touch.js"' in response.text
+    assert '"/ui-assets/admin-touch.css?v=' in response.text
+    assert '"/ui-assets/admin-touch.js?v=' in response.text
     assert '"uiRole": "admin-touch"' in response.text
     assert '"availableActions"' in response.text
+    assert '"operationsDefaultDateFrom": "01.04.2026"' in response.text
+    assert '"operationsDefaultDateTo": "21.04.2026"' in response.text
     assert '"progressAdvanceDelayMs": 1800' in response.text
     assert '"successReturnDelayMs": 2400' in response.text
     assert "latest system actions" not in response.text
@@ -268,11 +277,13 @@ def test_ui_admin_touch_javascript_asset_is_served(tmp_path: Path) -> None:
 
     assert response.status_code == 200
     assert 'setView("export-balances-confirm")' in response.text
-    assert 'setView("export-balances-progress")' in response.text
-    assert 'setView("export-balances-success")' in response.text
+    assert 'setView("export-operations-period")' in response.text
+    assert 'setView("export-operations-confirm")' in response.text
+    assert 'startTimedFlow("export-balances-progress", "export-balances-success")' in response.text
+    assert 'startTimedFlow("export-operations-progress", "export-operations-success")' in response.text
     assert 'setView("export-users-confirm")' in response.text
-    assert 'setView("export-users-progress")' in response.text
-    assert 'setView("export-users-success")' in response.text
+    assert 'startTimedFlow("export-users-progress", "export-users-success")' in response.text
+    assert "operationsDefaultDateFrom" in response.text
     assert "progressAdvanceDelayMs" in response.text
     assert "successReturnDelayMs" in response.text
 

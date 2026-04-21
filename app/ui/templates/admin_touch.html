@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>DION ABA1 Admin Touch UI</title>
-  <link rel="stylesheet" href="/ui-assets/admin-touch.css">
+  <link rel="stylesheet" href="/ui-assets/admin-touch.css?v=__DION_ADMIN_TOUCH_ASSET_VERSION__">
 </head>
 <body>
   <main class="admin-touch-shell">
@@ -27,7 +27,13 @@
           >
             Экспорт остатков
           </button>
-          <button class="admin-touch-action admin-touch-action-operations" type="button">Экспорт операций</button>
+          <button
+            class="admin-touch-action admin-touch-action-operations"
+            type="button"
+            data-action="export-operations"
+          >
+            Экспорт операций
+          </button>
           <button
             class="admin-touch-action admin-touch-action-users"
             type="button"
@@ -37,6 +43,114 @@
           </button>
           <button class="admin-touch-action admin-touch-action-import" type="button">Импорт пользователей</button>
         </section>
+      </section>
+
+      <section
+        class="admin-touch-view admin-touch-flow-card"
+        data-view="export-operations-period"
+        hidden
+        aria-labelledby="export-operations-period-title"
+      >
+        <header class="admin-touch-flow-header">
+          <p class="admin-touch-kicker">Экспорт</p>
+          <h2 class="admin-touch-flow-title" id="export-operations-period-title">Экспорт операций</h2>
+        </header>
+
+        <div class="admin-touch-period-fields">
+          <label class="admin-touch-field">
+            <span class="admin-touch-field-label">Дата с</span>
+            <input
+              class="admin-touch-field-input"
+              type="text"
+              inputmode="numeric"
+              autocomplete="off"
+              data-period-field="from"
+              placeholder="01.04.2026"
+            >
+          </label>
+
+          <label class="admin-touch-field">
+            <span class="admin-touch-field-label">Дата по</span>
+            <input
+              class="admin-touch-field-input"
+              type="text"
+              inputmode="numeric"
+              autocomplete="off"
+              data-period-field="to"
+              placeholder="21.04.2026"
+            >
+          </label>
+        </div>
+
+        <div class="admin-touch-flow-actions">
+          <button class="admin-touch-secondary-button" type="button" data-action="back-to-landing">Назад</button>
+          <button
+            class="admin-touch-primary-button"
+            type="button"
+            data-action="continue-export-operations"
+            data-role="operations-next"
+            disabled
+          >
+            Далее
+          </button>
+        </div>
+      </section>
+
+      <section
+        class="admin-touch-view admin-touch-flow-card"
+        data-view="export-operations-confirm"
+        hidden
+        aria-labelledby="export-operations-confirm-title"
+      >
+        <header class="admin-touch-flow-header">
+          <p class="admin-touch-kicker">Экспорт</p>
+          <h2 class="admin-touch-flow-title" id="export-operations-confirm-title">Экспорт операций</h2>
+        </header>
+
+        <p class="admin-touch-flow-text">
+          Операции за выбранный период будут экспортированы на USB носитель.
+        </p>
+
+        <p class="admin-touch-flow-summary" data-role="operations-period-summary"></p>
+
+        <div class="admin-touch-flow-actions">
+          <button class="admin-touch-secondary-button" type="button" data-action="back-to-landing">Отмена</button>
+          <button class="admin-touch-primary-button" type="button" data-action="start-export-operations">Экспортировать</button>
+        </div>
+      </section>
+
+      <section
+        class="admin-touch-view admin-touch-flow-card admin-touch-flow-status"
+        data-view="export-operations-progress"
+        hidden
+        aria-labelledby="export-operations-progress-title"
+      >
+        <div class="admin-touch-spinner" aria-hidden="true"></div>
+        <header class="admin-touch-flow-header">
+          <p class="admin-touch-kicker">Подождите</p>
+          <h2 class="admin-touch-flow-title" id="export-operations-progress-title">Подготовка экспорта операций</h2>
+        </header>
+        <p class="admin-touch-flow-text">
+          Идёт подготовка операций за выбранный период для записи на USB носитель.
+        </p>
+      </section>
+
+      <section
+        class="admin-touch-view admin-touch-flow-card admin-touch-flow-status"
+        data-view="export-operations-success"
+        hidden
+        aria-labelledby="export-operations-success-title"
+      >
+        <div class="admin-touch-success-mark" aria-hidden="true">✓</div>
+        <header class="admin-touch-flow-header">
+          <p class="admin-touch-kicker">Готово</p>
+          <h2 class="admin-touch-flow-title" id="export-operations-success-title">Успешно!</h2>
+        </header>
+        <p class="admin-touch-flow-text">
+          Операции за выбранный период экспортированы на USB носитель.
+        </p>
+        <p class="admin-touch-flow-summary" data-role="operations-period-summary"></p>
+        <p class="admin-touch-flow-note">Возврат на главный экран через несколько секунд.</p>
       </section>
 
       <section
@@ -152,6 +266,6 @@
   <script>
     window.DION_ADMIN_TOUCH_UI_CONFIG = __DION_ADMIN_TOUCH_UI_CONFIG__;
   </script>
-  <script src="/ui-assets/admin-touch.js"></script>
+  <script src="/ui-assets/admin-touch.js?v=__DION_ADMIN_TOUCH_ASSET_VERSION__"></script>
 </body>
 </html>

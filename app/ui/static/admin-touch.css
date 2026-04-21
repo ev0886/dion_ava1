@@ -185,9 +185,61 @@ button {
   line-height: 1.45;
 }
 
+.admin-touch-flow-summary {
+  margin: 0;
+  padding: 16px 18px;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: rgba(18, 86, 69, 0.06);
+  font-size: 1.08rem;
+  line-height: 1.45;
+  font-weight: 700;
+}
+
 .admin-touch-flow-note {
   color: var(--muted);
   font-size: 1rem;
+}
+
+.admin-touch-period-fields {
+  display: grid;
+  gap: 14px;
+}
+
+.admin-touch-field {
+  display: grid;
+  gap: 8px;
+}
+
+.admin-touch-field-label {
+  font-size: 0.95rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.admin-touch-field-input {
+  min-height: 82px;
+  width: 100%;
+  padding: 18px 20px;
+  border: 1px solid var(--line-strong);
+  border-radius: 20px;
+  background: #fff;
+  color: var(--text);
+  font: inherit;
+  font-size: 1.18rem;
+  font-weight: 700;
+}
+
+.admin-touch-field-input::placeholder {
+  color: rgba(25, 49, 38, 0.42);
+}
+
+.admin-touch-primary-button[disabled] {
+  cursor: default;
+  opacity: 0.52;
+  box-shadow: none;
 }
 
 .admin-touch-flow-actions {
@@ -294,6 +346,18 @@ button {
 
   .admin-touch-flow-text {
     font-size: 1.06rem;
+  }
+
+  .admin-touch-flow-summary {
+    padding: 14px 16px;
+    font-size: 1rem;
+  }
+
+  .admin-touch-field-input {
+    min-height: 74px;
+    padding: 16px 18px;
+    font-size: 1.04rem;
+    border-radius: 18px;
   }
 
   .admin-touch-primary-button,
