@@ -48,6 +48,13 @@
           >
             Импорт пользователей
           </button>
+          <button
+            class="admin-touch-action admin-touch-action-exit"
+            type="button"
+            data-action="exit-admin-touch"
+          >
+            Выход
+          </button>
         </section>
       </section>
 
@@ -363,6 +370,25 @@
       </section>
     </section>
   </main>
+
+  <div class="admin-touch-presence-overlay" id="admin-touch-presence-overlay" hidden aria-hidden="true">
+    <div class="admin-touch-presence-overlay-backdrop"></div>
+    <section
+      class="admin-touch-presence-overlay-card"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="admin-touch-presence-overlay-title"
+    >
+      <p class="admin-touch-presence-overlay-kicker">DION ABA1</p>
+      <h2 class="admin-touch-presence-overlay-title" id="admin-touch-presence-overlay-title">Вы еще здесь?</h2>
+      <p class="admin-touch-presence-overlay-message">Возврат на стартовый экран через</p>
+      <strong class="admin-touch-presence-overlay-countdown" id="admin-touch-presence-overlay-countdown">30</strong>
+      <div class="admin-touch-presence-overlay-actions">
+        <button class="admin-touch-primary-button" id="admin-touch-presence-overlay-yes" type="button">Да</button>
+        <button class="admin-touch-secondary-button" id="admin-touch-presence-overlay-no" type="button">Нет</button>
+      </div>
+    </section>
+  </div>
 
   <script>
     window.DION_ADMIN_TOUCH_UI_CONFIG = __DION_ADMIN_TOUCH_UI_CONFIG__;

@@ -231,7 +231,14 @@ def test_ui_admin_touch_page_serves_separate_touch_shell(tmp_path: Path) -> None
     assert 'data-action="start-export-balances"' in response.text
     assert 'data-action="export-users"' in response.text
     assert 'data-action="start-export-users"' in response.text
+    assert 'data-action="exit-admin-touch"' in response.text
     assert 'data-action="back-to-landing"' in response.text
+    assert 'id="admin-touch-presence-overlay"' in response.text
+    assert 'id="admin-touch-presence-overlay-countdown"' in response.text
+    assert 'id="admin-touch-presence-overlay-yes"' in response.text
+    assert 'id="admin-touch-presence-overlay-no"' in response.text
+    assert "Выход" in response.text
+    assert "Вы еще здесь?" in response.text
     assert "Администратор" in response.text
     assert "Экспорт остатков" in response.text
     assert "Экспорт операций" in response.text
@@ -245,6 +252,9 @@ def test_ui_admin_touch_page_serves_separate_touch_shell(tmp_path: Path) -> None
     assert '"operationsDefaultDateTo": "21.04.2026"' in response.text
     assert '"progressAdvanceDelayMs": 1800' in response.text
     assert '"successReturnDelayMs": 2400' in response.text
+    assert '"uiIdleTimeoutMs": 30000' in response.text
+    assert '"presenceCountdownSeconds": 30' in response.text
+    assert '"startScreenRoute": "/ui/user"' in response.text
     assert "latest system actions" not in response.text
     assert "operations requiring attention" not in response.text
     assert '"/admin/system/status"' not in response.text
@@ -283,6 +293,10 @@ def test_ui_admin_touch_javascript_asset_is_served(tmp_path: Path) -> None:
     assert 'startTimedFlow("export-operations-progress", "export-operations-success")' in response.text
     assert 'setView("export-users-confirm")' in response.text
     assert 'startTimedFlow("export-users-progress", "export-users-success")' in response.text
+    assert "showPresenceOverlay" in response.text
+    assert "canUseSharedInactivityTimeout" in response.text
+    assert "window.location.assign(START_SCREEN_ROUTE)" in response.text
+    assert 'action === "exit-admin-touch"' in response.text
     assert "operationsDefaultDateFrom" in response.text
     assert "progressAdvanceDelayMs" in response.text
     assert "successReturnDelayMs" in response.text

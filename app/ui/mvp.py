@@ -103,6 +103,9 @@ def render_admin_touch_page(settings: AppSettings) -> HTMLResponse:
         "operationsDefaultDateTo": "21.04.2026",
         "progressAdvanceDelayMs": 1800,
         "successReturnDelayMs": 2400,
+        "uiIdleTimeoutMs": 30000,
+        "presenceCountdownSeconds": 30,
+        "startScreenRoute": "/ui/user",
     }
     return HTMLResponse(
         template
