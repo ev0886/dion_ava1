@@ -158,6 +158,8 @@
 
   function canUseSharedInactivityTimeout(screenKey) {
     return (
+      screenKey !== "start" &&
+      screenKey !== "auth" &&
       screenKey !== "authError" &&
       screenKey !== "authSuccess" &&
       screenKey !== "userItemSuccess" &&

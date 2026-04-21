@@ -107,7 +107,7 @@ def test_ui_user_page_serves_configured_dispense_flow(tmp_path: Path) -> None:
     assert '"uiRole": "user"' in response.text
     assert '"uiFlowMode": "mock-auth-shell"' in response.text
     assert '"uiIdleTimeoutMs": 30000' in response.text
-    assert '"authErrorReturnTimeoutMs": 10000' in response.text
+    assert '"authErrorReturnTimeoutMs": 2400' in response.text
     assert '"authSuccessRouteDelayMs": 1000' in response.text
     assert '"presenceCountdownSeconds": 30' in response.text
     assert '"/inventory/kiosk-dispense-options"' not in response.text

@@ -38,7 +38,7 @@ def render_user_page(settings: AppSettings) -> HTMLResponse:
         "uiRole": "user",
         "uiFlowMode": "mock-auth-shell",
         "uiIdleTimeoutMs": 30000,
-        "authErrorReturnTimeoutMs": 10000,
+        "authErrorReturnTimeoutMs": 2400,
         "authSuccessRouteDelayMs": 1000,
         "presenceCountdownSeconds": 30,
     }
