@@ -12,7 +12,7 @@ from app.persistence.repositories.users import UserRepository
 
 
 class AuthService:
-    _RFID_AUTH_WINDOW_SECONDS = 1.5
+    _RFID_AUTH_WINDOW_SECONDS = 3.5
     _RFID_POLL_INTERVAL_SECONDS = 0.05
 
     def __init__(self, user_repository: UserRepository) -> None:

@@ -235,6 +235,8 @@ def test_ui_admin_touch_page_serves_separate_touch_shell(tmp_path: Path) -> None
     assert 'data-view="export-operations-confirm"' in response.text
     assert 'data-view="export-operations-progress"' in response.text
     assert 'data-view="export-operations-success"' in response.text
+    assert 'type="date"' in response.text
+    assert 'data-open-picker-on-touch="true"' in response.text
     assert 'data-view="export-users-confirm"' in response.text
     assert 'data-view="export-users-progress"' in response.text
     assert 'data-view="export-users-success"' in response.text
@@ -316,6 +318,9 @@ def test_ui_admin_touch_javascript_asset_is_served(tmp_path: Path) -> None:
     assert "showErrorScreen" in response.text
     assert "showPresenceOverlay" in response.text
     assert "canUseSharedInactivityTimeout" in response.text
+    assert "showPicker" in response.text
+    assert "openNativeDatePicker" in response.text
+    assert "parsePeriodInputValue" in response.text
     assert "window.location.assign(START_SCREEN_ROUTE)" in response.text
     assert 'action === "exit-admin-touch"' in response.text
     assert "operationsDefaultDateFrom" in response.text
@@ -338,6 +343,18 @@ def test_ui_mvp_javascript_asset_uses_rfid_auth_and_explicit_touch_role_routes(t
     assert "go-operator-role" not in response.text
     assert "go-admin-role" not in response.text
     assert "roleSelect" not in response.text
+
+
+def test_ui_operator_javascript_asset_enforces_single_quarter_selection(tmp_path: Path) -> None:
+    app = create_app(_settings(tmp_path, "api_ui_operator_js.sqlite3"))
+
+    with TestClient(app) as client:
+        response = client.get("/ui-assets/operator.js")
+
+    assert response.status_code == 200
+    assert "prepareSelectionForQuarter" in response.text
+    assert "getSelectedQuarter" in response.text
+    assert "prepareSelectionForQuarter(currentQuarter);" in response.text
 
 
 def test_admin_touch_balances_export_endpoint_writes_aggregated_csv_to_usb(tmp_path: Path, monkeypatch) -> None:

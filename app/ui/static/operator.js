@@ -309,6 +309,30 @@
     });
   }
 
+  function getQuarterForCellNumber(cellNumber) {
+    return Math.floor((cellNumber - 1) / CELLS_PER_QUARTER) + 1;
+  }
+
+  function getSelectedQuarter() {
+    const firstSelectedCell = selectedCells.values().next();
+    if (firstSelectedCell.done) {
+      return null;
+    }
+
+    return getQuarterForCellNumber(firstSelectedCell.value);
+  }
+
+  function prepareSelectionForQuarter(targetQuarter) {
+    const selectedQuarter = getSelectedQuarter();
+
+    if (selectedQuarter !== null && selectedQuarter !== targetQuarter) {
+      selectedCells.clear();
+      return true;
+    }
+
+    return false;
+  }
+
   function updateSelectionSummary() {
     selectionSummary.textContent = "Выбрано: " + selectedCells.size;
   }
@@ -638,6 +662,7 @@
         const shouldClearSector = sectorCellNumbers.every(function (cellNumber) {
           return selectedCells.has(cellNumber);
         });
+        const didClearPreviousQuarter = !shouldClearSector && prepareSelectionForQuarter(currentQuarter);
 
         activeSector = sectorNumber;
 
@@ -691,6 +716,7 @@
             button.setAttribute("aria-pressed", "false");
             setStatusMessage("Ячейка " + cellNumber + " снята");
           } else {
+            prepareSelectionForQuarter(currentQuarter);
             selectedCells.add(cellNumber);
             button.classList.add("is-selected");
             button.setAttribute("aria-pressed", "true");
@@ -699,6 +725,7 @@
 
           updateSelectionSummary();
           renderSectors();
+          renderCells();
 
           if (currentView === "confirmation") {
             renderConfirmation();

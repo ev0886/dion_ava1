@@ -195,16 +195,34 @@
     return Boolean(operationsPeriodState.from.trim() && operationsPeriodState.to.trim());
   }
 
+  function formatPeriodDateForInput(value) {
+    const match = /^(\d{2})\.(\d{2})\.(\d{4})$/.exec(value.trim());
+    if (!match) {
+      return "";
+    }
+    const [, day, month, year] = match;
+    return `${year}-${month}-${day}`;
+  }
+
+  function parsePeriodInputValue(value) {
+    const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value.trim());
+    if (!match) {
+      return "";
+    }
+    const [, year, month, day] = match;
+    return `${day}.${month}.${year}`;
+  }
+
   function getOperationsPeriodLabel() {
     return `Период: ${operationsPeriodState.from} - ${operationsPeriodState.to}`;
   }
 
   function syncOperationsPeriodUi() {
     if (operationsFields.from) {
-      operationsFields.from.value = operationsPeriodState.from;
+      operationsFields.from.value = formatPeriodDateForInput(operationsPeriodState.from);
     }
     if (operationsFields.to) {
-      operationsFields.to.value = operationsPeriodState.to;
+      operationsFields.to.value = formatPeriodDateForInput(operationsPeriodState.to);
     }
     if (operationsNextButton) {
       operationsNextButton.disabled = !hasCompleteOperationsPeriod();
@@ -435,11 +453,39 @@
       return;
     }
     const key = field.dataset.periodField;
-    operationsPeriodState[key] = field.value.trim();
+    operationsPeriodState[key] = parsePeriodInputValue(field.value);
     syncOperationsPeriodUi();
   });
 
+  function openNativeDatePicker(field) {
+    if (!(field instanceof HTMLInputElement) || field.type !== "date") {
+      return;
+    }
+
+    field.focus({ preventScroll: true });
+    if (typeof field.showPicker === "function") {
+      try {
+        field.showPicker();
+      } catch (_) {
+        // Ignore browsers that block programmatic picker opening.
+      }
+    }
+  }
+
+  root.addEventListener("pointerdown", (event) => {
+    const field = event.target.closest('[data-open-picker-on-touch="true"]');
+    if (!field) {
+      return;
+    }
+    openNativeDatePicker(field);
+  });
+
   root.addEventListener("click", (event) => {
+    const field = event.target.closest('[data-open-picker-on-touch="true"]');
+    if (field) {
+      openNativeDatePicker(field);
+    }
+
     const target = event.target.closest("[data-action]");
     if (!target) {
       return;
