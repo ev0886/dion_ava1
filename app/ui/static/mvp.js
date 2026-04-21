@@ -3,6 +3,8 @@
   const UI_IDLE_TIMEOUT_MS = 30000;
   const PRESENCE_COUNTDOWN_SECONDS = 30;
   const userDispenseWaitingDelayMs = 1800;
+  const TOUCH_NOMENCLATURE_ENDPOINT = config.listTouchNomenclatureEndpoint || "";
+  const EMPTY_NOMENCLATURE_MESSAGE = config.emptyNomenclatureMessage || "Номенклатура не настроена";
 
   const elements = {
     screenKicker: document.getElementById("screen-kicker"),
@@ -31,17 +33,9 @@
     isPresenceOverlayVisible: false,
     selectedUserItemId: null,
     userListExpanded: false,
+    userItems: [],
   };
 
-  const userItems = [
-    { id: "item-1", name: "Перчатки защитные", isAvailable: true },
-    { id: "item-2", name: "Очки защитные", isAvailable: true },
-    { id: "item-3", name: "Каска", isAvailable: false },
-    { id: "item-4", name: "Жилет сигнальный", isAvailable: true },
-    { id: "item-5", name: "Респиратор", isAvailable: true },
-    { id: "item-6", name: "Ботинки рабочие", isAvailable: false },
-    { id: "item-7", name: "Наушники защитные", isAvailable: true },
-  ];
 
   const screens = {
     start: {
@@ -235,9 +229,13 @@
   }
 
   function getSelectedUserItem() {
-    return userItems.find(function (item) {
+    return state.userItems.find(function (item) {
       return item.id === state.selectedUserItemId;
     }) || null;
+  }
+
+  function hasUserItems() {
+    return state.userItems.length > 0;
   }
 
   function getSelectedUserItemMessage() {
@@ -317,9 +315,20 @@
 
   function renderUserItemSelection() {
     const screenContent = ensureScreenContent();
-    const visibleItems = state.userListExpanded ? userItems : userItems.slice(0, 5);
     screenContent.innerHTML = "";
     screenContent.classList.remove("hidden");
+
+    if (!hasUserItems()) {
+      screenContent.appendChild(createStatusPanel({
+        tone: "empty",
+        badge: "Номенклатура",
+        heading: EMPTY_NOMENCLATURE_MESSAGE,
+        detail: "Обратитесь к администратору для настройки доступных позиций.",
+      }));
+      return;
+    }
+
+    const visibleItems = state.userListExpanded ? state.userItems : state.userItems.slice(0, 5);
 
     const list = document.createElement("div");
     list.className = "item-list" + (state.userListExpanded ? " item-list-expanded" : "");
@@ -328,7 +337,7 @@
     });
     screenContent.appendChild(list);
 
-    if (userItems.length > 5) {
+    if (state.userItems.length > 5) {
       const toggleButton = document.createElement("button");
       toggleButton.type = "button";
       toggleButton.className = "list-toggle-button";
@@ -586,5 +595,46 @@
     handleAction("go-start");
   });
 
-  showScreen("start");
+  async function loadUserItems() {
+    state.userItems = [];
+    state.selectedUserItemId = null;
+    state.userListExpanded = false;
+
+    if (!TOUCH_NOMENCLATURE_ENDPOINT) {
+      return;
+    }
+
+    try {
+      const response = await window.fetch(TOUCH_NOMENCLATURE_ENDPOINT, {
+        method: "GET",
+        headers: {
+          Accept: "application/json",
+        },
+      });
+      if (!response.ok) {
+        return;
+      }
+
+      const payload = await response.json();
+      if (!Array.isArray(payload.nomenclature)) {
+        return;
+      }
+
+      state.userItems = payload.nomenclature.map(function (item) {
+        return {
+          id: "nomenclature-" + String(item.id),
+          name: String(item.name || ""),
+          isAvailable: true,
+        };
+      }).filter(function (item) {
+        return item.name !== "";
+      });
+    } catch (error) {
+      state.userItems = [];
+    }
+  }
+
+  loadUserItems().finally(function () {
+    showScreen("start");
+  });
 })();

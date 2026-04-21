@@ -41,6 +41,8 @@ def render_user_page(settings: AppSettings) -> HTMLResponse:
         "authErrorReturnTimeoutMs": 2400,
         "authSuccessRouteDelayMs": 1000,
         "presenceCountdownSeconds": 30,
+        "listTouchNomenclatureEndpoint": "/touch/nomenclature",
+        "emptyNomenclatureMessage": "Номенклатура не настроена",
     }
     return HTMLResponse(
         template.replace(
@@ -55,6 +57,8 @@ def render_operator_page(settings: AppSettings) -> HTMLResponse:
     ui_config = {
         "uiRole": "operator",
         "refillWorkflowStatus": "planned",
+        "listTouchNomenclatureEndpoint": "/touch/nomenclature",
+        "emptyNomenclatureMessage": "Номенклатура не настроена",
     }
     return HTMLResponse(
         template.replace(

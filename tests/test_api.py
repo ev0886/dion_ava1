@@ -112,6 +112,8 @@ def test_ui_user_page_serves_configured_dispense_flow(tmp_path: Path) -> None:
     assert '"authErrorReturnTimeoutMs": 2400' in response.text
     assert '"authSuccessRouteDelayMs": 1000' in response.text
     assert '"presenceCountdownSeconds": 30' in response.text
+    assert '"listTouchNomenclatureEndpoint": "/touch/nomenclature"' in response.text
+    assert '"emptyNomenclatureMessage": "\\u041d\\u043e\\u043c\\u0435\\u043d\\u043a\\u043b\\u0430\\u0442\\u0443\\u0440\\u0430 \\u043d\\u0435 \\u043d\\u0430\\u0441\\u0442\\u0440\\u043e\\u0435\\u043d\\u0430"' in response.text
     assert '"/inventory/kiosk-dispense-options"' not in response.text
     assert '"/auth/read-and-resolve-rfid"' not in response.text
     assert '"/operations/dispense"' not in response.text
@@ -143,6 +145,8 @@ def test_ui_operator_page_serves_role_foundation(tmp_path: Path) -> None:
     assert "Выход" in response.text
     assert '"uiRole": "operator"' in response.text
     assert '"refillWorkflowStatus": "planned"' in response.text
+    assert '"listTouchNomenclatureEndpoint": "/touch/nomenclature"' in response.text
+    assert '"emptyNomenclatureMessage": "\\u041d\\u043e\\u043c\\u0435\\u043d\\u043a\\u043b\\u0430\\u0442\\u0443\\u0440\\u0430 \\u043d\\u0435 \\u043d\\u0430\\u0441\\u0442\\u0440\\u043e\\u0435\\u043d\\u0430"' in response.text
 
 
 def test_ui_mvp_route_remains_backward_compatible_alias_to_user_ui(tmp_path: Path) -> None:
@@ -840,6 +844,63 @@ def test_admin_nomenclature_create_rejects_duplicate_active_normalized_name(tmp_
         "error": "validation_error",
         "detail": "Nomenclature name already exists",
     }
+
+
+def test_touch_nomenclature_endpoint_returns_only_active_entries_sorted_by_name(tmp_path: Path) -> None:
+    app = create_app(_settings(tmp_path, "api_touch_nomenclature.sqlite3"))
+
+    with TestClient(app) as client:
+        client.post("/admin/nomenclature", json={"name": "Zulu"})
+        client.post("/admin/nomenclature", json={"name": "Alpha"})
+        client.post("/admin/nomenclature", json={"name": "Bravo"})
+        deactivate_response = client.post("/admin/nomenclature/3/deactivate", json={})
+        response = client.get("/touch/nomenclature")
+
+    assert deactivate_response.status_code == 200
+    assert response.status_code == 200
+    assert response.json() == {
+        "nomenclature": [
+            {
+                "id": 2,
+                "name": "Alpha",
+                "is_active": True,
+            },
+            {
+                "id": 1,
+                "name": "Zulu",
+                "is_active": True,
+            },
+        ]
+    }
+
+
+def test_touch_nomenclature_endpoint_returns_empty_list_when_directory_is_empty(tmp_path: Path) -> None:
+    app = create_app(_settings(tmp_path, "api_touch_nomenclature_empty.sqlite3"))
+
+    with TestClient(app) as client:
+        response = client.get("/touch/nomenclature")
+
+    assert response.status_code == 200
+    assert response.json() == {"nomenclature": []}
+
+
+def test_touch_ui_assets_no_longer_embed_mock_nomenclature_lists(tmp_path: Path) -> None:
+    app = create_app(_settings(tmp_path, "api_touch_assets_nomenclature.sqlite3"))
+
+    with TestClient(app) as client:
+        user_js = client.get("/ui-assets/mvp.js")
+        operator_js = client.get("/ui-assets/operator.js")
+
+    assert user_js.status_code == 200
+    assert operator_js.status_code == 200
+    assert "loadUserItems" in user_js.text
+    assert 'fetch(TOUCH_NOMENCLATURE_ENDPOINT' in user_js.text
+    assert "item-1" not in user_js.text
+    assert "Перчатки защитные" not in user_js.text
+    assert "loadReplenishItems" in operator_js.text
+    assert 'fetch(TOUCH_NOMENCLATURE_ENDPOINT' in operator_js.text
+    assert "item-01" not in operator_js.text
+    assert "Вода негазированная 0,5 л" not in operator_js.text
 
 
 def test_admin_recent_operations_endpoint_returns_latest_slice_newest_first(tmp_path: Path) -> None:

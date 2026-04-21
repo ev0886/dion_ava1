@@ -283,6 +283,9 @@ class AdminNomenclatureService:
     def list_nomenclature(self) -> list[AdminNomenclatureRecordDTO]:
         return self.nomenclature_repository.list_for_admin()
 
+    def list_active_nomenclature(self) -> list[AdminNomenclatureRecordDTO]:
+        return self.nomenclature_repository.list_active()
+
     def create_nomenclature(self, *, name: str) -> AdminNomenclatureUpsertResultDTO:
         normalized_name = self._normalize_name(name)
         existing = self.nomenclature_repository.get_by_normalized_name(normalized_name)

@@ -13,6 +13,15 @@ class NomenclatureRepository(Repository):
         entries = self.session.execute(statement).scalars().all()
         return [self._to_admin_record(entry) for entry in entries]
 
+    def list_active(self) -> list[AdminNomenclatureRecordDTO]:
+        statement = (
+            select(NomenclatureEntry)
+            .where(NomenclatureEntry.is_active.is_(True))
+            .order_by(NomenclatureEntry.name.asc(), NomenclatureEntry.id.asc())
+        )
+        entries = self.session.execute(statement).scalars().all()
+        return [self._to_admin_record(entry) for entry in entries]
+
     def get_by_id(self, nomenclature_id: int) -> NomenclatureEntry | None:
         return self.session.get(NomenclatureEntry, nomenclature_id)
 

@@ -143,6 +143,10 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
     def admin_list_nomenclature(container: ApplicationContainer = Depends(get_application_container)) -> JSONResponse:
         return JSONResponse({"nomenclature": to_api_payload(container.services.admin_nomenclature.list_nomenclature())})
 
+    @app.get("/touch/nomenclature")
+    def touch_list_nomenclature(container: ApplicationContainer = Depends(get_application_container)) -> JSONResponse:
+        return JSONResponse({"nomenclature": to_api_payload(container.services.admin_nomenclature.list_active_nomenclature())})
+
     @app.post("/admin/nomenclature")
     def admin_create_nomenclature(
         payload: AdminNomenclatureCreateRequest,

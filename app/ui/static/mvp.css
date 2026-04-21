@@ -162,6 +162,11 @@ body.presence-overlay-active {
   border-color: rgba(88, 139, 27, 0.28);
 }
 
+.status-panel-empty {
+  background: linear-gradient(180deg, rgba(249, 248, 243, 0.98) 0%, rgba(240, 237, 229, 0.98) 100%);
+  border-color: rgba(125, 109, 78, 0.18);
+}
+
 .status-badge {
   display: inline-flex;
   width: fit-content;

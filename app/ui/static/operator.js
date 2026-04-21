@@ -7,15 +7,10 @@
   const REPLENISH_SUCCESS_RETURN_DELAY_MS = 1800;
   const UI_IDLE_TIMEOUT_MS = 30000;
   const PRESENCE_COUNTDOWN_SECONDS = 30;
-  const REPLENISH_SAMPLE_ITEMS = [
-    { id: "item-01", name: "Вода негазированная 0,5 л", meta: "ПЭТ бутылка" },
-    { id: "item-02", name: "Вода газированная 0,5 л", meta: "ПЭТ бутылка" },
-    { id: "item-03", name: "Сок яблочный 0,33 л", meta: "Пакет" },
-    { id: "item-04", name: "Сок апельсиновый 0,33 л", meta: "Пакет" },
-    { id: "item-05", name: "Холодный чай лимон 0,5 л", meta: "ПЭТ бутылка" },
-    { id: "item-06", name: "Энергетический напиток 0,25 л", meta: "Жестяная банка" },
-    { id: "item-07", name: "Минеральная вода 0,75 л", meta: "ПЭТ бутылка" }
-  ];
+  const config = window.DION_OPERATOR_UI_CONFIG || {};
+  const TOUCH_NOMENCLATURE_ENDPOINT = config.listTouchNomenclatureEndpoint || "";
+  const EMPTY_NOMENCLATURE_MESSAGE = config.emptyNomenclatureMessage || "Номенклатура не настроена";
+  const REPLENISH_SAMPLE_ITEMS = [];
 
   let currentQuarter = 1;
   let activeSector = 1;
@@ -430,6 +425,10 @@
     }) || null;
   }
 
+  function hasReplenishItems() {
+    return REPLENISH_SAMPLE_ITEMS.length > 0;
+  }
+
   function syncReplenishConfirmState() {
     const isReady = selectedReplenishItemId !== null;
     replenishItemSelectConfirmButton.disabled = !isReady;
@@ -439,11 +438,18 @@
   function renderReplenishItemOptions() {
     replenishItemList.innerHTML = "";
 
+    if (!hasReplenishItems()) {
+      const emptyState = document.createElement("div");
+      emptyState.className = "replenish-item-empty-state";
+      emptyState.textContent = EMPTY_NOMENCLATURE_MESSAGE;
+      replenishItemList.appendChild(emptyState);
+      return;
+    }
+
     REPLENISH_SAMPLE_ITEMS.forEach(function (item) {
       const option = document.createElement("button");
       const isSelected = item.id === selectedReplenishItemId;
       const name = document.createElement("span");
-      const meta = document.createElement("span");
 
       option.type = "button";
       option.className = "replenish-item-option";
@@ -457,11 +463,8 @@
 
       name.className = "replenish-item-name";
       name.textContent = item.name;
-      meta.className = "replenish-item-meta";
-      meta.textContent = item.meta;
 
       option.appendChild(name);
-      option.appendChild(meta);
 
       option.addEventListener("click", function () {
         selectedReplenishItemId = item.id;
@@ -840,5 +843,45 @@
   }, true);
   document.addEventListener("touchstart", handlePresenceInteraction, true);
 
-  scheduleInactivityTimeout();
+  async function loadReplenishItems() {
+    REPLENISH_SAMPLE_ITEMS.splice(0, REPLENISH_SAMPLE_ITEMS.length);
+    selectedReplenishItemId = null;
+
+    if (!TOUCH_NOMENCLATURE_ENDPOINT) {
+      return;
+    }
+
+    try {
+      const response = await window.fetch(TOUCH_NOMENCLATURE_ENDPOINT, {
+        method: "GET",
+        headers: {
+          Accept: "application/json",
+        },
+      });
+      if (!response.ok) {
+        return;
+      }
+
+      const payload = await response.json();
+      if (!Array.isArray(payload.nomenclature)) {
+        return;
+      }
+
+      payload.nomenclature.forEach(function (item) {
+        if (!item || !item.name) {
+          return;
+        }
+        REPLENISH_SAMPLE_ITEMS.push({
+          id: "nomenclature-" + String(item.id),
+          name: String(item.name),
+        });
+      });
+    } catch (error) {
+      REPLENISH_SAMPLE_ITEMS.splice(0, REPLENISH_SAMPLE_ITEMS.length);
+    }
+  }
+
+  loadReplenishItems().finally(function () {
+    scheduleInactivityTimeout();
+  });
 })();
