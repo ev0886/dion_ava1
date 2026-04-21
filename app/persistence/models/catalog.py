@@ -19,6 +19,15 @@ class ItemGroup(PrimaryKeyMixin, Base):
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default="1")
 
 
+class NomenclatureEntry(PrimaryKeyMixin, Base):
+    __tablename__ = "nomenclature_entries"
+    __table_args__ = (UniqueConstraint("normalized_name", name="uq_nomenclature_entries_normalized_name"),)
+
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    normalized_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default="1")
+
+
 class Item(PrimaryKeyMixin, Base):
     __tablename__ = "items"
 

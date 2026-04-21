@@ -1,5 +1,6 @@
 from app.persistence.repositories.logs import AuditLogRepository, EventLogRepository
 from app.persistence.repositories.inventory import InventoryRepository
+from app.persistence.repositories.nomenclature import NomenclatureRepository
 from app.persistence.repositories.operations import OperationRepository, OperationSessionRepository
 from app.persistence.repositories.recovery import RecoveryRepository
 from app.persistence.repositories.service import ExportRepository
@@ -10,6 +11,7 @@ __all__ = [
     "EventLogRepository",
     "ExportRepository",
     "InventoryRepository",
+    "NomenclatureRepository",
     "OperationRepository",
     "OperationSessionRepository",
     "RecoveryRepository",

@@ -30,6 +30,7 @@ def test_alembic_upgrade_creates_core_tables(tmp_path: Path) -> None:
         "users",
         "items",
         "slots",
+        "nomenclature_entries",
         "operations",
         "event_logs",
         "exports",

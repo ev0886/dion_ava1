@@ -8,12 +8,13 @@ import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
-from app.application.admin_service import AdminOperationService, AdminUserService
+from app.application.admin_service import AdminNomenclatureService, AdminOperationService, AdminUserService
 from app.application.dto.admin import AdminRecentOperationDTO
 from app.application.exceptions import ValidationError
 from app.domain.enums import DispenseRestrictionPolicy, ItemStatus, OperationState, OperationType, RoleCode, SlotStatus, SlotType, UserStatus
 from app.persistence.base import Base
 from app.persistence.models import Item, Operation, Role, Slot, User, UserRfidCard
+from app.persistence.repositories.nomenclature import NomenclatureRepository
 from app.persistence.repositories.operations import OperationRepository
 from app.persistence.repositories.users import UserRepository
 
@@ -184,6 +185,52 @@ def test_export_users_csv_returns_import_compatible_columns_and_current_values(
                 "",
             )
         )
+
+
+def test_create_nomenclature_reactivates_existing_inactive_duplicate(
+    session_factory: sessionmaker[Session],
+) -> None:
+    with session_factory() as session:
+        service = AdminNomenclatureService(NomenclatureRepository(session))
+
+        created = service.create_nomenclature(name="  Test   Item  ")
+        deactivated = service.deactivate_nomenclature(nomenclature_id=created.record.id)
+        reactivated = service.create_nomenclature(name="Test Item")
+
+        assert created.reactivated_existing is False
+        assert deactivated.is_active is False
+        assert reactivated.reactivated_existing is True
+        assert reactivated.record.id == created.record.id
+        assert reactivated.record.name == "Test Item"
+        assert reactivated.record.is_active is True
+
+
+def test_create_nomenclature_rejects_duplicate_active_normalized_name(
+    session_factory: sessionmaker[Session],
+) -> None:
+    with session_factory() as session:
+        service = AdminNomenclatureService(NomenclatureRepository(session))
+        service.create_nomenclature(name="Test Item")
+
+        with pytest.raises(ValidationError) as exc_info:
+            service.create_nomenclature(name="  test   item ")
+
+        assert str(exc_info.value) == "Nomenclature name already exists"
+
+
+def test_update_nomenclature_rejects_conflict_with_existing_inactive_duplicate(
+    session_factory: sessionmaker[Session],
+) -> None:
+    with session_factory() as session:
+        service = AdminNomenclatureService(NomenclatureRepository(session))
+        first = service.create_nomenclature(name="Alpha")
+        second = service.create_nomenclature(name="Beta")
+        service.deactivate_nomenclature(nomenclature_id=first.record.id)
+
+        with pytest.raises(ValidationError) as exc_info:
+            service.update_nomenclature(nomenclature_id=second.record.id, name=" alpha ")
+
+        assert str(exc_info.value) == "Inactive nomenclature entry with this name already exists"
 
 
 def test_update_user_can_deactivate_user_and_preserve_record(

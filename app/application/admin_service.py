@@ -6,6 +6,8 @@ from datetime import UTC, date, datetime
 from io import StringIO
 
 from app.application.dto.admin import (
+    AdminNomenclatureRecordDTO,
+    AdminNomenclatureUpsertResultDTO,
     AdminOperationExportRowDTO,
     AdminRecentOperationDTO,
     AdminSystemStatusDTO,
@@ -18,6 +20,7 @@ from app.application.exceptions import NotFoundError, ValidationError
 from app.domain.enums import DispenseRestrictionPolicy, RoleCode, UserStatus
 from app.persistence.models import User
 from app.persistence.repositories.logs import EventLogRepository
+from app.persistence.repositories.nomenclature import NomenclatureRepository
 from app.persistence.repositories.operations import OperationRepository
 from app.persistence.repositories.users import UserRepository
 
@@ -271,6 +274,95 @@ class AdminUserService:
             raise ValidationError(
                 f"CSV row {row_number}: invalid dispense_restriction_policy '{raw_policy}'"
             ) from exc
+
+
+class AdminNomenclatureService:
+    def __init__(self, nomenclature_repository: NomenclatureRepository) -> None:
+        self.nomenclature_repository = nomenclature_repository
+
+    def list_nomenclature(self) -> list[AdminNomenclatureRecordDTO]:
+        return self.nomenclature_repository.list_for_admin()
+
+    def create_nomenclature(self, *, name: str) -> AdminNomenclatureUpsertResultDTO:
+        normalized_name = self._normalize_name(name)
+        existing = self.nomenclature_repository.get_by_normalized_name(normalized_name)
+
+        try:
+            if existing is not None:
+                existing.name = self._collapse_name_whitespace(name)
+                if existing.is_active:
+                    raise ValidationError("Nomenclature name already exists")
+                existing.is_active = True
+                self.nomenclature_repository.session.commit()
+                return AdminNomenclatureUpsertResultDTO(
+                    record=self.nomenclature_repository.get_admin_record(existing.id),
+                    reactivated_existing=True,
+                )
+
+            created = self.nomenclature_repository.create(
+                name=self._collapse_name_whitespace(name),
+                normalized_name=normalized_name,
+                is_active=True,
+            )
+            self.nomenclature_repository.session.commit()
+            return AdminNomenclatureUpsertResultDTO(
+                record=self.nomenclature_repository.get_admin_record(created.id),
+                reactivated_existing=False,
+            )
+        except Exception:
+            self.nomenclature_repository.session.rollback()
+            raise
+
+    def update_nomenclature(self, *, nomenclature_id: int, name: str) -> AdminNomenclatureRecordDTO:
+        entry = self.nomenclature_repository.get_by_id(nomenclature_id)
+        if entry is None:
+            raise NotFoundError(f"Nomenclature entry not found: {nomenclature_id}")
+
+        normalized_name = self._normalize_name(name)
+        existing = self.nomenclature_repository.get_by_normalized_name(normalized_name)
+        if existing is not None and existing.id != nomenclature_id:
+            if existing.is_active:
+                raise ValidationError("Nomenclature name already exists")
+            raise ValidationError("Inactive nomenclature entry with this name already exists")
+
+        try:
+            entry.name = self._collapse_name_whitespace(name)
+            entry.normalized_name = normalized_name
+            self.nomenclature_repository.session.commit()
+            return self.nomenclature_repository.get_admin_record(entry.id)
+        except Exception:
+            self.nomenclature_repository.session.rollback()
+            raise
+
+    def activate_nomenclature(self, *, nomenclature_id: int) -> AdminNomenclatureRecordDTO:
+        return self._set_active(nomenclature_id=nomenclature_id, is_active=True)
+
+    def deactivate_nomenclature(self, *, nomenclature_id: int) -> AdminNomenclatureRecordDTO:
+        return self._set_active(nomenclature_id=nomenclature_id, is_active=False)
+
+    def _set_active(self, *, nomenclature_id: int, is_active: bool) -> AdminNomenclatureRecordDTO:
+        entry = self.nomenclature_repository.get_by_id(nomenclature_id)
+        if entry is None:
+            raise NotFoundError(f"Nomenclature entry not found: {nomenclature_id}")
+
+        try:
+            entry.is_active = is_active
+            self.nomenclature_repository.session.commit()
+            return self.nomenclature_repository.get_admin_record(entry.id)
+        except Exception:
+            self.nomenclature_repository.session.rollback()
+            raise
+
+    @classmethod
+    def _normalize_name(cls, name: str) -> str:
+        collapsed = cls._collapse_name_whitespace(name)
+        if not collapsed:
+            raise ValidationError("Nomenclature name must not be empty")
+        return collapsed.casefold()
+
+    @staticmethod
+    def _collapse_name_whitespace(name: str) -> str:
+        return " ".join(name.split())
 
 
 class AdminOperationService:

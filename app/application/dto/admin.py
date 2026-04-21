@@ -34,6 +34,19 @@ class AdminUserImportResultDTO:
 
 
 @dataclass(frozen=True, slots=True)
+class AdminNomenclatureRecordDTO:
+    id: int
+    name: str
+    is_active: bool
+
+
+@dataclass(frozen=True, slots=True)
+class AdminNomenclatureUpsertResultDTO:
+    record: AdminNomenclatureRecordDTO
+    reactivated_existing: bool
+
+
+@dataclass(frozen=True, slots=True)
 class AdminRecentOperationDTO:
     operation_id: int
     started_at: datetime | None

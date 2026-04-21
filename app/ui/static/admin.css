@@ -163,6 +163,20 @@ body {
   align-items: end;
 }
 
+.nomenclature-grid {
+  display: grid;
+  grid-template-columns: minmax(16rem, 2fr) minmax(12rem, 1fr);
+  gap: 0.85rem;
+  align-items: end;
+  margin-bottom: 0.9rem;
+}
+
+.nomenclature-create-actions {
+  display: grid;
+  gap: 0.35rem;
+  justify-items: start;
+}
+
 .export-actions {
   display: grid;
   gap: 0.35rem;
@@ -208,6 +222,12 @@ body {
   min-width: 70rem;
 }
 
+.nomenclature-table {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 40rem;
+}
+
 .operations-table {
   width: 100%;
   border-collapse: collapse;
@@ -216,6 +236,8 @@ body {
 
 .user-table th,
 .user-table td,
+.nomenclature-table th,
+.nomenclature-table td,
 .operations-table th,
 .operations-table td {
   padding: 0.72rem 0.6rem;
@@ -225,6 +247,7 @@ body {
 }
 
 .user-table th,
+.nomenclature-table th,
 .operations-table th {
   font-size: 0.8rem;
   text-transform: uppercase;
@@ -233,6 +256,7 @@ body {
 }
 
 .user-table td,
+.nomenclature-table td,
 .operations-table td {
   font-size: 0.96rem;
 }
@@ -308,6 +332,12 @@ body {
   gap: 0.6rem;
 }
 
+.nomenclature-action-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
 .text-button {
   display: inline-flex;
   align-items: center;
@@ -352,5 +382,9 @@ body {
 
   .import-action-row {
     width: 100%;
+  }
+
+  .nomenclature-grid {
+    grid-template-columns: 1fr;
   }
 }

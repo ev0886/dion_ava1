@@ -27,6 +27,48 @@
     <section class="panel">
       <div class="panel-heading">
         <div>
+          <p class="eyebrow">Номенклатура</p>
+          <h2>Справочник номенклатуры</h2>
+        </div>
+      </div>
+      <div class="nomenclature-grid">
+        <label class="field-block" for="nomenclature-create-name">
+          <span class="field-label">Наименование</span>
+          <input
+            id="nomenclature-create-name"
+            class="inline-input"
+            type="text"
+            placeholder="Например, Перчатки нитриловые"
+          >
+        </label>
+        <div class="nomenclature-create-actions">
+          <button id="nomenclature-create-button" class="save-button" type="button">Добавить</button>
+          <p class="row-note">Повтор с тем же нормализованным именем повторно не создаётся: активная запись блокирует, неактивная переактивируется.</p>
+        </div>
+      </div>
+      <div class="table-wrap table-wrap-scroll">
+        <table class="nomenclature-table">
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>Наименование</th>
+              <th>Статус</th>
+              <th>Сохранить имя</th>
+              <th>Активность</th>
+            </tr>
+          </thead>
+          <tbody id="nomenclature-table-body">
+            <tr>
+              <td colspan="5" class="placeholder-cell">Загрузка номенклатуры...</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-heading">
+        <div>
           <p class="eyebrow">Операции</p>
           <h2>Экспорт операций в CSV</h2>
         </div>

@@ -12,6 +12,9 @@
     systemAppName: document.getElementById("system-app-name"),
     systemApiBind: document.getElementById("system-api-bind"),
     refreshButton: document.getElementById("refresh-button"),
+    nomenclatureCreateName: document.getElementById("nomenclature-create-name"),
+    nomenclatureCreateButton: document.getElementById("nomenclature-create-button"),
+    nomenclatureTableBody: document.getElementById("nomenclature-table-body"),
     userTableBody: document.getElementById("user-table-body"),
     problemOperationsTableBody: document.getElementById("problem-operations-table-body"),
     operationsTableBody: document.getElementById("operations-table-body"),
@@ -31,6 +34,7 @@
 
   const state = {
     users: [],
+    nomenclature: [],
     problemOperations: [],
     operations: [],
     systemStatus: null,
@@ -38,6 +42,8 @@
     isExportingOperations: false,
     isImporting: false,
     savingUserIds: new Set(),
+    savingNomenclatureIds: new Set(),
+    isCreatingNomenclature: false,
   };
 
   const displayLabels = {
@@ -136,6 +142,78 @@
     elements.systemAppName.textContent = formatSystemValue(systemStatus.app_name);
     elements.systemApiBind.textContent =
       formatSystemValue(systemStatus.api_host) + ":" + formatSystemValue(systemStatus.api_port);
+  }
+
+  function nomenclatureRowMarkup(entry) {
+    const saveDisabled = state.isLoading || state.savingNomenclatureIds.has(entry.id) ? "disabled" : "";
+    const toggleLabel = entry.is_active ? "Активна" : "Неактивна";
+    const toggleAction = entry.is_active ? "deactivate" : "activate";
+    const toggleButtonLabel = entry.is_active ? "Деактивировать" : "Активировать";
+
+    return (
+      '<tr data-nomenclature-id="' +
+      String(entry.id) +
+      '">' +
+      "<td>" +
+      String(entry.id) +
+      "</td>" +
+      "<td>" +
+      '<input class="inline-input" name="name" type="text" value="' +
+      escapeHtml(entry.name) +
+      '" placeholder="Наименование">' +
+      "</td>" +
+      '<td><span class="status-chip">' +
+      escapeHtml(toggleLabel) +
+      "</span></td>" +
+      "<td>" +
+      '<button class="save-button nomenclature-save-button" type="button" ' +
+      saveDisabled +
+      ">Сохранить</button>" +
+      "</td>" +
+      "<td>" +
+      '<div class="nomenclature-action-row">' +
+      '<button class="secondary-button nomenclature-toggle-button" data-action="' +
+      toggleAction +
+      '" type="button" ' +
+      saveDisabled +
+      ">" +
+      toggleButtonLabel +
+      "</button>" +
+      "</div>" +
+      "</td>" +
+      "</tr>"
+    );
+  }
+
+  function renderNomenclature() {
+    if (!state.nomenclature.length) {
+      elements.nomenclatureTableBody.innerHTML =
+        '<tr><td colspan="5" class="placeholder-cell">Справочник номенклатуры пока пуст.</td></tr>';
+      return;
+    }
+
+    elements.nomenclatureTableBody.innerHTML = state.nomenclature.map(nomenclatureRowMarkup).join("");
+    elements.nomenclatureTableBody.querySelectorAll(".nomenclature-save-button").forEach(function (button) {
+      button.addEventListener("click", function () {
+        const row = button.closest("tr");
+        if (!row) {
+          return;
+        }
+        const nomenclatureId = Number(row.dataset.nomenclatureId);
+        void saveNomenclature(nomenclatureId, row);
+      });
+    });
+    elements.nomenclatureTableBody.querySelectorAll(".nomenclature-toggle-button").forEach(function (button) {
+      button.addEventListener("click", function () {
+        const row = button.closest("tr");
+        if (!row) {
+          return;
+        }
+        const nomenclatureId = Number(row.dataset.nomenclatureId);
+        const action = button.dataset.action || "";
+        void toggleNomenclature(nomenclatureId, action);
+      });
+    });
   }
 
   function userRowMarkup(user) {
@@ -318,6 +396,8 @@
 
   function syncControls() {
     elements.refreshButton.disabled = state.isLoading;
+    elements.nomenclatureCreateButton.disabled = state.isLoading || state.isCreatingNomenclature;
+    elements.nomenclatureCreateName.disabled = state.isCreatingNomenclature;
     elements.operationsExportButton.disabled = state.isLoading || state.isExportingOperations;
     elements.operationsExportDateFrom.disabled = state.isExportingOperations;
     elements.operationsExportDateTo.disabled = state.isExportingOperations;
@@ -330,6 +410,12 @@
       const row = button.closest("tr");
       const userId = row ? Number(row.dataset.userId) : 0;
       button.disabled = state.isLoading || state.savingUserIds.has(userId);
+    });
+    const nomenclatureButtons = elements.nomenclatureTableBody.querySelectorAll("button");
+    nomenclatureButtons.forEach(function (button) {
+      const row = button.closest("tr");
+      const nomenclatureId = row ? Number(row.dataset.nomenclatureId) : 0;
+      button.disabled = state.isLoading || state.savingNomenclatureIds.has(nomenclatureId);
     });
   }
 
@@ -397,6 +483,21 @@
     }
   }
 
+  async function loadNomenclature() {
+    try {
+      const { response, payload } = await readJson(config.listNomenclatureEndpoint, { method: "GET" });
+      if (!response.ok) {
+        throw new Error(payload.detail || "Не удалось получить список номенклатуры.");
+      }
+      state.nomenclature = Array.isArray(payload.nomenclature) ? payload.nomenclature : [];
+      renderNomenclature();
+    } catch (error) {
+      state.nomenclature = [];
+      renderNomenclature();
+      throw error;
+    }
+  }
+
   async function loadSystemStatus() {
     try {
       const { response, payload } = await readJson(config.systemStatusEndpoint, { method: "GET" });
@@ -448,7 +549,7 @@
     setStatus("", "Загрузка", "Обновление пользователей и последних операций из локального backend.");
 
     try {
-      await Promise.all([loadSystemStatus(), loadUsers(), loadProblemOperations(), loadRecentOperations()]);
+      await Promise.all([loadSystemStatus(), loadUsers(), loadNomenclature(), loadProblemOperations(), loadRecentOperations()]);
       setStatus(
         "success",
         "Готово",
@@ -498,6 +599,120 @@
       setStatus("error", "Ошибка сохранения", String(error));
     } finally {
       state.savingUserIds.delete(userId);
+      syncControls();
+    }
+  }
+
+  function sortNomenclature() {
+    state.nomenclature.sort(function (left, right) {
+      return String(left.name).localeCompare(String(right.name), "ru");
+    });
+  }
+
+  async function createNomenclature() {
+    state.isCreatingNomenclature = true;
+    syncControls();
+    setStatus("", "Номенклатура", "Создание записи справочника номенклатуры.");
+
+    try {
+      const { response, payload } = await readJson(config.createNomenclatureEndpoint, {
+        method: "POST",
+        body: JSON.stringify({
+          name: elements.nomenclatureCreateName.value,
+        }),
+      });
+      if (!response.ok) {
+        throw new Error(payload.detail || "Не удалось создать запись номенклатуры.");
+      }
+
+      const savedEntry = payload.nomenclature;
+      state.nomenclature = state.nomenclature.filter(function (entry) {
+        return entry.id !== savedEntry.id;
+      });
+      state.nomenclature.push(savedEntry);
+      sortNomenclature();
+      renderNomenclature();
+      elements.nomenclatureCreateName.value = "";
+      setStatus(
+        "success",
+        payload.reactivated_existing ? "Номенклатура реактивирована" : "Номенклатура создана",
+        payload.reactivated_existing
+          ? "Совпадающая неактивная запись найдена и повторно активирована."
+          : "Новая запись номенклатуры сохранена."
+      );
+    } catch (error) {
+      setStatus("error", "Ошибка сохранения", String(error));
+    } finally {
+      state.isCreatingNomenclature = false;
+      syncControls();
+    }
+  }
+
+  async function saveNomenclature(nomenclatureId, row) {
+    state.savingNomenclatureIds.add(nomenclatureId);
+    syncControls();
+    setStatus("", "Номенклатура", "Сохранение имени записи " + String(nomenclatureId) + ".");
+
+    const nameInput = row.querySelector('input[name="name"]');
+
+    try {
+      const { response, payload } = await readJson(config.updateNomenclatureEndpointBase + "/" + String(nomenclatureId), {
+        method: "PUT",
+        body: JSON.stringify({
+          name: nameInput ? nameInput.value : "",
+        }),
+      });
+      if (!response.ok) {
+        throw new Error(payload.detail || "Не удалось обновить запись номенклатуры.");
+      }
+
+      const savedEntry = payload.nomenclature;
+      state.nomenclature = state.nomenclature.map(function (entry) {
+        return entry.id === nomenclatureId ? savedEntry : entry;
+      });
+      sortNomenclature();
+      renderNomenclature();
+      setStatus("success", "Номенклатура сохранена", "Имя записи номенклатуры обновлено.");
+    } catch (error) {
+      setStatus("error", "Ошибка сохранения", String(error));
+    } finally {
+      state.savingNomenclatureIds.delete(nomenclatureId);
+      syncControls();
+    }
+  }
+
+  async function toggleNomenclature(nomenclatureId, action) {
+    state.savingNomenclatureIds.add(nomenclatureId);
+    syncControls();
+    setStatus("", "Номенклатура", "Изменение активности записи " + String(nomenclatureId) + ".");
+
+    try {
+      const { response, payload } = await readJson(
+        config.updateNomenclatureEndpointBase + "/" + String(nomenclatureId) + "/" + action,
+        {
+          method: "POST",
+          body: JSON.stringify({}),
+        }
+      );
+      if (!response.ok) {
+        throw new Error(payload.detail || "Не удалось изменить активность записи номенклатуры.");
+      }
+
+      const savedEntry = payload.nomenclature;
+      state.nomenclature = state.nomenclature.map(function (entry) {
+        return entry.id === nomenclatureId ? savedEntry : entry;
+      });
+      sortNomenclature();
+      renderNomenclature();
+      setStatus(
+        "success",
+        "Активность обновлена",
+        savedEntry.is_active ? "Запись номенклатуры активирована." : "Запись номенклатуры деактивирована."
+      );
+    } catch (error) {
+      setStatus("error", "Ошибка сохранения", String(error));
+    } finally {
+      state.savingNomenclatureIds.delete(nomenclatureId);
       syncControls();
     }
   }
@@ -554,6 +769,9 @@
   elements.refreshButton.addEventListener("click", function () {
     void loadAdminData();
   });
+  elements.nomenclatureCreateButton.addEventListener("click", function () {
+    void createNomenclature();
+  });
   elements.loadExampleButton.addEventListener("click", function () {
     loadExampleCsv();
   });
@@ -571,6 +789,7 @@
   });
 
   renderSystemStatus();
+  renderNomenclature();
   renderProblemOperations();
   renderOperations();
   void loadAdminData();

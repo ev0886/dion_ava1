@@ -1,5 +1,5 @@
 from app.persistence.models.auth import Role, User, UserCredential, UserRfidCard
-from app.persistence.models.catalog import InventoryBalance, Item, ItemGroup, Permission, Slot, SlotItemBinding
+from app.persistence.models.catalog import InventoryBalance, Item, ItemGroup, NomenclatureEntry, Permission, Slot, SlotItemBinding
 from app.persistence.models.inventory import InventoryTransaction
 from app.persistence.models.logs import AuditLog, EventLog
 from app.persistence.models.operations import Operation, OperationSession, OperationStateHistory
@@ -22,6 +22,7 @@ __all__ = [
     "Item",
     "ItemGroup",
     "ManualResolutionAction",
+    "NomenclatureEntry",
     "Operation",
     "OperationSession",
     "OperationStateHistory",

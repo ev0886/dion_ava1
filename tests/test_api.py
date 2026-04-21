@@ -176,6 +176,8 @@ def test_ui_admin_page_serves_user_management_config(tmp_path: Path) -> None:
 
     assert response.status_code == 200
     assert "Admin UI" in response.text
+    assert "Справочник номенклатуры" in response.text
+    assert "Добавить" in response.text
     assert "Операции, требующие внимания" in response.text
     assert "Экспорт CSV" in response.text
     assert "Дата с" in response.text
@@ -191,6 +193,7 @@ def test_ui_admin_page_serves_user_management_config(tmp_path: Path) -> None:
     assert "Провайдер оборудования / режим" in response.text
     assert "Привязка API" in response.text
     assert '"/admin/users"' in response.text
+    assert '"/admin/nomenclature"' in response.text
     assert '"/admin/system/status"' in response.text
     assert '"/admin/operations/problem"' in response.text
     assert '"/admin/operations/recent"' in response.text
@@ -203,6 +206,9 @@ def test_ui_admin_page_serves_user_management_config(tmp_path: Path) -> None:
     assert '"recentOperationsEndpoint"' in response.text
     assert '"exportOperationsEndpoint"' in response.text
     assert '"exportUsersEndpoint"' in response.text
+    assert '"listNomenclatureEndpoint"' in response.text
+    assert '"createNomenclatureEndpoint"' in response.text
+    assert '"updateNomenclatureEndpointBase"' in response.text
     assert '"importExampleCsvText"' in response.text
     assert '"uiRole": "admin"' in response.text
 
@@ -731,6 +737,108 @@ def test_admin_users_endpoint_lists_assigned_and_unassigned_users(tmp_path: Path
                 "dispense_restriction_policy": "once_per_day",
             },
         ]
+    }
+
+
+def test_admin_nomenclature_endpoints_support_create_update_activate_and_deactivate(tmp_path: Path) -> None:
+    app = create_app(_settings(tmp_path, "api_admin_nomenclature.sqlite3"))
+
+    with TestClient(app) as client:
+        create_response = client.post("/admin/nomenclature", json={"name": "  Test   Item  "})
+        list_response = client.get("/admin/nomenclature")
+        update_response = client.put("/admin/nomenclature/1", json={"name": "Test Item Updated"})
+        deactivate_response = client.post("/admin/nomenclature/1/deactivate", json={})
+        reactivate_response = client.post("/admin/nomenclature/1/activate", json={})
+
+    assert create_response.status_code == 200
+    assert create_response.json() == {
+        "nomenclature": {
+            "id": 1,
+            "name": "Test Item",
+            "is_active": True,
+        },
+        "reactivated_existing": False,
+    }
+    assert list_response.status_code == 200
+    assert list_response.json() == {
+        "nomenclature": [
+            {
+                "id": 1,
+                "name": "Test Item",
+                "is_active": True,
+            }
+        ]
+    }
+    assert update_response.status_code == 200
+    assert update_response.json() == {
+        "nomenclature": {
+            "id": 1,
+            "name": "Test Item Updated",
+            "is_active": True,
+        }
+    }
+    assert deactivate_response.status_code == 200
+    assert deactivate_response.json() == {
+        "nomenclature": {
+            "id": 1,
+            "name": "Test Item Updated",
+            "is_active": False,
+        }
+    }
+    assert reactivate_response.status_code == 200
+    assert reactivate_response.json() == {
+        "nomenclature": {
+            "id": 1,
+            "name": "Test Item Updated",
+            "is_active": True,
+        }
+    }
+
+
+def test_admin_nomenclature_create_reactivates_existing_inactive_duplicate(tmp_path: Path) -> None:
+    app = create_app(_settings(tmp_path, "api_admin_nomenclature_reactivate.sqlite3"))
+
+    with TestClient(app) as client:
+        first_response = client.post("/admin/nomenclature", json={"name": "Test Item"})
+        deactivate_response = client.post("/admin/nomenclature/1/deactivate", json={})
+        second_response = client.post("/admin/nomenclature", json={"name": "  test   item  "})
+        list_response = client.get("/admin/nomenclature")
+
+    assert first_response.status_code == 200
+    assert deactivate_response.status_code == 200
+    assert second_response.status_code == 200
+    assert second_response.json() == {
+        "nomenclature": {
+            "id": 1,
+            "name": "test item",
+            "is_active": True,
+        },
+        "reactivated_existing": True,
+    }
+    assert list_response.status_code == 200
+    assert list_response.json() == {
+        "nomenclature": [
+            {
+                "id": 1,
+                "name": "test item",
+                "is_active": True,
+            }
+        ]
+    }
+
+
+def test_admin_nomenclature_create_rejects_duplicate_active_normalized_name(tmp_path: Path) -> None:
+    app = create_app(_settings(tmp_path, "api_admin_nomenclature_duplicate.sqlite3"))
+
+    with TestClient(app) as client:
+        first_response = client.post("/admin/nomenclature", json={"name": "Test Item"})
+        second_response = client.post("/admin/nomenclature", json={"name": " test   item "})
+
+    assert first_response.status_code == 200
+    assert second_response.status_code == 400
+    assert second_response.json() == {
+        "error": "validation_error",
+        "detail": "Nomenclature name already exists",
     }
 
 

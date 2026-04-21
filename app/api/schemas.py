@@ -76,6 +76,14 @@ class AdminUserUpdateRequest(ApiModel):
     dispense_restriction_policy: DispenseRestrictionPolicy
 
 
+class AdminNomenclatureCreateRequest(ApiModel):
+    name: str
+
+
+class AdminNomenclatureUpdateRequest(ApiModel):
+    name: str
+
+
 class ErrorResponse(ApiModel):
     error: str
     detail: str

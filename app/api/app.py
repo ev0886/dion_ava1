@@ -11,6 +11,8 @@ from fastapi.staticfiles import StaticFiles
 from app.api.dependencies import get_application_container
 from app.api.errors import register_exception_handlers
 from app.api.schemas import (
+    AdminNomenclatureCreateRequest,
+    AdminNomenclatureUpdateRequest,
     AdminUserUpdateRequest,
     AuthReadAndResolveRfidRequest,
     AuthResolveRequest,
@@ -136,6 +138,66 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
     @app.get("/admin/users")
     def admin_list_users(container: ApplicationContainer = Depends(get_application_container)) -> JSONResponse:
         return JSONResponse({"users": to_api_payload(container.services.admin_users.list_users())})
+
+    @app.get("/admin/nomenclature")
+    def admin_list_nomenclature(container: ApplicationContainer = Depends(get_application_container)) -> JSONResponse:
+        return JSONResponse({"nomenclature": to_api_payload(container.services.admin_nomenclature.list_nomenclature())})
+
+    @app.post("/admin/nomenclature")
+    def admin_create_nomenclature(
+        payload: AdminNomenclatureCreateRequest,
+        container: ApplicationContainer = Depends(get_application_container),
+    ) -> JSONResponse:
+        result = container.services.admin_nomenclature.create_nomenclature(name=payload.name)
+        return JSONResponse(
+            {
+                "nomenclature": to_api_payload(result.record),
+                "reactivated_existing": result.reactivated_existing,
+            }
+        )
+
+    @app.put("/admin/nomenclature/{nomenclature_id}")
+    def admin_update_nomenclature(
+        nomenclature_id: int,
+        payload: AdminNomenclatureUpdateRequest,
+        container: ApplicationContainer = Depends(get_application_container),
+    ) -> JSONResponse:
+        return JSONResponse(
+            {
+                "nomenclature": to_api_payload(
+                    container.services.admin_nomenclature.update_nomenclature(
+                        nomenclature_id=nomenclature_id,
+                        name=payload.name,
+                    )
+                )
+            }
+        )
+
+    @app.post("/admin/nomenclature/{nomenclature_id}/activate")
+    def admin_activate_nomenclature(
+        nomenclature_id: int,
+        container: ApplicationContainer = Depends(get_application_container),
+    ) -> JSONResponse:
+        return JSONResponse(
+            {
+                "nomenclature": to_api_payload(
+                    container.services.admin_nomenclature.activate_nomenclature(nomenclature_id=nomenclature_id)
+                )
+            }
+        )
+
+    @app.post("/admin/nomenclature/{nomenclature_id}/deactivate")
+    def admin_deactivate_nomenclature(
+        nomenclature_id: int,
+        container: ApplicationContainer = Depends(get_application_container),
+    ) -> JSONResponse:
+        return JSONResponse(
+            {
+                "nomenclature": to_api_payload(
+                    container.services.admin_nomenclature.deactivate_nomenclature(nomenclature_id=nomenclature_id)
+                )
+            }
+        )
 
     @app.get("/admin/operations/recent")
     def admin_list_recent_operations(container: ApplicationContainer = Depends(get_application_container)) -> JSONResponse:
