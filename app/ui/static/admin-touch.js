@@ -42,11 +42,25 @@
     setView("export-users-confirm");
   }
 
+  function showBalancesConfirmation() {
+    clearTimers();
+    setView("export-balances-confirm");
+  }
+
   function startExportUsersFlow() {
     clearTimers();
     setView("export-users-progress");
     schedule(() => {
       setView("export-users-success");
+      schedule(showLanding, config.successReturnDelayMs || 2400);
+    }, config.progressAdvanceDelayMs || 1800);
+  }
+
+  function startExportBalancesFlow() {
+    clearTimers();
+    setView("export-balances-progress");
+    schedule(() => {
+      setView("export-balances-success");
       schedule(showLanding, config.successReturnDelayMs || 2400);
     }, config.progressAdvanceDelayMs || 1800);
   }
@@ -60,6 +74,11 @@
 
     const { action } = target.dataset;
 
+    if (action === "export-balances") {
+      showBalancesConfirmation();
+      return;
+    }
+
     if (action === "export-users") {
       showConfirmation();
       return;
@@ -72,6 +91,11 @@
 
     if (action === "start-export-users") {
       startExportUsersFlow();
+      return;
+    }
+
+    if (action === "start-export-balances") {
+      startExportBalancesFlow();
     }
   });
 

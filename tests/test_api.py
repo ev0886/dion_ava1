@@ -214,9 +214,14 @@ def test_ui_admin_touch_page_serves_separate_touch_shell(tmp_path: Path) -> None
     assert response.status_code == 200
     assert "Admin Touch UI" in response.text
     assert 'data-view="landing"' in response.text
+    assert 'data-view="export-balances-confirm"' in response.text
+    assert 'data-view="export-balances-progress"' in response.text
+    assert 'data-view="export-balances-success"' in response.text
     assert 'data-view="export-users-confirm"' in response.text
     assert 'data-view="export-users-progress"' in response.text
     assert 'data-view="export-users-success"' in response.text
+    assert 'data-action="export-balances"' in response.text
+    assert 'data-action="start-export-balances"' in response.text
     assert 'data-action="export-users"' in response.text
     assert 'data-action="start-export-users"' in response.text
     assert 'data-action="back-to-landing"' in response.text
@@ -251,6 +256,7 @@ def test_ui_admin_touch_static_assets_are_served(tmp_path: Path) -> None:
     assert ".admin-touch-action" in response.text
     assert ".admin-touch-header" in response.text
     assert ".admin-touch-flow-card" in response.text
+    assert ".admin-touch-landing-view" in response.text
     assert ".admin-touch-spinner" in response.text
 
 
@@ -261,6 +267,9 @@ def test_ui_admin_touch_javascript_asset_is_served(tmp_path: Path) -> None:
         response = client.get("/ui-assets/admin-touch.js")
 
     assert response.status_code == 200
+    assert 'setView("export-balances-confirm")' in response.text
+    assert 'setView("export-balances-progress")' in response.text
+    assert 'setView("export-balances-success")' in response.text
     assert 'setView("export-users-confirm")' in response.text
     assert 'setView("export-users-progress")' in response.text
     assert 'setView("export-users-success")' in response.text

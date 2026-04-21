@@ -10,7 +10,7 @@
   <main class="admin-touch-shell">
     <section class="admin-touch-panel" data-flow-root aria-live="polite">
       <section
-        class="admin-touch-view admin-touch-view-active"
+        class="admin-touch-view admin-touch-view-active admin-touch-landing-view"
         data-view="landing"
         aria-labelledby="admin-touch-title"
       >
@@ -20,7 +20,13 @@
         </header>
 
         <section class="admin-touch-actions" aria-label="Действия администратора">
-          <button class="admin-touch-action admin-touch-action-balance" type="button">Экспорт остатков</button>
+          <button
+            class="admin-touch-action admin-touch-action-balance"
+            type="button"
+            data-action="export-balances"
+          >
+            Экспорт остатков
+          </button>
           <button class="admin-touch-action admin-touch-action-operations" type="button">Экспорт операций</button>
           <button
             class="admin-touch-action admin-touch-action-users"
@@ -31,6 +37,60 @@
           </button>
           <button class="admin-touch-action admin-touch-action-import" type="button">Импорт пользователей</button>
         </section>
+      </section>
+
+      <section
+        class="admin-touch-view admin-touch-flow-card"
+        data-view="export-balances-confirm"
+        hidden
+        aria-labelledby="export-balances-confirm-title"
+      >
+        <header class="admin-touch-flow-header">
+          <p class="admin-touch-kicker">Экспорт</p>
+          <h2 class="admin-touch-flow-title" id="export-balances-confirm-title">Экспорт остатков</h2>
+        </header>
+
+        <p class="admin-touch-flow-text">
+          Остатки будут экспортированы на USB носитель.
+        </p>
+
+        <div class="admin-touch-flow-actions">
+          <button class="admin-touch-secondary-button" type="button" data-action="back-to-landing">Отмена</button>
+          <button class="admin-touch-primary-button" type="button" data-action="start-export-balances">Экспортировать</button>
+        </div>
+      </section>
+
+      <section
+        class="admin-touch-view admin-touch-flow-card admin-touch-flow-status"
+        data-view="export-balances-progress"
+        hidden
+        aria-labelledby="export-balances-progress-title"
+      >
+        <div class="admin-touch-spinner" aria-hidden="true"></div>
+        <header class="admin-touch-flow-header">
+          <p class="admin-touch-kicker">Подождите</p>
+          <h2 class="admin-touch-flow-title" id="export-balances-progress-title">Подготовка экспорта остатков</h2>
+        </header>
+        <p class="admin-touch-flow-text">
+          Идёт подготовка данных для записи на USB носитель.
+        </p>
+      </section>
+
+      <section
+        class="admin-touch-view admin-touch-flow-card admin-touch-flow-status"
+        data-view="export-balances-success"
+        hidden
+        aria-labelledby="export-balances-success-title"
+      >
+        <div class="admin-touch-success-mark" aria-hidden="true">✓</div>
+        <header class="admin-touch-flow-header">
+          <p class="admin-touch-kicker">Готово</p>
+          <h2 class="admin-touch-flow-title" id="export-balances-success-title">Успешно!</h2>
+        </header>
+        <p class="admin-touch-flow-text">
+          Остатки экспортированы на USB носитель.
+        </p>
+        <p class="admin-touch-flow-note">Возврат на главный экран через несколько секунд.</p>
       </section>
 
       <section
