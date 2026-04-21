@@ -8,17 +8,83 @@
 </head>
 <body>
   <main class="admin-touch-shell">
-    <section class="admin-touch-panel" aria-labelledby="admin-touch-title">
-      <header class="admin-touch-header">
-        <p class="admin-touch-kicker">DION ABA1</p>
-        <h1 class="admin-touch-title" id="admin-touch-title">Администратор</h1>
-      </header>
+    <section class="admin-touch-panel" data-flow-root aria-live="polite">
+      <section
+        class="admin-touch-view admin-touch-view-active"
+        data-view="landing"
+        aria-labelledby="admin-touch-title"
+      >
+        <header class="admin-touch-header">
+          <p class="admin-touch-kicker">DION ABA1</p>
+          <h1 class="admin-touch-title" id="admin-touch-title">Администратор</h1>
+        </header>
 
-      <section class="admin-touch-actions" aria-label="Действия администратора">
-        <button class="admin-touch-action admin-touch-action-balance" type="button">Экспорт остатков</button>
-        <button class="admin-touch-action admin-touch-action-operations" type="button">Экспорт операций</button>
-        <button class="admin-touch-action admin-touch-action-users" type="button">Экспорт пользователей</button>
-        <button class="admin-touch-action admin-touch-action-import" type="button">Импорт пользователей</button>
+        <section class="admin-touch-actions" aria-label="Действия администратора">
+          <button class="admin-touch-action admin-touch-action-balance" type="button">Экспорт остатков</button>
+          <button class="admin-touch-action admin-touch-action-operations" type="button">Экспорт операций</button>
+          <button
+            class="admin-touch-action admin-touch-action-users"
+            type="button"
+            data-action="export-users"
+          >
+            Экспорт пользователей
+          </button>
+          <button class="admin-touch-action admin-touch-action-import" type="button">Импорт пользователей</button>
+        </section>
+      </section>
+
+      <section
+        class="admin-touch-view admin-touch-flow-card"
+        data-view="export-users-confirm"
+        hidden
+        aria-labelledby="export-users-confirm-title"
+      >
+        <header class="admin-touch-flow-header">
+          <p class="admin-touch-kicker">Экспорт</p>
+          <h2 class="admin-touch-flow-title" id="export-users-confirm-title">Экспорт пользователей</h2>
+        </header>
+
+        <p class="admin-touch-flow-text">
+          Пользователи будут экспортированы на USB носитель.
+        </p>
+
+        <div class="admin-touch-flow-actions">
+          <button class="admin-touch-secondary-button" type="button" data-action="back-to-landing">Отмена</button>
+          <button class="admin-touch-primary-button" type="button" data-action="start-export-users">Экспортировать</button>
+        </div>
+      </section>
+
+      <section
+        class="admin-touch-view admin-touch-flow-card admin-touch-flow-status"
+        data-view="export-users-progress"
+        hidden
+        aria-labelledby="export-users-progress-title"
+      >
+        <div class="admin-touch-spinner" aria-hidden="true"></div>
+        <header class="admin-touch-flow-header">
+          <p class="admin-touch-kicker">Подождите</p>
+          <h2 class="admin-touch-flow-title" id="export-users-progress-title">Подготовка экспорта пользователей</h2>
+        </header>
+        <p class="admin-touch-flow-text">
+          Идёт подготовка данных для записи на USB носитель.
+        </p>
+      </section>
+
+      <section
+        class="admin-touch-view admin-touch-flow-card admin-touch-flow-status"
+        data-view="export-users-success"
+        hidden
+        aria-labelledby="export-users-success-title"
+      >
+        <div class="admin-touch-success-mark" aria-hidden="true">✓</div>
+        <header class="admin-touch-flow-header">
+          <p class="admin-touch-kicker">Готово</p>
+          <h2 class="admin-touch-flow-title" id="export-users-success-title">Успешно!</h2>
+        </header>
+        <p class="admin-touch-flow-text">
+          Пользователи экспортированы на USB носитель.
+        </p>
+        <p class="admin-touch-flow-note">Возврат на главный экран через несколько секунд.</p>
       </section>
     </section>
   </main>
@@ -26,5 +92,6 @@
   <script>
     window.DION_ADMIN_TOUCH_UI_CONFIG = __DION_ADMIN_TOUCH_UI_CONFIG__;
   </script>
+  <script src="/ui-assets/admin-touch.js"></script>
 </body>
 </html>

@@ -87,6 +87,8 @@ def render_admin_touch_page(settings: AppSettings) -> HTMLResponse:
             "Экспорт пользователей",
             "Импорт пользователей",
         ],
+        "progressAdvanceDelayMs": 1800,
+        "successReturnDelayMs": 2400,
     }
     return HTMLResponse(
         template.replace(

@@ -213,14 +213,24 @@ def test_ui_admin_touch_page_serves_separate_touch_shell(tmp_path: Path) -> None
 
     assert response.status_code == 200
     assert "Admin Touch UI" in response.text
+    assert 'data-view="landing"' in response.text
+    assert 'data-view="export-users-confirm"' in response.text
+    assert 'data-view="export-users-progress"' in response.text
+    assert 'data-view="export-users-success"' in response.text
+    assert 'data-action="export-users"' in response.text
+    assert 'data-action="start-export-users"' in response.text
+    assert 'data-action="back-to-landing"' in response.text
     assert "Администратор" in response.text
     assert "Экспорт остатков" in response.text
     assert "Экспорт операций" in response.text
     assert "Экспорт пользователей" in response.text
     assert "Импорт пользователей" in response.text
     assert '"/ui-assets/admin-touch.css"' in response.text
+    assert '"/ui-assets/admin-touch.js"' in response.text
     assert '"uiRole": "admin-touch"' in response.text
     assert '"availableActions"' in response.text
+    assert '"progressAdvanceDelayMs": 1800' in response.text
+    assert '"successReturnDelayMs": 2400' in response.text
     assert "latest system actions" not in response.text
     assert "operations requiring attention" not in response.text
     assert '"/admin/system/status"' not in response.text
@@ -240,6 +250,22 @@ def test_ui_admin_touch_static_assets_are_served(tmp_path: Path) -> None:
     assert ".admin-touch-shell" in response.text
     assert ".admin-touch-action" in response.text
     assert ".admin-touch-header" in response.text
+    assert ".admin-touch-flow-card" in response.text
+    assert ".admin-touch-spinner" in response.text
+
+
+def test_ui_admin_touch_javascript_asset_is_served(tmp_path: Path) -> None:
+    app = create_app(_settings(tmp_path, "api_ui_admin_touch_js.sqlite3"))
+
+    with TestClient(app) as client:
+        response = client.get("/ui-assets/admin-touch.js")
+
+    assert response.status_code == 200
+    assert 'setView("export-users-confirm")' in response.text
+    assert 'setView("export-users-progress")' in response.text
+    assert 'setView("export-users-success")' in response.text
+    assert "progressAdvanceDelayMs" in response.text
+    assert "successReturnDelayMs" in response.text
 
 
 def test_ui_user_static_assets_no_longer_include_usb_admin_handlers(tmp_path: Path) -> None:
