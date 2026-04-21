@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>DION ABA1 Admin Touch UI</title>
+  <link rel="stylesheet" href="/ui-assets/admin-touch.css">
+</head>
+<body>
+  <main class="admin-touch-shell">
+    <section class="admin-touch-panel" aria-labelledby="admin-touch-title">
+      <header class="admin-touch-header">
+        <p class="admin-touch-kicker">DION ABA1</p>
+        <h1 class="admin-touch-title" id="admin-touch-title">Администратор</h1>
+      </header>
+
+      <section class="admin-touch-actions" aria-label="Действия администратора">
+        <button class="admin-touch-action admin-touch-action-balance" type="button">Экспорт остатков</button>
+        <button class="admin-touch-action admin-touch-action-operations" type="button">Экспорт операций</button>
+        <button class="admin-touch-action admin-touch-action-users" type="button">Экспорт пользователей</button>
+        <button class="admin-touch-action admin-touch-action-import" type="button">Импорт пользователей</button>
+      </section>
+    </section>
+  </main>
+
+  <script>
+    window.DION_ADMIN_TOUCH_UI_CONFIG = __DION_ADMIN_TOUCH_UI_CONFIG__;
+  </script>
+</body>
+</html>

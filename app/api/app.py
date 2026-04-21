@@ -29,7 +29,7 @@ from app.application.dto.operations import DispenseRequest, RefillRequest, Retur
 from app.bootstrap import bootstrap
 from app.config import AppSettings, get_settings
 from app.persistence.session import create_session_factory, create_sqlalchemy_engine
-from app.ui.mvp import render_admin_page, render_operator_page, render_user_page
+from app.ui.mvp import render_admin_page, render_admin_touch_page, render_operator_page, render_user_page
 
 
 def create_app(settings: AppSettings | None = None) -> FastAPI:
@@ -70,6 +70,10 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
     @app.get("/ui/admin")
     def ui_admin():
         return render_admin_page(app.state.settings)
+
+    @app.get("/ui/admin-touch")
+    def ui_admin_touch():
+        return render_admin_touch_page(app.state.settings)
 
     @app.get("/local/usb/status")
     def local_usb_status(container: ApplicationContainer = Depends(get_application_container)) -> JSONResponse:

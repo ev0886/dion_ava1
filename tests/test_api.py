@@ -205,6 +205,43 @@ def test_ui_admin_page_serves_user_management_config(tmp_path: Path) -> None:
     assert '"uiRole": "admin"' in response.text
 
 
+def test_ui_admin_touch_page_serves_separate_touch_shell(tmp_path: Path) -> None:
+    app = create_app(_settings(tmp_path, "api_ui_admin_touch.sqlite3"))
+
+    with TestClient(app) as client:
+        response = client.get("/ui/admin-touch")
+
+    assert response.status_code == 200
+    assert "Admin Touch UI" in response.text
+    assert "Администратор" in response.text
+    assert "Экспорт остатков" in response.text
+    assert "Экспорт операций" in response.text
+    assert "Экспорт пользователей" in response.text
+    assert "Импорт пользователей" in response.text
+    assert '"/ui-assets/admin-touch.css"' in response.text
+    assert '"uiRole": "admin-touch"' in response.text
+    assert '"availableActions"' in response.text
+    assert "latest system actions" not in response.text
+    assert "operations requiring attention" not in response.text
+    assert '"/admin/system/status"' not in response.text
+    assert '"/admin/operations/recent"' not in response.text
+    assert '"/admin/operations/problem"' not in response.text
+    assert '"/admin/users"' not in response.text
+    assert '"/admin/users/import"' not in response.text
+
+
+def test_ui_admin_touch_static_assets_are_served(tmp_path: Path) -> None:
+    app = create_app(_settings(tmp_path, "api_ui_admin_touch_assets.sqlite3"))
+
+    with TestClient(app) as client:
+        response = client.get("/ui-assets/admin-touch.css")
+
+    assert response.status_code == 200
+    assert ".admin-touch-shell" in response.text
+    assert ".admin-touch-action" in response.text
+    assert ".admin-touch-header" in response.text
+
+
 def test_ui_user_static_assets_no_longer_include_usb_admin_handlers(tmp_path: Path) -> None:
     app = create_app(_settings(tmp_path, "api_ui_user_assets.sqlite3"))
 

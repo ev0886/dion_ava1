@@ -11,6 +11,7 @@ _UI_DIR = Path(__file__).resolve().parent
 _MVP_TEMPLATE_PATH = _UI_DIR / "templates" / "mvp.html"
 _OPERATOR_TEMPLATE_PATH = _UI_DIR / "templates" / "operator.html"
 _ADMIN_TEMPLATE_PATH = _UI_DIR / "templates" / "admin.html"
+_ADMIN_TOUCH_TEMPLATE_PATH = _UI_DIR / "templates" / "admin_touch.html"
 _ADMIN_USERS_IMPORT_EXAMPLE_CSV = "\n".join(
     [
         "user_code,full_name,role_code,rfid_uid,dispense_restriction_policy",
@@ -71,6 +72,25 @@ def render_admin_page(settings: AppSettings) -> HTMLResponse:
     return HTMLResponse(
         template.replace(
             "__DION_ADMIN_UI_CONFIG__",
+            json.dumps(ui_config, ensure_ascii=True),
+        )
+    )
+
+
+def render_admin_touch_page(settings: AppSettings) -> HTMLResponse:
+    template = _ADMIN_TOUCH_TEMPLATE_PATH.read_text(encoding="utf-8")
+    ui_config = {
+        "uiRole": "admin-touch",
+        "availableActions": [
+            "Экспорт остатков",
+            "Экспорт операций",
+            "Экспорт пользователей",
+            "Импорт пользователей",
+        ],
+    }
+    return HTMLResponse(
+        template.replace(
+            "__DION_ADMIN_TOUCH_UI_CONFIG__",
             json.dumps(ui_config, ensure_ascii=True),
         )
     )
