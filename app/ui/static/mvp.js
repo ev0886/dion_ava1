@@ -514,7 +514,7 @@
       return;
     }
     if (action === "go-admin-role") {
-      window.location.assign("/ui/admin");
+      window.location.assign("/ui/admin-touch");
       return;
     }
     if (action === "confirm-exit") {
