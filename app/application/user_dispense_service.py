@@ -4,11 +4,13 @@ from dataclasses import dataclass
 
 from app.application.dispense_service import DispenseOperationService
 from app.application.dto.inventory import UserDispenseOptionDTO, UserDispenseOptionsResult
+from app.application.exceptions import NotFoundError
 from app.application.dto.operations import DispenseRequest, OperationDTO
-from app.application.open_door_guard import OpenDoorGuard
 from app.application.exceptions import ValidationError
+from app.application.open_door_guard import OpenDoorGuard
+from app.domain.drum_numbering import human_cell_number
 from app.hardware import HardwareFacade
-from app.persistence.repositories.inventory import InventoryRepository
+from app.persistence.repositories.inventory import AvailableDispenseOptionRecord, InventoryRepository
 
 
 @dataclass(slots=True)
@@ -32,7 +34,7 @@ class UserDispenseService:
             )
 
         aggregated: dict[int, UserDispenseOptionDTO] = {}
-        for option in self.inventory_repository.list_available_dispense_options():
+        for option in self._list_available_options_in_logical_order():
             current = aggregated.get(option.item_id)
             if current is None:
                 aggregated[option.item_id] = UserDispenseOptionDTO(
@@ -53,11 +55,12 @@ class UserDispenseService:
 
     def dispense(self, request: DispenseRequest) -> OperationDTO:
         self._validate_request(request)
+        slot_id = self._resolve_slot_id_for_item(request.item_id)
         return self.dispense_service.execute(
             DispenseRequest(
                 user_id=request.user_id,
                 item_id=request.item_id,
-                slot_id=None,
+                slot_id=slot_id,
                 quantity=request.quantity,
                 session_id=request.session_id,
             ),
@@ -84,4 +87,27 @@ class UserDispenseService:
         self.open_door_guard.ensure_all_closed(
             self.hardware_facade,
             error_message="Dispense blocked: one or more cells are open",
+        )
+
+    def _resolve_slot_id_for_item(self, item_id: int) -> int:
+        for option in self._list_available_options_in_logical_order():
+            if option.item_id == item_id:
+                return option.slot_id
+        raise NotFoundError(f"No available dispense slot found for item: {item_id}")
+
+    def _list_available_options_in_logical_order(self) -> tuple[AvailableDispenseOptionRecord, ...]:
+        return tuple(
+            sorted(
+                self.inventory_repository.list_available_dispense_options(),
+                key=self._logical_option_sort_key,
+            )
+        )
+
+    @staticmethod
+    def _logical_option_sort_key(option: AvailableDispenseOptionRecord) -> tuple[int, int, int, int]:
+        return (
+            human_cell_number(option.drum_position, option.lock_number),
+            option.item_id,
+            option.slot_id,
+            option.quantity,
         )

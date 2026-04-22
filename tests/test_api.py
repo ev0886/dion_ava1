@@ -696,6 +696,131 @@ def test_user_dispense_options_endpoint_returns_real_aggregated_available_items(
     }
 
 
+def test_user_dispense_options_endpoint_orders_items_by_logical_sector_number(tmp_path: Path) -> None:
+    app = create_app(_settings(tmp_path, "api_user_dispense_options_logical_order.sqlite3"))
+
+    with app.state.session_factory() as session:
+        role = Role(code=RoleCode.USER, name="User")
+        session.add(role)
+        session.flush()
+
+        user = User(
+            role_id=role.id,
+            user_code="user-1",
+            full_name="User One",
+            status=UserStatus.ACTIVE,
+            dispense_restriction_policy=DispenseRestrictionPolicy.UNLIMITED,
+            is_active=True,
+        )
+        first_item = Item(
+            item_group_id=None,
+            sku="item-z",
+            name="Zulu Item",
+            description=None,
+            unit="pcs",
+            return_allowed=True,
+            min_level=0,
+            status=ItemStatus.ACTIVE,
+        )
+        second_item = Item(
+            item_group_id=None,
+            sku="item-a",
+            name="Alpha Item",
+            description=None,
+            unit="pcs",
+            return_allowed=True,
+            min_level=0,
+            status=ItemStatus.ACTIVE,
+        )
+        third_item = Item(
+            item_group_id=None,
+            sku="item-m",
+            name="Mike Item",
+            description=None,
+            unit="pcs",
+            return_allowed=True,
+            min_level=0,
+            status=ItemStatus.ACTIVE,
+        )
+        session.add_all((user, first_item, second_item, third_item))
+        session.flush()
+
+        slots = (
+            Slot(
+                code="slot-p00-l01",
+                slot_type=SlotType.UNIVERSAL,
+                drum_position=0,
+                board_address=1,
+                lock_number=1,
+                capacity=10,
+                status=SlotStatus.ACTIVE,
+            ),
+            Slot(
+                code="slot-p31-l01",
+                slot_type=SlotType.UNIVERSAL,
+                drum_position=31,
+                board_address=1,
+                lock_number=1,
+                capacity=10,
+                status=SlotStatus.ACTIVE,
+            ),
+            Slot(
+                code="slot-p30-l01",
+                slot_type=SlotType.UNIVERSAL,
+                drum_position=30,
+                board_address=1,
+                lock_number=1,
+                capacity=10,
+                status=SlotStatus.ACTIVE,
+            ),
+        )
+        session.add_all(slots)
+        session.flush()
+
+        session.add_all(
+            (
+                SlotItemBinding(
+                    slot_id=slots[0].id,
+                    item_id=first_item.id,
+                    binding_type=BindingType.PRIMARY,
+                    is_active=True,
+                    valid_from=None,
+                    valid_to=None,
+                ),
+                SlotItemBinding(
+                    slot_id=slots[1].id,
+                    item_id=second_item.id,
+                    binding_type=BindingType.PRIMARY,
+                    is_active=True,
+                    valid_from=None,
+                    valid_to=None,
+                ),
+                SlotItemBinding(
+                    slot_id=slots[2].id,
+                    item_id=third_item.id,
+                    binding_type=BindingType.PRIMARY,
+                    is_active=True,
+                    valid_from=None,
+                    valid_to=None,
+                ),
+                InventoryBalance(slot_id=slots[0].id, item_id=first_item.id, quantity=1),
+                InventoryBalance(slot_id=slots[1].id, item_id=second_item.id, quantity=1),
+                InventoryBalance(slot_id=slots[2].id, item_id=third_item.id, quantity=1),
+            )
+        )
+        session.commit()
+
+    with TestClient(app) as client:
+        response = client.get("/user/dispense-options", params={"user_id": 1})
+
+    assert response.status_code == 200
+    assert [option["item_name"] for option in response.json()["options"]] == [
+        "Zulu Item",
+        "Alpha Item",
+        "Mike Item",
+    ]
+
+
 def test_user_dispense_options_endpoint_returns_empty_when_user_policy_blocks_dispense(tmp_path: Path) -> None:
     app = create_app(_settings(tmp_path, "api_user_dispense_options_blocked.sqlite3"))
     _seed_base_domain(app, user_policy=DispenseRestrictionPolicy.ONCE_PER_DAY)
@@ -755,7 +880,9 @@ def test_dispense_operation_resolves_first_stocked_slot_for_item_when_slot_not_p
     assert second_slot_inventory.json()["balance"]["quantity"] == 3
 
 
-def test_user_dispense_endpoint_resolves_first_filled_slot_and_debits_single_quantity_via_hardware_path(tmp_path: Path) -> None:
+def test_user_dispense_endpoint_resolves_first_logically_numbered_slot_and_debits_single_quantity_via_hardware_path(
+    tmp_path: Path,
+) -> None:
     app = create_app(_settings(tmp_path, "api_user_dispense.sqlite3"))
     _seed_base_domain(app)
     _seed_additional_slot_for_same_item(app)
@@ -770,16 +897,16 @@ def test_user_dispense_endpoint_resolves_first_filled_slot_and_debits_single_qua
 
     assert response.status_code == 200
     assert response.json()["operation_state"] == "completed"
-    assert response.json()["slot_id"] == 1
+    assert response.json()["slot_id"] == 2
     assert response.json()["hardware_context"]["slot"] == {
-        "drum_position": 3,
+        "drum_position": 4,
         "board_address": 1,
-        "lock_number": 1,
+        "lock_number": 2,
     }
     assert first_slot_inventory.status_code == 200
-    assert first_slot_inventory.json()["balance"]["quantity"] == 4
+    assert first_slot_inventory.json()["balance"]["quantity"] == 5
     assert second_slot_inventory.status_code == 200
-    assert second_slot_inventory.json()["balance"]["quantity"] == 3
+    assert second_slot_inventory.json()["balance"]["quantity"] == 2
 
     with app.state.session_factory() as session:
         operation = session.query(Operation).filter_by(id=response.json()["operation_id"]).one()
@@ -789,8 +916,8 @@ def test_user_dispense_endpoint_resolves_first_filled_slot_and_debits_single_qua
     assert operation.operation_type == OperationType.DISPENSE
     assert operation.operation_state == OperationState.COMPLETED
     assert len(history) >= 10
-    assert transaction.quantity_before == 5
-    assert transaction.quantity_after == 4
+    assert transaction.quantity_before == 3
+    assert transaction.quantity_after == 2
     assert transaction.quantity_delta == -1
     assert transaction.transaction_type == "dispense_debit"
 
