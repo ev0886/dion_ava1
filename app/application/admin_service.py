@@ -296,6 +296,7 @@ class AdminNomenclatureService:
                 if existing.is_active:
                     raise ValidationError("Nomenclature name already exists")
                 existing.is_active = True
+                self.nomenclature_repository.ensure_active_item_for_entry(existing)
                 self.nomenclature_repository.session.commit()
                 return AdminNomenclatureUpsertResultDTO(
                     record=self.nomenclature_repository.get_admin_record(existing.id),
@@ -307,6 +308,7 @@ class AdminNomenclatureService:
                 normalized_name=normalized_name,
                 is_active=True,
             )
+            self.nomenclature_repository.ensure_active_item_for_entry(created)
             self.nomenclature_repository.session.commit()
             return AdminNomenclatureUpsertResultDTO(
                 record=self.nomenclature_repository.get_admin_record(created.id),
@@ -321,6 +323,7 @@ class AdminNomenclatureService:
         if entry is None:
             raise NotFoundError(f"Nomenclature entry not found: {nomenclature_id}")
 
+        previous_normalized_name = entry.normalized_name
         normalized_name = self._normalize_name(name)
         existing = self.nomenclature_repository.get_by_normalized_name(normalized_name)
         if existing is not None and existing.id != nomenclature_id:
@@ -331,6 +334,10 @@ class AdminNomenclatureService:
         try:
             entry.name = self._collapse_name_whitespace(name)
             entry.normalized_name = normalized_name
+            self.nomenclature_repository.sync_item_for_entry_rename(
+                entry,
+                previous_normalized_name=previous_normalized_name,
+            )
             self.nomenclature_repository.session.commit()
             return self.nomenclature_repository.get_admin_record(entry.id)
         except Exception:
@@ -350,6 +357,8 @@ class AdminNomenclatureService:
 
         try:
             entry.is_active = is_active
+            if is_active:
+                self.nomenclature_repository.ensure_active_item_for_entry(entry)
             self.nomenclature_repository.session.commit()
             return self.nomenclature_repository.get_admin_record(entry.id)
         except Exception:

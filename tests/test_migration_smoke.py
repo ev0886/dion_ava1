@@ -86,6 +86,58 @@ def test_alembic_upgrade_normalizes_legacy_dispense_policy_names(tmp_path: Path)
     ]
 
 
+def test_alembic_upgrade_backfills_active_items_for_existing_nomenclature(tmp_path: Path) -> None:
+    settings = AppSettings(
+        data_dir=tmp_path,
+        sqlite_filename="migration_nomenclature_backfill.sqlite3",
+        alembic_config_path=Path("alembic.ini"),
+    )
+    settings.data_dir.mkdir(parents=True, exist_ok=True)
+
+    alembic_config = _alembic_config(settings)
+    command.upgrade(alembic_config, "20260421_0005")
+
+    engine = create_engine(settings.database_url)
+    with engine.begin() as connection:
+        connection.execute(
+            text(
+                """
+                INSERT INTO items (id, item_group_id, sku, name, description, unit, return_allowed, min_level, status)
+                VALUES (1, NULL, 'item-1', 'Item One', NULL, 'pcs', 1, 0, 'active')
+                """
+            )
+        )
+        connection.execute(
+            text(
+                """
+                INSERT INTO nomenclature_entries (name, normalized_name, is_active)
+                VALUES
+                    ('Очки защитные', 'очки защитные', 1),
+                    ('Перчатки защитные', 'перчатки защитные', 1)
+                """
+            )
+        )
+
+    command.upgrade(alembic_config, "head")
+
+    with engine.connect() as connection:
+        rows = connection.execute(
+            text(
+                """
+                SELECT sku, name, status
+                FROM items
+                ORDER BY id ASC
+                """
+            )
+        ).all()
+
+    assert rows == [
+        ("item-1", "Item One", "active"),
+        ("nomenclature-1", "Очки защитные", "active"),
+        ("nomenclature-2", "Перчатки защитные", "active"),
+    ]
+
+
 def _alembic_config(settings: AppSettings) -> Config:
     alembic_config = Config(str(settings.alembic_config_path))
     alembic_config.set_main_option("sqlalchemy.url", settings.database_url)

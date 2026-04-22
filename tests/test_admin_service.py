@@ -5,7 +5,7 @@ from datetime import date, datetime
 from pathlib import Path
 
 import pytest
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.application.admin_service import AdminNomenclatureService, AdminOperationService, AdminUserService
@@ -231,6 +231,71 @@ def test_update_nomenclature_rejects_conflict_with_existing_inactive_duplicate(
             service.update_nomenclature(nomenclature_id=second.record.id, name=" alpha ")
 
         assert str(exc_info.value) == "Inactive nomenclature entry with this name already exists"
+
+
+def test_create_nomenclature_creates_real_active_item(
+    session_factory: sessionmaker[Session],
+) -> None:
+    with session_factory() as session:
+        repository = NomenclatureRepository(session)
+        service = AdminNomenclatureService(repository)
+
+        created = service.create_nomenclature(name="  Очки   защитные  ")
+        item = session.execute(
+            select(Item).where(Item.sku == repository.sync_item_sku(created.record.id))
+        ).scalar_one()
+
+        assert created.record.name == "Очки защитные"
+        assert item.name == "Очки защитные"
+        assert item.status is ItemStatus.ACTIVE
+        assert item.unit == "pcs"
+        assert item.return_allowed is True
+
+
+def test_update_nomenclature_renames_paired_item(
+    session_factory: sessionmaker[Session],
+) -> None:
+    with session_factory() as session:
+        repository = NomenclatureRepository(session)
+        service = AdminNomenclatureService(repository)
+
+        created = service.create_nomenclature(name="Очки защитные")
+        updated = service.update_nomenclature(
+            nomenclature_id=created.record.id,
+            name="Очки закрытые",
+        )
+        item = session.execute(
+            select(Item).where(Item.sku == repository.sync_item_sku(created.record.id))
+        ).scalar_one()
+
+        assert updated.name == "Очки закрытые"
+        assert item.name == "Очки закрытые"
+        assert item.status is ItemStatus.ACTIVE
+
+
+def test_activate_nomenclature_restores_missing_or_inactive_item(
+    session_factory: sessionmaker[Session],
+) -> None:
+    with session_factory() as session:
+        repository = NomenclatureRepository(session)
+        service = AdminNomenclatureService(repository)
+
+        created = service.create_nomenclature(name="Перчатки защитные")
+        item = session.execute(
+            select(Item).where(Item.sku == repository.sync_item_sku(created.record.id))
+        ).scalar_one()
+        item.status = ItemStatus.INACTIVE
+        service.deactivate_nomenclature(nomenclature_id=created.record.id)
+        session.commit()
+
+        reactivated = service.activate_nomenclature(nomenclature_id=created.record.id)
+        refreshed_item = session.execute(
+            select(Item).where(Item.sku == repository.sync_item_sku(created.record.id))
+        ).scalar_one()
+
+        assert reactivated.is_active is True
+        assert refreshed_item.name == "Перчатки защитные"
+        assert refreshed_item.status is ItemStatus.ACTIVE
 
 
 def test_update_user_can_deactivate_user_and_preserve_record(

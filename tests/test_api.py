@@ -5,7 +5,7 @@ from datetime import datetime
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import text
+from sqlalchemy import select, text
 
 from app.api import create_app
 from app.application.local_usb_export_service import LocalUsbExportService
@@ -976,6 +976,9 @@ def test_admin_nomenclature_endpoints_support_create_update_activate_and_deactiv
         deactivate_response = client.post("/admin/nomenclature/1/deactivate", json={})
         reactivate_response = client.post("/admin/nomenclature/1/activate", json={})
 
+    with app.state.session_factory() as session:
+        item = session.execute(select(Item).where(Item.sku == "nomenclature-1")).scalar_one()
+
     assert create_response.status_code == 200
     assert create_response.json() == {
         "nomenclature": {
@@ -1019,6 +1022,8 @@ def test_admin_nomenclature_endpoints_support_create_update_activate_and_deactiv
             "is_active": True,
         }
     }
+    assert item.name == "Test Item Updated"
+    assert item.status is ItemStatus.ACTIVE
 
 
 def test_admin_nomenclature_create_reactivates_existing_inactive_duplicate(tmp_path: Path) -> None:
