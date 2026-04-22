@@ -2368,11 +2368,11 @@ def test_admin_operations_export_endpoint_returns_csv_for_selected_inclusive_day
     assert response.content.startswith(b"\xef\xbb\xbf")
     assert response.content.decode("utf-8-sig") == "\n".join(
         (
-            "operation_id,started_at,finished_at,operation_type,operation_state,user_code,user_full_name,item_name,quantity,slot_code,result,error_code,error_message",
-            "2,2026-04-14T00:00:00,2026-04-14T00:01:00,Возврат,failed,operator-1,Operator One,Item One,2,slot-1,hardware_error,lock_timeout,Door lock timeout",
-            "3,2026-04-14T08:00:00,2026-04-14T08:05:00,Пополнение,completed,operator-1,Operator One,Item One,3,slot-1,ok,,",
-            "4,2026-04-14T12:00:00,2026-04-14T12:05:00,Изъятие,completed,operator-1,Operator One,Item One,2,slot-1,ok,,",
-            "5,2026-04-14T23:59:59,2026-04-15T00:05:00,Пополнение,completed,operator-1,Operator One,Item One,5,slot-1,ok,,",
+            "operation_id,started_at,finished_at,operation_type,operation_state,user_code,user_full_name,item_name,quantity,cell_number,result,error_code,error_message",
+            "2,2026-04-14T00:00:00,2026-04-14T00:01:00,Возврат,Ошибка,operator-1,Operator One,Item One,2,73,hardware_error,lock_timeout,Door lock timeout",
+            "3,2026-04-14T08:00:00,2026-04-14T08:05:00,Пополнение,Завершено,operator-1,Operator One,Item One,3,73,ok,,",
+            "4,2026-04-14T12:00:00,2026-04-14T12:05:00,Изъятие,Завершено,operator-1,Operator One,Item One,2,73,ok,,",
+            "5,2026-04-14T23:59:59,2026-04-15T00:05:00,Пополнение,Завершено,operator-1,Operator One,Item One,5,73,ok,,",
             "",
         )
     )
