@@ -344,6 +344,10 @@ def test_ui_mvp_javascript_asset_uses_rfid_auth_and_explicit_touch_role_routes(t
     assert "AUTH_READ_AND_RESOLVE_RFID_ENDPOINT" in response.text
     assert 'window.fetch(AUTH_READ_AND_RESOLVE_RFID_ENDPOINT' in response.text
     assert "TOUCH_ROLE_ROUTES" in response.text
+    assert "buildTouchAuthContext" in response.text
+    assert "const userId = Number(resolvedUser.user_id);" in response.text
+    assert "Number.isFinite(userId)" in response.text
+    assert 'window.sessionStorage.setItem(TOUCH_AUTH_STORAGE_KEY, JSON.stringify(authContext));' in response.text
     assert 'window.location.assign(routePath)' in response.text
     assert 'showScreen("userItemSelect")' in response.text
     assert "go-user-role" not in response.text

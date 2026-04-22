@@ -531,19 +531,31 @@
     return TOUCH_ROLE_ROUTES[roleCode] || null;
   }
 
+  function buildTouchAuthContext(resolvedUser) {
+    if (!resolvedUser) {
+      return null;
+    }
+    const userId = Number(resolvedUser.user_id);
+    if (!Number.isFinite(userId) || !resolvedUser.role_code || typeof resolvedUser.role_code !== "string") {
+      return null;
+    }
+    return {
+      user_id: userId,
+      user_code: resolvedUser.user_code || "",
+      role_code: resolvedUser.role_code,
+    };
+  }
+
   function persistResolvedTouchAuth(resolvedUser) {
-    if (!TOUCH_AUTH_STORAGE_KEY || !window.sessionStorage || !resolvedUser) {
+    if (!TOUCH_AUTH_STORAGE_KEY || !window.sessionStorage) {
+      return;
+    }
+    const authContext = buildTouchAuthContext(resolvedUser);
+    if (!authContext) {
       return;
     }
     try {
-      window.sessionStorage.setItem(
-        TOUCH_AUTH_STORAGE_KEY,
-        JSON.stringify({
-          user_id: resolvedUser.user_id,
-          user_code: resolvedUser.user_code,
-          role_code: resolvedUser.role_code,
-        })
-      );
+      window.sessionStorage.setItem(TOUCH_AUTH_STORAGE_KEY, JSON.stringify(authContext));
     } catch (_error) {
       return;
     }
