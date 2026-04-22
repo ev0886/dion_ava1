@@ -40,6 +40,14 @@ class OperatorBoardSlotRecord:
 
 
 @dataclass(frozen=True, slots=True)
+class SlotHardwareRefRecord:
+    slot_id: int
+    drum_position: int
+    board_address: int
+    lock_number: int
+
+
+@dataclass(frozen=True, slots=True)
 class ReplenishItemResolution:
     item: Item | None
     matched_candidate_count: int
@@ -111,6 +119,34 @@ class InventoryRepository(Repository):
                 drum_position=row[1],
                 lock_number=row[2],
                 filled=bool(row[3]),
+            )
+            for row in rows
+        )
+
+    def list_active_slot_hardware_refs(self) -> tuple[SlotHardwareRefRecord, ...]:
+        statement = (
+            select(
+                Slot.id,
+                Slot.drum_position,
+                Slot.board_address,
+                Slot.lock_number,
+            )
+            .where(
+                Slot.status == SlotStatus.ACTIVE,
+                Slot.lock_number >= 1,
+                Slot.lock_number <= 15,
+                Slot.drum_position >= 0,
+                Slot.drum_position < 32,
+            )
+            .order_by(Slot.drum_position.asc(), Slot.lock_number.asc(), Slot.id.asc())
+        )
+        rows = self.session.execute(statement).all()
+        return tuple(
+            SlotHardwareRefRecord(
+                slot_id=row[0],
+                drum_position=row[1],
+                board_address=row[2],
+                lock_number=row[3],
             )
             for row in rows
         )

@@ -24,11 +24,23 @@ def test_real_lock_adapter_ping_success_with_fake_transport() -> None:
     assert result.status is HardwareOperationStatus.SUCCESS
 
 
-def test_real_lock_adapter_get_lock_status_uses_cu24_probe_but_reports_not_implemented() -> None:
-    adapter = RealLockAdapter(config=_lock_config(), transport=_FakeTransport([bytes.fromhex("02 00 00 80 10 00 03 95")]))
+def test_real_lock_adapter_get_lock_status_decodes_locked_state() -> None:
+    adapter = RealLockAdapter(config=_lock_config(), transport=_FakeTransport([bytes.fromhex("02 00 00 80 10 01 03 96 00")]))
 
-    with pytest.raises(HardwareProtocolNotImplementedError, match="lock-state decoding is not implemented"):
-        adapter.get_lock_status(0, 1)
+    result = adapter.get_lock_status(0, 1)
+
+    assert result.ok is True
+    assert result.status is HardwareOperationStatus.SUCCESS
+    assert result.lock_state is LockState.LOCKED
+
+
+def test_real_lock_adapter_get_lock_status_decodes_open_state() -> None:
+    adapter = RealLockAdapter(config=_lock_config(), transport=_FakeTransport([bytes.fromhex("02 00 00 80 10 01 03 97 01")]))
+
+    result = adapter.get_lock_status(0, 1)
+
+    assert result.ok is True
+    assert result.lock_state is LockState.OPEN
 
 
 def test_real_lock_adapter_unlock_success_path() -> None:
@@ -61,6 +73,13 @@ def test_real_lock_adapter_malformed_response_raises_safe_failure() -> None:
     adapter = RealLockAdapter(config=_lock_config(), transport=_FakeTransport([123]))  # type: ignore[list-item]
 
     with pytest.raises(HardwareFailureError, match="malformed response"):
+        adapter.get_lock_status(0, 1)
+
+
+def test_real_lock_adapter_rejects_unsupported_lock_state_payload() -> None:
+    adapter = RealLockAdapter(config=_lock_config(), transport=_FakeTransport([bytes.fromhex("02 00 00 80 10 00 03 95")]))
+
+    with pytest.raises(HardwareFailureError, match="unsupported lock-state payload length"):
         adapter.get_lock_status(0, 1)
 
 

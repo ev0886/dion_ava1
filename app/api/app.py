@@ -329,6 +329,19 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
     ) -> JSONResponse:
         return JSONResponse(to_api_payload(container.services.user_dispense.list_options_for_user(user_id)))
 
+    @app.get("/user/open-door-status")
+    def user_open_door_status(
+        container: ApplicationContainer = Depends(get_application_container),
+    ) -> JSONResponse:
+        return JSONResponse(to_api_payload(container.services.user_dispense.get_open_door_status()))
+
+    @app.get("/user/dispense-status")
+    def user_dispense_status(
+        slot_id: int,
+        container: ApplicationContainer = Depends(get_application_container),
+    ) -> JSONResponse:
+        return JSONResponse(to_api_payload(container.services.user_dispense.get_dispense_status(slot_id)))
+
     @app.get("/operator/board")
     def operator_board_state(container: ApplicationContainer = Depends(get_application_container)) -> JSONResponse:
         return JSONResponse(to_api_payload(container.services.inventory.get_operator_board_state()))

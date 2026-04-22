@@ -17,6 +17,7 @@ from app.application.dto.inventory import (
     SlotBindingDTO,
 )
 from app.application.exceptions import NotFoundError, ValidationError
+from app.application.open_door_guard import OpenDoorGuard
 from app.application.time import utc_now
 from app.domain.enums import BindingType, InventoryTransactionType, OperationState, OperationType
 from app.persistence.models import (
@@ -40,11 +41,13 @@ class InventoryService:
         nomenclature_repository: NomenclatureRepository,
         operation_repository: OperationRepository,
         event_log_repository: EventLogRepository,
+        open_door_guard: OpenDoorGuard,
     ) -> None:
         self.inventory_repository = inventory_repository
         self.nomenclature_repository = nomenclature_repository
         self.operation_repository = operation_repository
         self.event_log_repository = event_log_repository
+        self.open_door_guard = open_door_guard
 
     def get_balance(self, slot_id: int, item_id: int) -> InventoryBalanceDTO | None:
         self._validate_slot_item_ids(slot_id, item_id)
@@ -128,6 +131,7 @@ class InventoryService:
         nomenclature_id: int,
         slot_ids: tuple[int, ...],
     ) -> OperatorInventoryActionResult:
+        self.open_door_guard.assert_all_closed(action_description="Operator replenish")
         normalized_slot_ids = self._normalize_slot_ids(slot_ids)
         if operator_user_id <= 0:
             raise ValidationError("operator_user_id must be positive")
@@ -298,6 +302,7 @@ class InventoryService:
         operator_user_id: int,
         slot_ids: tuple[int, ...],
     ) -> OperatorInventoryActionResult:
+        self.open_door_guard.assert_all_closed(action_description="Operator removal")
         normalized_slot_ids = self._normalize_slot_ids(slot_ids)
         if operator_user_id <= 0:
             raise ValidationError("operator_user_id must be positive")

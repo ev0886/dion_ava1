@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from collections.abc import Callable
+
 from app.domain.enums import HardwareEndpointType
 from app.hardware.contracts import DrumControllerContract, LockControllerContract, RfidReaderContract
 from app.hardware.dto import (
@@ -24,6 +26,7 @@ class HardwareFacade:
         self._drum_controller = drum_controller
         self._lock_controller = lock_controller
         self._rfid_reader = rfid_reader
+        self._before_drum_move_guard: Callable[[], None] | None = None
 
     def hardware_healthcheck(self) -> HardwareHealthSnapshot:
         return HardwareHealthSnapshot(
@@ -36,7 +39,12 @@ class HardwareFacade:
         return self._drum_controller.get_position()
 
     def move_drum_to_position(self, position: int) -> DrumPositionResult:
+        if self._before_drum_move_guard is not None:
+            self._before_drum_move_guard()
         return self._drum_controller.move_to_position(position)
+
+    def set_before_drum_move_guard(self, guard: Callable[[], None] | None) -> None:
+        self._before_drum_move_guard = guard
 
     def get_lock_status(self, board_address: int, lock_number: int) -> LockStatusResult:
         return self._lock_controller.get_lock_status(board_address, lock_number)

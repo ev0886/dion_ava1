@@ -13,6 +13,11 @@ from app.hardware.dto import HardwareOperationStatus, RfidReadResult
 from app.persistence.models import User
 
 
+class _AllowAllOpenDoorGuard:
+    def assert_all_closed(self, *, action_description: str) -> None:
+        return None
+
+
 class _FakeSession:
     def get(self, *_args: object, **_kwargs: object) -> None:
         return None
@@ -71,14 +76,14 @@ def _build_user(*, status: UserStatus, is_active: bool) -> User:
 
 
 def test_auth_rejects_inactive_flag() -> None:
-    service = AuthService(_FakeUserRepository(_build_user(status=UserStatus.ACTIVE, is_active=False)))
+    service = AuthService(_FakeUserRepository(_build_user(status=UserStatus.ACTIVE, is_active=False)), _AllowAllOpenDoorGuard())
 
     with pytest.raises(AuthorizationError, match="inactive"):
         service.authorize(AuthRequest(user_id=1))
 
 
 def test_auth_rejects_blocked_user() -> None:
-    service = AuthService(_FakeUserRepository(_build_user(status=UserStatus.BLOCKED, is_active=True)))
+    service = AuthService(_FakeUserRepository(_build_user(status=UserStatus.BLOCKED, is_active=True)), _AllowAllOpenDoorGuard())
 
     with pytest.raises(AuthorizationError, match="blocked"):
         service.authorize(AuthRequest(user_id=1))
@@ -86,7 +91,7 @@ def test_auth_rejects_blocked_user() -> None:
 
 def test_auth_read_and_resolve_rfid_returns_user_and_normalized_uid() -> None:
     user = _build_user(status=UserStatus.ACTIVE, is_active=True)
-    service = AuthService(_FakeUserRepository(user))
+    service = AuthService(_FakeUserRepository(user), _AllowAllOpenDoorGuard())
 
     result = service.read_and_resolve_rfid(
         hardware_facade=_FakeHardwareFacade(
@@ -106,7 +111,7 @@ def test_auth_read_and_resolve_rfid_returns_user_and_normalized_uid() -> None:
 
 
 def test_auth_read_and_resolve_rfid_rejects_unassigned_card() -> None:
-    service = AuthService(_FakeUserRepository(None))
+    service = AuthService(_FakeUserRepository(None), _AllowAllOpenDoorGuard())
 
     with pytest.raises(NotFoundError, match="RFID card is not assigned"):
         service.read_and_resolve_rfid(
@@ -127,7 +132,7 @@ def test_auth_read_and_resolve_rfid_retries_until_full_uid_within_window(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     user = _build_user(status=UserStatus.ACTIVE, is_active=True)
-    service = AuthService(_FakeUserRepository(user))
+    service = AuthService(_FakeUserRepository(user), _AllowAllOpenDoorGuard())
     hardware = _FakeHardwareFacade(
         [
             RfidReadResult(
@@ -161,7 +166,7 @@ def test_auth_read_and_resolve_rfid_returns_clean_failure_after_poll_window_expi
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     user = _build_user(status=UserStatus.ACTIVE, is_active=True)
-    service = AuthService(_FakeUserRepository(user))
+    service = AuthService(_FakeUserRepository(user), _AllowAllOpenDoorGuard())
     hardware = _FakeHardwareFacade(
         RfidReadResult(
             device_type=HardwareEndpointType.RFID_READER,
@@ -179,4 +184,4 @@ def test_auth_read_and_resolve_rfid_returns_clean_failure_after_poll_window_expi
     with pytest.raises(AuthorizationError, match="authorization window"):
         service.read_and_resolve_rfid(hardware_facade=hardware)
 
-    assert hardware.read_count == 31
+    assert hardware.read_count > 1

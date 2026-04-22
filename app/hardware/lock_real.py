@@ -46,11 +46,14 @@ class RealLockAdapter(RealHardwareAdapterBase):
 
     def get_lock_status(self, board_address: int, lock_number: int) -> LockStatusResult:
         self._ensure_configured_board_address(board_address, operation="get_lock_status")
-        self._probe_status(lock_number=lock_number, operation="get_lock_status")
-        raise HardwareProtocolNotImplementedError(
-            "CU24 get_lock_status probe is wired, but lock-state decoding is not implemented yet.",
+        response = self._probe_status(lock_number=lock_number, operation="get_lock_status")
+        return LockStatusResult(
             device_type=self.device_type,
-            operation="get_lock_status",
+            status=HardwareOperationStatus.SUCCESS,
+            ok=True,
+            board_address=board_address,
+            lock_number=lock_number,
+            lock_state=self._decode_lock_state(response, operation="get_lock_status"),
         )
 
     def unlock_lock(self, board_address: int, lock_number: int) -> UnlockResult:
@@ -145,6 +148,24 @@ class RealLockAdapter(RealHardwareAdapterBase):
                 device_type=self.device_type,
                 operation=operation,
             ) from error
+
+    def _decode_lock_state(self, response: Cu24Packet, *, operation: str) -> LockState:
+        if len(response.data) != 1:
+            raise HardwareFailureError(
+                f"Lock controller returned unsupported lock-state payload length: {len(response.data)}",
+                device_type=self.device_type,
+                operation=operation,
+            )
+        state_code = response.data[0]
+        if state_code == 0x00:
+            return LockState.LOCKED
+        if state_code == 0x01:
+            return LockState.OPEN
+        raise HardwareFailureError(
+            f"Lock controller returned unsupported lock-state code: {state_code:#04x}",
+            device_type=self.device_type,
+            operation=operation,
+        )
 
     @property
     def _configured_board_address(self) -> int:

@@ -6,6 +6,7 @@ from app.application.dispense_service import DispenseOperationService
 from app.application.dto.inventory import UserDispenseOptionDTO, UserDispenseOptionsResult
 from app.application.dto.operations import DispenseRequest, OperationDTO
 from app.application.exceptions import ValidationError
+from app.application.open_door_guard import OpenDoorGuard, OpenDoorGuardStatusDTO, SlotDoorStatusDTO
 from app.hardware import HardwareFacade
 from app.persistence.repositories.inventory import InventoryRepository
 
@@ -15,9 +16,19 @@ class UserDispenseService:
     inventory_repository: InventoryRepository
     dispense_service: DispenseOperationService
     hardware_facade: HardwareFacade
+    open_door_guard: OpenDoorGuard
 
     def list_options_for_user(self, user_id: int) -> UserDispenseOptionsResult:
         self._validate_user_id(user_id)
+
+        try:
+            self.open_door_guard.assert_all_closed(action_description="User dispense")
+        except ValidationError as error:
+            return UserDispenseOptionsResult(
+                options=(),
+                restriction_blocked=True,
+                unavailable_reason=str(error),
+            )
 
         try:
             self.dispense_service._enforce_dispense_restriction(user_id)
@@ -60,6 +71,14 @@ class UserDispenseService:
             ),
             self.hardware_facade,
         )
+
+    def get_open_door_status(self) -> OpenDoorGuardStatusDTO:
+        return self.open_door_guard.get_status()
+
+    def get_dispense_status(self, slot_id: int) -> SlotDoorStatusDTO:
+        if slot_id <= 0:
+            raise ValidationError("slot_id must be positive")
+        return self.open_door_guard.get_slot_status(slot_id)
 
     @staticmethod
     def _validate_request(request: DispenseRequest) -> None:

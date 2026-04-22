@@ -2,12 +2,14 @@
   const config = window.DION_UI_CONFIG || {};
   const UI_IDLE_TIMEOUT_MS = 30000;
   const PRESENCE_COUNTDOWN_SECONDS = 30;
-  const userDispenseWaitingDelayMs = 1800;
+  const USER_DOOR_STATUS_POLL_INTERVAL_MS = 400;
   const AUTH_READ_AND_RESOLVE_RFID_ENDPOINT = config.authReadAndResolveRfidEndpoint || "";
   const TOUCH_ROLE_ROUTES = config.touchRoleRoutes || {};
   const TOUCH_AUTH_STORAGE_KEY = config.touchAuthStorageKey || "";
   const USER_DISPENSE_OPTIONS_ENDPOINT = config.userDispenseOptionsEndpoint || "";
   const USER_DISPENSE_SUBMIT_ENDPOINT = config.userDispenseSubmitEndpoint || "";
+  const USER_OPEN_DOOR_STATUS_ENDPOINT = config.userOpenDoorStatusEndpoint || "";
+  const USER_DISPENSE_STATUS_ENDPOINT = config.userDispenseStatusEndpoint || "";
   const EMPTY_NOMENCLATURE_MESSAGE =
     config.emptyNomenclatureMessage || "\u041d\u043e\u043c\u0435\u043d\u043a\u043b\u0430\u0442\u0443\u0440\u0430 \u043d\u0435 \u043d\u0430\u0441\u0442\u0440\u043e\u0435\u043d\u0430";
   const DEFAULT_AUTH_ERROR_TITLE = "\u041f\u043e\u043b\u044c\u0437\u043e\u0432\u0430\u0442\u0435\u043b\u044c \u043d\u0435 \u043d\u0430\u0439\u0434\u0435\u043d";
@@ -49,6 +51,9 @@
     authRequestToken: 0,
     userItemsUnavailableMessage: EMPTY_NOMENCLATURE_MESSAGE,
     pendingUserDispenseRequestId: 0,
+    pendingUserDispenseSlotId: null,
+    userDispensePollTimeoutId: null,
+    openDoorBlockedMessage: "",
   };
 
   const screens = {
@@ -113,6 +118,22 @@
       enableIdleTimeout: true,
       roleTheme: "user",
     },
+    doorOpenBlocked: {
+      kicker: "\u0411\u0435\u0437\u043e\u043f\u0430\u0441\u043d\u043e\u0441\u0442\u044c",
+      title: "\u041d\u043e\u0432\u0443\u044e \u043e\u043f\u0435\u0440\u0430\u0446\u0438\u044e \u043d\u0430\u0447\u0430\u0442\u044c \u043d\u0435\u043b\u044c\u0437\u044f",
+      message: function () {
+        return (
+          state.openDoorBlockedMessage ||
+          "\u0417\u0430\u043a\u0440\u043e\u0439\u0442\u0435 \u043e\u0442\u043a\u0440\u044b\u0442\u0443\u044e \u044f\u0447\u0435\u0439\u043a\u0443, \u0447\u0442\u043e\u0431\u044b \u043f\u0440\u043e\u0434\u043e\u043b\u0436\u0438\u0442\u044c."
+        );
+      },
+      actions: [
+        { label: "\u041f\u043e\u0432\u0442\u043e\u0440\u0438\u0442\u044c", action: "retry-open-door-check", tone: "primary" },
+        { label: "\u041d\u0430 \u0433\u043b\u0430\u0432\u043d\u0443\u044e", action: "go-start", tone: "ghost" },
+      ],
+      enableIdleTimeout: true,
+      roleTheme: "user",
+    },
     exitPrompt: {
       title: "\u0412\u044b\u0439\u0442\u0438?",
       actions: [
@@ -139,6 +160,10 @@
     if (state.countdownTimeoutId) {
       window.clearTimeout(state.countdownTimeoutId);
       state.countdownTimeoutId = null;
+    }
+    if (state.userDispensePollTimeoutId) {
+      window.clearTimeout(state.userDispensePollTimeoutId);
+      state.userDispensePollTimeoutId = null;
     }
     state.countdownDeadline = null;
   }
@@ -588,6 +613,113 @@
 
   screens.authSuccess.autoReturnAction = applyResolvedTouchRoute;
 
+  function buildOpenDoorBlockedMessage(payload) {
+    const openCell = payload && payload.open_cell ? payload.open_cell : null;
+    if (openCell && Number.isFinite(Number(openCell.cell_number))) {
+      return (
+        "\u042f\u0447\u0435\u0439\u043a\u0430 \u2116" +
+        String(openCell.cell_number) +
+        " \u043e\u0442\u043a\u0440\u044b\u0442\u0430. \u0417\u0430\u043a\u0440\u043e\u0439\u0442\u0435 \u0435\u0451, \u0447\u0442\u043e\u0431\u044b \u043d\u0430\u0447\u0430\u0442\u044c \u043d\u043e\u0432\u0443\u044e \u043e\u043f\u0435\u0440\u0430\u0446\u0438\u044e."
+      );
+    }
+    return "\u041f\u043e\u043a\u0430 \u0445\u043e\u0442\u044f \u0431\u044b \u043e\u0434\u043d\u0430 \u044f\u0447\u0435\u0439\u043a\u0430 \u043e\u0442\u043a\u0440\u044b\u0442\u0430, \u043d\u043e\u0432\u0443\u044e \u043e\u043f\u0435\u0440\u0430\u0446\u0438\u044e \u043d\u0430\u0447\u0438\u043d\u0430\u0442\u044c \u043d\u0435\u043b\u044c\u0437\u044f.";
+  }
+
+  function scheduleDispenseStatusPoll(callback) {
+    state.userDispensePollTimeoutId = window.setTimeout(callback, USER_DOOR_STATUS_POLL_INTERVAL_MS);
+  }
+
+  async function pollDispenseDoorStatus(requestId, slotId) {
+    if (!USER_DISPENSE_STATUS_ENDPOINT || !Number.isFinite(slotId) || slotId <= 0) {
+      showScreen("userItemUnavailable");
+      return;
+    }
+
+    try {
+      const response = await window.fetch(
+        USER_DISPENSE_STATUS_ENDPOINT + "?slot_id=" + encodeURIComponent(String(slotId)),
+        {
+          method: "GET",
+          headers: {
+            Accept: "application/json",
+          },
+        }
+      );
+
+      if (state.pendingUserDispenseRequestId !== requestId) {
+        return;
+      }
+      if (!response.ok) {
+        showScreen("userItemUnavailable");
+        return;
+      }
+
+      const payload = await response.json().catch(function () {
+        return {};
+      });
+      const isOpen = Boolean(payload && payload.is_open);
+
+      if (state.currentScreen === "userItemAvailable" && isOpen) {
+        showScreen("userItemSuccess");
+      }
+
+      if (state.currentScreen === "userItemSuccess") {
+        if (!isOpen) {
+          handleAction("go-start");
+          return;
+        }
+        scheduleDispenseStatusPoll(function () {
+          void pollDispenseDoorStatus(requestId, slotId);
+        });
+        return;
+      }
+
+      if (state.currentScreen === "userItemAvailable") {
+        scheduleDispenseStatusPoll(function () {
+          void pollDispenseDoorStatus(requestId, slotId);
+        });
+        return;
+      }
+    } catch (_error) {
+      if (state.pendingUserDispenseRequestId !== requestId) {
+        return;
+      }
+      showScreen("userItemUnavailable");
+    }
+  }
+
+  async function checkOpenDoorStatusBeforeAuth() {
+    if (!USER_OPEN_DOOR_STATUS_ENDPOINT) {
+      showScreen("auth");
+      return;
+    }
+
+    try {
+      const response = await window.fetch(USER_OPEN_DOOR_STATUS_ENDPOINT, {
+        method: "GET",
+        headers: {
+          Accept: "application/json",
+        },
+      });
+      const payload = await response.json().catch(function () {
+        return {};
+      });
+      if (!response.ok) {
+        showScreen("auth");
+        return;
+      }
+      if (payload && payload.any_cell_open) {
+        state.openDoorBlockedMessage = buildOpenDoorBlockedMessage(payload);
+        showScreen("doorOpenBlocked");
+        return;
+      }
+      state.openDoorBlockedMessage = "";
+      showScreen("auth");
+    } catch (_error) {
+      showScreen("auth");
+    }
+  }
+
   async function submitUserDispense() {
     const selectedItem = getSelectedUserItem();
     const resolvedUser = state.authResolvedUser;
@@ -615,24 +747,35 @@
           quantity: 1,
         }),
       });
+      const payload = await response.json().catch(function () {
+        return {};
+      });
 
       if (state.pendingUserDispenseRequestId !== requestId) {
         return;
       }
 
       if (!response.ok) {
+        if (payload && typeof payload.detail === "string" && payload.detail.indexOf("is open") !== -1) {
+          state.openDoorBlockedMessage = String(payload.detail);
+          showScreen("doorOpenBlocked");
+          return;
+        }
+        if (payload && payload.detail) {
+          state.userItemsUnavailableMessage = String(payload.detail);
+        }
         showScreen("userItemUnavailable");
         return;
       }
 
-      await new Promise(function (resolve) {
-        window.setTimeout(resolve, userDispenseWaitingDelayMs);
-      });
-      if (state.pendingUserDispenseRequestId !== requestId) {
+      const slotId = Number(payload && payload.slot_id);
+      if (!Number.isFinite(slotId) || slotId <= 0) {
+        showScreen("userItemUnavailable");
         return;
       }
-      await loadUserItemsForResolvedUser();
-      showScreen("userItemSuccess");
+
+      state.pendingUserDispenseSlotId = slotId;
+      void pollDispenseDoorStatus(requestId, slotId);
     } catch (_error) {
       if (state.pendingUserDispenseRequestId !== requestId) {
         return;
@@ -669,6 +812,11 @@
       });
 
       if (!response.ok) {
+        if (response.status === 400 && payload && typeof payload.detail === "string" && payload.detail.indexOf("is open") !== -1) {
+          state.openDoorBlockedMessage = String(payload.detail);
+          showScreen("doorOpenBlocked");
+          return;
+        }
         if (response.status === 404) {
           showAuthError(DEFAULT_AUTH_ERROR_TITLE);
           return;
@@ -704,7 +852,7 @@
 
   function handleAction(action) {
     if (action === "go-auth") {
-      showScreen("auth");
+      void checkOpenDoorStatusBeforeAuth();
       return;
     }
     if (action === "confirm-exit") {
@@ -728,12 +876,18 @@
       showScreen("userItemSelect");
       return;
     }
+    if (action === "retry-open-door-check") {
+      void checkOpenDoorStatusBeforeAuth();
+      return;
+    }
     if (action === "go-start") {
       state.previousScreen = null;
       state.presencePreviousScreen = null;
       state.authResolvedUser = null;
       state.pendingRoutePath = null;
       state.pendingUserDispenseRequestId += 1;
+      state.pendingUserDispenseSlotId = null;
+      state.openDoorBlockedMessage = "";
       showScreen("start");
       return;
     }

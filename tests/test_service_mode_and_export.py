@@ -173,7 +173,7 @@ def _service_mode_service(
     drum_mode: MockHardwareMode = MockHardwareMode.SUCCESS,
 ) -> ServiceModeService:
     return ServiceModeService(
-        auth_service=AuthService(UserRepository(session)),
+        auth_service=AuthService(UserRepository(session), type("_AllowAllOpenDoorGuard", (), {"assert_all_closed": lambda self, *, action_description: None})()),
         session_repository=OperationSessionRepository(session),
         event_log_repository=EventLogRepository(session),
         audit_log_repository=AuditLogRepository(session),

@@ -14,6 +14,7 @@ from app.application.dto.operations import (
 )
 from app.application.exceptions import AuthorizationError, NotFoundError, ValidationError
 from app.application.inventory_mutation import InventoryMutationService
+from app.application.open_door_guard import OpenDoorGuard
 from app.application.operation_recorder import OperationRecorder
 from app.application.state_machine import assert_transition_allowed, can_transition
 from app.application.time import runtime_day_bounds, runtime_today, utc_now
@@ -30,6 +31,7 @@ from app.persistence.repositories.operations import OperationRepository
 class DispenseOperationService:
     operation_repository: OperationRepository
     inventory_repository: InventoryRepository
+    open_door_guard: OpenDoorGuard
     post_move_unlock_delay_ms: int = 0
     _sleep: Callable[[float], None] = field(default=sleep, repr=False)
     _recorder: OperationRecorder = field(init=False, repr=False)
@@ -66,6 +68,7 @@ class DispenseOperationService:
         return self._to_dto(operation)
 
     def execute(self, request: DispenseRequest, hardware_facade: HardwareFacade) -> OperationDTO:
+        self.open_door_guard.assert_all_closed(action_description="Dispense")
         if request.slot_id is None:
             resolved_option = self.inventory_repository.resolve_available_dispense_option(request.item_id)
             if resolved_option is None:

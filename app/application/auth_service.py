@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import time
 
+from app.application.open_door_guard import OpenDoorGuard
 from app.application.dto.auth import AuthRequest, AuthenticatedUserDTO, RfidResolvedUserDTO
 from app.application.exceptions import AuthorizationError, NotFoundError, ValidationError
 from app.domain.enums import RoleCode, UserStatus
@@ -15,10 +16,12 @@ class AuthService:
     _RFID_AUTH_WINDOW_SECONDS = 3.5
     _RFID_POLL_INTERVAL_SECONDS = 0.05
 
-    def __init__(self, user_repository: UserRepository) -> None:
+    def __init__(self, user_repository: UserRepository, open_door_guard: OpenDoorGuard) -> None:
         self.user_repository = user_repository
+        self.open_door_guard = open_door_guard
 
     def authorize(self, request: AuthRequest) -> AuthenticatedUserDTO:
+        self.open_door_guard.assert_all_closed(action_description="Authorization")
         user = self._load_user(request)
         self._ensure_user_allowed(user)
         role_code = self._resolve_role_code(user)
@@ -48,6 +51,7 @@ class AuthService:
         hardware_facade: HardwareFacade,
         allowed_roles: tuple[RoleCode, ...] = (),
     ) -> RfidResolvedUserDTO:
+        self.open_door_guard.assert_all_closed(action_description="Authorization")
         read_result = self._read_rfid_for_authorization(hardware_facade)
         if read_result.uid is None:
             raise AuthorizationError(read_result.message or "No valid RFID card present")

@@ -8,6 +8,11 @@ from app.persistence.repositories.inventory import AvailableDispenseOptionRecord
 from app.persistence.models import InventoryBalance, SlotItemBinding
 
 
+class _AllowAllOpenDoorGuard:
+    def assert_all_closed(self, *, action_description: str) -> None:
+        return None
+
+
 class _FakeScalarResult:
     def __init__(self, values: list[object]) -> None:
         self._values = values
@@ -82,7 +87,7 @@ def test_inventory_lookup_result_shape() -> None:
         valid_from=None,
         valid_to=None,
     )
-    service = InventoryService(_FakeInventoryRepository(balance, [binding]))
+    service = InventoryService(_FakeInventoryRepository(balance, [binding]), None, None, None, _AllowAllOpenDoorGuard())
 
     result = service.lookup_inventory(slot_id=10, item_id=20)
 
@@ -95,7 +100,7 @@ def test_inventory_lookup_result_shape() -> None:
 
 
 def test_inventory_service_lists_available_dispense_options() -> None:
-    service = InventoryService(_FakeInventoryRepository(balance=None, bindings=[]))
+    service = InventoryService(_FakeInventoryRepository(balance=None, bindings=[]), None, None, None, _AllowAllOpenDoorGuard())
 
     result = service.list_available_dispense_options()
 
@@ -107,7 +112,7 @@ def test_inventory_service_lists_available_dispense_options() -> None:
 
 
 def test_inventory_service_lists_kiosk_dispense_options_aggregated_by_item() -> None:
-    service = InventoryService(_FakeInventoryRepository(balance=None, bindings=[]))
+    service = InventoryService(_FakeInventoryRepository(balance=None, bindings=[]), None, None, None, _AllowAllOpenDoorGuard())
 
     result = service.list_kiosk_dispense_options()
 
@@ -118,7 +123,7 @@ def test_inventory_service_lists_kiosk_dispense_options_aggregated_by_item() -> 
 
 
 def test_inventory_service_resolves_first_available_slot_for_item() -> None:
-    service = InventoryService(_FakeInventoryRepository(balance=None, bindings=[]))
+    service = InventoryService(_FakeInventoryRepository(balance=None, bindings=[]), None, None, None, _AllowAllOpenDoorGuard())
 
     result = service.resolve_dispense_slot_for_item(20)
 

@@ -12,6 +12,7 @@ from app.application.dispense_service import DispenseOperationService
 from app.application.export_service import ExportService
 from app.application.inventory_service import InventoryService
 from app.application.local_usb_export_service import LocalUsbExportService
+from app.application.open_door_guard import OpenDoorGuard
 from app.application.recovery_service import RecoveryService
 from app.application.refill_service import RefillOperationService
 from app.application.return_service import ReturnOperationService
@@ -104,12 +105,15 @@ def build_services(
     repositories: RepositoryBundle,
     hardware: HardwareBundle,
 ) -> ServiceBundle:
-    auth_service = AuthService(repositories.users)
+    open_door_guard = OpenDoorGuard(repositories.inventory, hardware.facade)
+    hardware.facade.set_before_drum_move_guard(open_door_guard.assert_all_closed_for_drum_movement)
+    auth_service = AuthService(repositories.users, open_door_guard)
     inventory_service = InventoryService(
         repositories.inventory,
         repositories.nomenclature,
         repositories.operations,
         repositories.event_logs,
+        open_door_guard,
     )
     operation_session_service = OperationSessionService(repositories.operation_sessions)
     recovery_service = RecoveryService(
@@ -132,6 +136,7 @@ def build_services(
     dispense_service = DispenseOperationService(
         repositories.operations,
         repositories.inventory,
+        open_door_guard,
         post_move_unlock_delay_ms=_resolve_dispense_post_move_unlock_delay_ms(settings),
     )
     return ServiceBundle(
@@ -147,12 +152,14 @@ def build_services(
             repositories.inventory,
             dispense_service,
             hardware.facade,
+            open_door_guard,
         ),
-        return_ops=ReturnOperationService(repositories.operations, repositories.inventory),
+        return_ops=ReturnOperationService(repositories.operations, repositories.inventory, open_door_guard),
         refill=RefillOperationService(
             repositories.operations,
             repositories.inventory,
             repositories.operation_sessions,
+            open_door_guard,
         ),
         recovery=recovery_service,
         service_mode=ServiceModeService(

@@ -12,6 +12,7 @@ from app.application.dto.operations import (
 )
 from app.application.exceptions import NotFoundError, ValidationError
 from app.application.inventory_mutation import InventoryMutationService
+from app.application.open_door_guard import OpenDoorGuard
 from app.application.operation_recorder import OperationRecorder
 from app.application.state_machine import assert_transition_allowed, can_transition
 from app.application.time import utc_now
@@ -29,6 +30,7 @@ class RefillOperationService:
     operation_repository: OperationRepository
     inventory_repository: InventoryRepository
     session_repository: OperationSessionRepository
+    open_door_guard: OpenDoorGuard
     _recorder: OperationRecorder = field(init=False, repr=False)
     _inventory_mutation: InventoryMutationService = field(init=False, repr=False)
 
@@ -51,6 +53,7 @@ class RefillOperationService:
         return self._to_dto(operation)
 
     def execute(self, request: RefillRequest, hardware_facade: HardwareFacade) -> OperationDTO:
+        self.open_door_guard.assert_all_closed(action_description="Refill")
         validation = self.validate_request(request)
         if not validation.valid:
             raise ValidationError("; ".join(validation.messages))
