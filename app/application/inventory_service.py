@@ -20,6 +20,7 @@ from app.application.exceptions import NotFoundError, ValidationError
 from app.application.open_door_guard import OpenDoorGuard
 from app.application.time import utc_now
 from app.domain.enums import BindingType, InventoryTransactionType, OperationState, OperationType
+from app.hardware.exceptions import HardwareError
 from app.persistence.models import (
     EventLog,
     InventoryBalance,
@@ -35,6 +36,13 @@ from app.persistence.repositories.inventory import InventoryRepository
 
 
 class InventoryService:
+    _OPERATOR_ACCESS_SECTOR_BY_QUARTER = {
+        1: 7,
+        2: 15,
+        3: 23,
+        4: 31,
+    }
+
     def __init__(
         self,
         inventory_repository: InventoryRepository,
@@ -158,6 +166,7 @@ class InventoryService:
             )
 
         slots, balances_by_slot = self._load_slots_and_balances(normalized_slot_ids)
+        self._position_operator_quarter_access(slots, hardware_facade)
         invalid_slots = [
             self._cell_number(slot.drum_position, slot.lock_number)
             for slot in slots
@@ -310,6 +319,7 @@ class InventoryService:
             raise ValidationError("operator_user_id must be positive")
 
         slots, balances_by_slot = self._load_slots_and_balances(normalized_slot_ids)
+        self._position_operator_quarter_access(slots, hardware_facade)
         invalid_slots = [
             self._cell_number(slot.drum_position, slot.lock_number)
             for slot in slots
@@ -509,6 +519,27 @@ class InventoryService:
     @staticmethod
     def _cell_number(drum_position: int, lock_number: int) -> int:
         return (drum_position * 15) + lock_number
+
+    @classmethod
+    def _quarter_number(cls, drum_position: int) -> int:
+        quarter_number = (drum_position // 8) + 1
+        if quarter_number not in cls._OPERATOR_ACCESS_SECTOR_BY_QUARTER:
+            raise ValidationError(f"Unsupported operator quarter for drum position: {drum_position}")
+        return quarter_number
+
+    def _position_operator_quarter_access(self, slots, hardware_facade) -> None:
+        if hardware_facade is None:
+            return
+        quarter_numbers = {self._quarter_number(slot.drum_position) for slot in slots}
+        if len(quarter_numbers) != 1:
+            raise ValidationError("Selected slots must belong to exactly one quarter")
+        quarter_number = next(iter(quarter_numbers))
+        target_sector = self._OPERATOR_ACCESS_SECTOR_BY_QUARTER[quarter_number]
+        try:
+            hardware_facade.move_drum_to_position(target_sector)
+        except HardwareError:
+            self.inventory_repository.session.rollback()
+            raise
 
     def _ensure_all_cells_closed(self, hardware_facade, error_message: str) -> None:
         if self._open_door_guard is None or hardware_facade is None:

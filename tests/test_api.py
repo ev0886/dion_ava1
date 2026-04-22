@@ -1371,6 +1371,38 @@ def test_operator_replenish_endpoint_writes_real_inventory_operations_and_events
     assert binding.is_active is True
 
 
+def test_operator_replenish_endpoint_positions_drum_to_fixed_quarter_access_sector(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    drum_controller = MockDrumAdapter(initial_position=0)
+    lock_controller = MockLockAdapter(lock_states={(0, 1): LockState.LOCKED, (0, 2): LockState.LOCKED})
+    hardware_bundle = HardwareBundle(
+        provider=HardwareProvider.MOCK,
+        drum_controller=drum_controller,
+        lock_controller=lock_controller,
+        rfid_reader=MockRfidAdapter(),
+        facade=HardwareFacade(
+            drum_controller=drum_controller,
+            lock_controller=lock_controller,
+            rfid_reader=MockRfidAdapter(),
+        ),
+    )
+    monkeypatch.setattr("app.application.composition.create_hardware_bundle", lambda _settings: hardware_bundle)
+    app = create_app(_settings(tmp_path, "api_operator_replenish_positioning.sqlite3"))
+    ids = _seed_operator_touch_domain(app)
+
+    with TestClient(app, raise_server_exceptions=False) as client:
+        response = client.post(
+            "/operator/inventory/replenish",
+            json={
+                "operator_user_id": ids.operator_user_id,
+                "nomenclature_id": ids.nomenclature_id,
+                "slot_ids": [ids.slot_two_id],
+            },
+        )
+
+    assert response.status_code == 200
+    assert hardware_bundle.facade.get_drum_position().position == 7
+
+
 def test_operator_replenish_endpoint_prefers_real_inventory_item_for_same_name_nomenclature(tmp_path: Path) -> None:
     app = create_app(_settings(tmp_path, "api_operator_replenish_real_item.sqlite3"))
 
@@ -1771,6 +1803,83 @@ def test_operator_remove_endpoint_clears_filled_slot_and_records_inventory_chang
     assert transaction.quantity_after == 0
     assert transaction.quantity_delta == -2
     assert event.event_type == "operator_inventory_remove"
+
+
+def test_operator_remove_endpoint_positions_drum_to_fixed_quarter_access_sector(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    drum_controller = MockDrumAdapter(initial_position=0)
+    lock_controller = MockLockAdapter(lock_states={(0, 1): LockState.LOCKED, (0, 2): LockState.LOCKED})
+    hardware_bundle = HardwareBundle(
+        provider=HardwareProvider.MOCK,
+        drum_controller=drum_controller,
+        lock_controller=lock_controller,
+        rfid_reader=MockRfidAdapter(),
+        facade=HardwareFacade(
+            drum_controller=drum_controller,
+            lock_controller=lock_controller,
+            rfid_reader=MockRfidAdapter(),
+        ),
+    )
+    monkeypatch.setattr("app.application.composition.create_hardware_bundle", lambda _settings: hardware_bundle)
+    app = create_app(_settings(tmp_path, "api_operator_remove_positioning.sqlite3"))
+    ids = _seed_operator_touch_domain(app)
+
+    with TestClient(app) as client:
+        response = client.post(
+            "/operator/inventory/remove",
+            json={
+                "operator_user_id": ids.operator_user_id,
+                "slot_ids": [ids.slot_three_id],
+            },
+        )
+
+    assert response.status_code == 200
+    assert hardware_bundle.facade.get_drum_position().position == 15
+
+
+def test_operator_replenish_returns_hardware_failure_without_inventory_mutation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    drum_controller = MockDrumAdapter(move_mode=MockHardwareMode.TIMEOUT)
+    lock_controller = MockLockAdapter(lock_states={(0, 1): LockState.LOCKED, (0, 2): LockState.LOCKED})
+    hardware_bundle = HardwareBundle(
+        provider=HardwareProvider.MOCK,
+        drum_controller=drum_controller,
+        lock_controller=lock_controller,
+        rfid_reader=MockRfidAdapter(),
+        facade=HardwareFacade(
+            drum_controller=drum_controller,
+            lock_controller=lock_controller,
+            rfid_reader=MockRfidAdapter(),
+        ),
+    )
+    monkeypatch.setattr("app.application.composition.create_hardware_bundle", lambda _settings: hardware_bundle)
+    app = create_app(_settings(tmp_path, "api_operator_replenish_hardware_failure.sqlite3"))
+    ids = _seed_operator_touch_domain(app)
+
+    with TestClient(app, raise_server_exceptions=False) as client:
+        response = client.post(
+            "/operator/inventory/replenish",
+            json={
+                "operator_user_id": ids.operator_user_id,
+                "nomenclature_id": ids.nomenclature_id,
+                "slot_ids": [ids.slot_two_id],
+            },
+        )
+
+    assert response.status_code == 500
+    assert response.json()["detail"] == "Drum controller timed out"
+
+    with app.state.session_factory() as session:
+        balance = session.query(InventoryBalance).filter_by(slot_id=ids.slot_two_id, item_id=ids.item_id).one_or_none()
+        operations = session.query(Operation).filter_by(slot_id=ids.slot_two_id).all()
+        transactions = session.query(InventoryTransaction).filter_by(slot_id=ids.slot_two_id).all()
+        events = session.query(EventLog).filter_by(slot_id=ids.slot_two_id).all()
+
+    assert balance is None
+    assert operations == []
+    assert transactions == []
+    assert events == []
 
 
 def test_admin_recent_operations_endpoint_returns_latest_slice_newest_first(tmp_path: Path) -> None:
