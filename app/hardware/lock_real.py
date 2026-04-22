@@ -4,6 +4,7 @@ from app.domain.enums import HardwareEndpointType
 from app.hardware.dto import (
     HardwareOperationResult,
     HardwareOperationStatus,
+    LockBoardStatusResult,
     LockState,
     LockStatusResult,
     UnlockResult,
@@ -26,6 +27,9 @@ from app.hardware.transports import SerialRequestResponseTransport
 
 
 class RealLockAdapter(RealHardwareAdapterBase):
+    _BOARD_LOCK_COUNT = 24
+    _BOARD_STATUS_DATA_LENGTH = 3
+
     def __init__(
         self,
         *,
@@ -44,13 +48,29 @@ class RealLockAdapter(RealHardwareAdapterBase):
         self._query_version(operation="ping")
         return self._success_result()
 
-    def get_lock_status(self, board_address: int, lock_number: int) -> LockStatusResult:
-        self._ensure_configured_board_address(board_address, operation="get_lock_status")
-        self._probe_status(lock_number=lock_number, operation="get_lock_status")
-        raise HardwareProtocolNotImplementedError(
-            "CU24 get_lock_status probe is wired, but lock-state decoding is not implemented yet.",
+    def get_board_status(self, board_address: int) -> LockBoardStatusResult:
+        configured_board_address = self._ensure_configured_board_address(board_address, operation="get_board_status")
+        response = self._read_board_status(operation="get_board_status")
+        lock_states, raw_hook_mask = self._decode_board_lock_states(response, operation="get_board_status")
+        return LockBoardStatusResult(
             device_type=self.device_type,
-            operation="get_lock_status",
+            status=HardwareOperationStatus.SUCCESS,
+            ok=True,
+            board_address=configured_board_address,
+            lock_states=lock_states,
+            raw_hook_mask=raw_hook_mask,
+        )
+
+    def get_lock_status(self, board_address: int, lock_number: int) -> LockStatusResult:
+        board_status = self.get_board_status(board_address)
+        lock_state = self._lock_state_from_board_status(board_status, lock_number)
+        return LockStatusResult(
+            device_type=self.device_type,
+            status=HardwareOperationStatus.SUCCESS,
+            ok=True,
+            board_address=board_address,
+            lock_number=lock_number,
+            lock_state=lock_state,
         )
 
     def unlock_lock(self, board_address: int, lock_number: int) -> UnlockResult:
@@ -116,13 +136,12 @@ class RealLockAdapter(RealHardwareAdapterBase):
             operation=operation,
         )
 
-    def _probe_status(self, *, lock_number: int, operation: str) -> Cu24Packet:
+    def _read_board_status(self, *, operation: str) -> Cu24Packet:
         configured_board_address = self._configured_board_address
-        protocol_number = protocol_lock_number(lock_number)
         response = self._send_cu24_request(
             build_packet(
                 address=configured_board_address,
-                lock_number=protocol_number,
+                lock_number=0,
                 command=CU24_CMD_GET_STATUS,
             ),
             operation=operation,
@@ -131,10 +150,34 @@ class RealLockAdapter(RealHardwareAdapterBase):
             response,
             expected_command=CU24_CMD_GET_STATUS,
             expected_address=configured_board_address,
-            expected_lock_number=protocol_number,
+            expected_lock_number=0,
             operation=operation,
         )
         return response
+
+    def _decode_board_lock_states(self, response: Cu24Packet, *, operation: str) -> tuple[tuple[LockState, ...], int]:
+        if len(response.data) != self._BOARD_STATUS_DATA_LENGTH:
+            raise HardwareFailureError(
+                (
+                    "Lock controller returned unexpected board-status payload length: "
+                    f"{len(response.data)} bytes."
+                ),
+                device_type=self.device_type,
+                operation=operation,
+            )
+        # The verified live payload FF 7F 00 for 15 closed cells maps cleanly to a little-endian
+        # 24-bit mask where bit N describes physical lock N+1 and 1 means closed/hooked.
+        raw_hook_mask = int.from_bytes(response.data, byteorder="little", signed=False)
+        lock_states = tuple(
+            LockState.LOCKED if raw_hook_mask & (1 << bit_index) else LockState.OPEN
+            for bit_index in range(self._BOARD_LOCK_COUNT)
+        )
+        return lock_states, raw_hook_mask
+
+    def _lock_state_from_board_status(self, board_status: LockBoardStatusResult, lock_number: int) -> LockState:
+        if not 1 <= lock_number <= self._BOARD_LOCK_COUNT:
+            raise ValueError(f"lock_number must be between 1 and {self._BOARD_LOCK_COUNT}")
+        return board_status.lock_states[lock_number - 1]
 
     def _send_cu24_request(self, payload: bytes, *, operation: str) -> Cu24Packet:
         try:

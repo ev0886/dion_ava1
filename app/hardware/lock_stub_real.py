@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from app.domain.enums import HardwareEndpointType
-from app.hardware.dto import HardwareOperationResult, LockStatusResult, UnlockResult, UnlockTimeResult
+from app.hardware.dto import HardwareOperationResult, LockBoardStatusResult, LockStatusResult, UnlockResult, UnlockTimeResult
 from app.hardware.exceptions import HardwareUnavailableError
 
 
@@ -13,6 +13,13 @@ class StubRealLockAdapter:
             "Lock controller real adapter is not implemented for provider 'stub-real'.",
             device_type=self.device_type,
             operation="ping",
+        )
+
+    def get_board_status(self, board_address: int) -> LockBoardStatusResult:
+        raise HardwareUnavailableError(
+            "Lock controller real adapter is not implemented for provider 'stub-real'.",
+            device_type=self.device_type,
+            operation="get_board_status",
         )
 
     def get_lock_status(self, board_address: int, lock_number: int) -> LockStatusResult:

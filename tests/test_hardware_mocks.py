@@ -43,6 +43,20 @@ def test_mock_lock_unlock_success_changes_state() -> None:
     assert lock.get_lock_status(2, 7).lock_state is LockState.OPEN
 
 
+def test_mock_lock_board_status_helpers_follow_per_lock_states() -> None:
+    lock = MockLockAdapter(lock_states={(2, lock_number): LockState.OPEN for lock_number in range(1, 25)})
+    lock.set_lock_state(2, 1, LockState.LOCKED)
+    lock.set_lock_state(2, 24, LockState.LOCKED)
+
+    result = lock.get_board_status(2)
+
+    assert result.raw_hook_mask == ((1 << 0) | (1 << 23))
+    assert result.is_lock_closed(1) is True
+    assert result.is_lock_open(2) is True
+    assert result.is_lock_closed(24) is True
+    assert result.any_open() is True
+
+
 def test_mock_rfid_reads_queued_cards_with_normalized_uid() -> None:
     reader = MockRfidAdapter()
     reader.queue_card("aa-bb cc")
@@ -94,3 +108,18 @@ def test_hardware_facade_combines_multiple_mocks() -> None:
     assert duplicate_read.uid == "012345"
     assert duplicate_read.is_duplicate is True
     assert unlock_time.seconds == 9
+
+
+def test_hardware_facade_exposes_board_wide_lock_helpers() -> None:
+    facade = HardwareFacade(
+        drum_controller=MockDrumAdapter(),
+        lock_controller=MockLockAdapter(lock_states={(1, 1): LockState.LOCKED, (1, 5): LockState.OPEN}),
+        rfid_reader=MockRfidAdapter(),
+    )
+
+    board_status = facade.get_board_lock_status(1)
+
+    assert board_status.is_lock_closed(1) is True
+    assert facade.is_lock_open(1, 5) is True
+    assert facade.is_lock_closed(1, 1) is True
+    assert facade.any_open(1) is True

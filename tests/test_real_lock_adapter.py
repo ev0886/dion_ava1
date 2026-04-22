@@ -13,6 +13,7 @@ from app.hardware import (
     RealLockAdapter,
     create_hardware_bundle,
 )
+from app.hardware.lock_cu24 import build_packet
 
 
 def test_real_lock_adapter_ping_success_with_fake_transport() -> None:
@@ -24,11 +25,44 @@ def test_real_lock_adapter_ping_success_with_fake_transport() -> None:
     assert result.status is HardwareOperationStatus.SUCCESS
 
 
-def test_real_lock_adapter_get_lock_status_uses_cu24_probe_but_reports_not_implemented() -> None:
-    adapter = RealLockAdapter(config=_lock_config(), transport=_FakeTransport([bytes.fromhex("02 00 00 80 10 00 03 95")]))
+def test_real_lock_adapter_get_board_status_decodes_cu24_hook_mask() -> None:
+    transport = _FakeTransport([_status_response(data=bytes.fromhex("FF 7F 00"))])
+    adapter = RealLockAdapter(config=_lock_config(), transport=transport)
 
-    with pytest.raises(HardwareProtocolNotImplementedError, match="lock-state decoding is not implemented"):
-        adapter.get_lock_status(0, 1)
+    result = adapter.get_board_status(0)
+
+    assert transport.requests == [build_packet(address=0, lock_number=0, command=0x80)]
+    assert result.ok is True
+    assert result.status is HardwareOperationStatus.SUCCESS
+    assert result.raw_hook_mask == 0x007FFF
+    assert all(state is LockState.LOCKED for state in result.lock_states[:15])
+    assert all(state is LockState.OPEN for state in result.lock_states[15:])
+    assert result.any_open() is True
+    assert result.is_lock_closed(1) is True
+    assert result.is_lock_closed(15) is True
+    assert result.is_lock_open(16) is True
+    assert result.is_lock_open(24) is True
+
+
+def test_real_lock_adapter_get_lock_status_uses_board_wide_status_and_maps_physical_lock_numbers() -> None:
+    transport = _FakeTransport([_status_response(data=bytes.fromhex("FE 7F 00"))])
+    adapter = RealLockAdapter(config=_lock_config(), transport=transport)
+
+    closed_result = adapter.get_lock_status(0, 1)
+
+    assert transport.requests == [build_packet(address=0, lock_number=0, command=0x80)]
+    assert closed_result.lock_state is LockState.OPEN
+
+
+def test_real_lock_adapter_get_lock_status_reports_closed_when_requested_bit_is_set() -> None:
+    adapter = RealLockAdapter(config=_lock_config(), transport=_FakeTransport([_status_response(data=bytes.fromhex("FF 7F 00"))]))
+
+    result = adapter.get_lock_status(0, 15)
+
+    assert result.ok is True
+    assert result.status is HardwareOperationStatus.SUCCESS
+    assert result.lock_number == 15
+    assert result.lock_state is LockState.LOCKED
 
 
 def test_real_lock_adapter_unlock_success_path() -> None:
@@ -62,6 +96,13 @@ def test_real_lock_adapter_malformed_response_raises_safe_failure() -> None:
 
     with pytest.raises(HardwareFailureError, match="malformed response"):
         adapter.get_lock_status(0, 1)
+
+
+def test_real_lock_adapter_rejects_non_board_wide_status_payload_length() -> None:
+    adapter = RealLockAdapter(config=_lock_config(), transport=_FakeTransport([_status_response(data=bytes.fromhex("FF 7F"))]))
+
+    with pytest.raises(HardwareFailureError, match="payload length: 2 bytes"):
+        adapter.get_board_status(0)
 
 
 def test_real_lock_adapter_transport_timeout_and_error_handling_stays_safe() -> None:
@@ -112,8 +153,10 @@ def test_real_lock_adapter_ping_rejects_truncated_cu24_version_payload() -> None
 class _FakeTransport:
     def __init__(self, responses: list[object]) -> None:
         self._responses = list(responses)
+        self.requests: list[bytes] = []
 
     def request(self, payload: bytes, *, timeout_ms: int | None = None) -> bytes:
+        self.requests.append(payload)
         if not self._responses:
             raise AssertionError("No fake responses remain.")
         response = self._responses.pop(0)
@@ -140,6 +183,12 @@ def _lock_config():
     return LockHardwareEndpointTransportConfig.model_validate(
         _lock_serial_endpoint_config(code="lock-1", driver_name="lock-driver", port="COM7")
     )
+
+
+def _status_response(*, data: bytes, board_address: int = 0, lock_number: int = 0) -> bytes:
+    header = bytes((0x02, board_address, lock_number, 0x80, 0x10, len(data), 0x03))
+    checksum = (sum(header) + sum(data)) & 0xFF
+    return header + bytes((checksum,)) + data
 
 
 def _serial_endpoint_config(*, code: str, driver_name: str, port: str) -> dict[str, object]:

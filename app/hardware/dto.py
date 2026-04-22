@@ -57,6 +57,31 @@ class LockStatusResult:
 
 
 @dataclass(frozen=True, slots=True)
+class LockBoardStatusResult:
+    device_type: HardwareEndpointType
+    status: HardwareOperationStatus
+    ok: bool
+    board_address: int
+    lock_states: tuple[LockState, ...]
+    raw_hook_mask: int
+    message: str | None = None
+
+    def any_open(self) -> bool:
+        return any(state is LockState.OPEN for state in self.lock_states)
+
+    def is_lock_open(self, lock_number: int) -> bool:
+        return self._lock_state(lock_number) is LockState.OPEN
+
+    def is_lock_closed(self, lock_number: int) -> bool:
+        return self._lock_state(lock_number) is LockState.LOCKED
+
+    def _lock_state(self, lock_number: int) -> LockState:
+        if not 1 <= lock_number <= len(self.lock_states):
+            raise ValueError(f"lock_number must be between 1 and {len(self.lock_states)}")
+        return self.lock_states[lock_number - 1]
+
+
+@dataclass(frozen=True, slots=True)
 class UnlockResult:
     device_type: HardwareEndpointType
     status: HardwareOperationStatus

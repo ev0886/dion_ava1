@@ -5,6 +5,7 @@ from typing import Protocol, runtime_checkable
 from app.hardware.dto import (
     DrumPositionResult,
     HardwareOperationResult,
+    LockBoardStatusResult,
     LockStatusResult,
     RfidReadResult,
     UnlockResult,
@@ -24,6 +25,8 @@ class DrumControllerContract(Protocol):
 @runtime_checkable
 class LockControllerContract(Protocol):
     def ping(self) -> HardwareOperationResult: ...
+
+    def get_board_status(self, board_address: int) -> LockBoardStatusResult: ...
 
     def get_lock_status(self, board_address: int, lock_number: int) -> LockStatusResult: ...
 

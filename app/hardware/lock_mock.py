@@ -4,6 +4,7 @@ from app.domain.enums import HardwareEndpointType
 from app.hardware.dto import (
     HardwareOperationResult,
     HardwareOperationStatus,
+    LockBoardStatusResult,
     LockState,
     LockStatusResult,
     MockHardwareMode,
@@ -53,8 +54,24 @@ class MockLockAdapter:
             ok=True,
         )
 
+    def get_board_status(self, board_address: int) -> LockBoardStatusResult:
+        lock_states = tuple(self._lock_state(board_address, lock_number) for lock_number in range(1, 25))
+        raw_hook_mask = sum(1 << index for index, state in enumerate(lock_states) if state is LockState.LOCKED)
+        return LockBoardStatusResult(
+            device_type=self.device_type,
+            status=HardwareOperationStatus.SUCCESS,
+            ok=all(state is not LockState.UNAVAILABLE for state in lock_states),
+            board_address=board_address,
+            lock_states=lock_states,
+            raw_hook_mask=raw_hook_mask,
+            message="One or more locks are unavailable" if any(state is LockState.UNAVAILABLE for state in lock_states) else None,
+        )
+
     def get_lock_status(self, board_address: int, lock_number: int) -> LockStatusResult:
-        lock_state = self._lock_state(board_address, lock_number)
+        board_status = self.get_board_status(board_address)
+        if lock_number < 1 or lock_number > len(board_status.lock_states):
+            raise ValueError(f"lock_number must be between 1 and {len(board_status.lock_states)}")
+        lock_state = board_status.lock_states[lock_number - 1]
         return LockStatusResult(
             device_type=self.device_type,
             status=HardwareOperationStatus.SUCCESS,
