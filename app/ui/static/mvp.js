@@ -2,12 +2,13 @@
   const config = window.DION_UI_CONFIG || {};
   const UI_IDLE_TIMEOUT_MS = 30000;
   const PRESENCE_COUNTDOWN_SECONDS = 30;
-  const userDispenseWaitingDelayMs = 1800;
   const AUTH_READ_AND_RESOLVE_RFID_ENDPOINT = config.authReadAndResolveRfidEndpoint || "";
   const TOUCH_ROLE_ROUTES = config.touchRoleRoutes || {};
   const TOUCH_AUTH_STORAGE_KEY = config.touchAuthStorageKey || "";
   const USER_DISPENSE_OPTIONS_ENDPOINT = config.userDispenseOptionsEndpoint || "";
   const USER_DISPENSE_SUBMIT_ENDPOINT = config.userDispenseSubmitEndpoint || "";
+  const USER_DOOR_STATUS_ENDPOINT = config.userDoorStatusEndpoint || "";
+  const USER_DOOR_STATUS_POLL_INTERVAL_MS = Number(config.userDoorStatusPollIntervalMs || 300);
   const EMPTY_NOMENCLATURE_MESSAGE =
     config.emptyNomenclatureMessage || "\u041d\u043e\u043c\u0435\u043d\u043a\u043b\u0430\u0442\u0443\u0440\u0430 \u043d\u0435 \u043d\u0430\u0441\u0442\u0440\u043e\u0435\u043d\u0430";
   const DEFAULT_AUTH_ERROR_TITLE = "\u041f\u043e\u043b\u044c\u0437\u043e\u0432\u0430\u0442\u0435\u043b\u044c \u043d\u0435 \u043d\u0430\u0439\u0434\u0435\u043d";
@@ -50,6 +51,9 @@
     userItemsUnavailableMessage: EMPTY_NOMENCLATURE_MESSAGE,
     pendingUserDispenseRequestId: 0,
     dispensedUserItemName: "",
+    targetDoor: null,
+    targetDoorPollId: 0,
+    targetDoorPollTimeoutId: null,
   };
 
   const screens = {
@@ -98,7 +102,7 @@
       kicker: "\u0413\u043e\u0442\u043e\u0432\u043e",
       title: "\u041f\u043e\u043b\u0443\u0447\u0435\u043d\u0438\u0435 \u0437\u0430\u0432\u0435\u0440\u0448\u0435\u043d\u043e",
       message: getUserItemSuccessMessage,
-      actions: [{ label: "\u041d\u0430 \u0433\u043b\u0430\u0432\u043d\u0443\u044e", action: "go-start", tone: "primary" }],
+      actions: [],
       enableIdleTimeout: true,
       roleTheme: "user",
     },
@@ -141,6 +145,10 @@
       window.clearTimeout(state.countdownTimeoutId);
       state.countdownTimeoutId = null;
     }
+    if (state.targetDoorPollTimeoutId) {
+      window.clearTimeout(state.targetDoorPollTimeoutId);
+      state.targetDoorPollTimeoutId = null;
+    }
     state.countdownDeadline = null;
   }
 
@@ -150,6 +158,7 @@
       screenKey !== "auth" &&
       screenKey !== "authError" &&
       screenKey !== "authSuccess" &&
+      screenKey !== "userItemAvailable" &&
       screenKey !== "userItemSuccess" &&
       screenKey !== "userItemUnavailable"
     );
@@ -427,7 +436,7 @@
         badge: "\u0421\u043f\u0430\u0441\u0438\u0431\u043e",
         heading: itemName || "\u0422\u043e\u0432\u0430\u0440",
         detail:
-          "\u0417\u0430\u0431\u0435\u0440\u0438\u0442\u0435 \u0442\u043e\u0432\u0430\u0440, \u0430\u043a\u043a\u0443\u0440\u0430\u0442\u043d\u043e \u0437\u0430\u043a\u0440\u043e\u0439\u0442\u0435 \u044f\u0447\u0435\u0439\u043a\u0443 \u0438 \u0437\u0430\u0432\u0435\u0440\u0448\u0438\u0442\u0435 \u0440\u0430\u0431\u043e\u0442\u0443 \u043a\u043d\u043e\u043f\u043a\u043e\u0439 \u043d\u0438\u0436\u0435.",
+          "\u0417\u0430\u0431\u0435\u0440\u0438\u0442\u0435 \u0442\u043e\u0432\u0430\u0440 \u0438 \u0430\u043a\u043a\u0443\u0440\u0430\u0442\u043d\u043e \u0437\u0430\u043a\u0440\u043e\u0439\u0442\u0435 \u044f\u0447\u0435\u0439\u043a\u0443. \u042d\u043a\u0440\u0430\u043d \u0437\u0430\u043a\u0440\u043e\u0435\u0442\u0441\u044f \u0430\u0432\u0442\u043e\u043c\u0430\u0442\u0438\u0447\u0435\u0441\u043a\u0438.",
       })
     );
   }
@@ -441,6 +450,100 @@
     const qtyConfirmed = Number(payload.qty_confirmed);
 
     return operationState === "completed" && result === "completed" && qtyConfirmed >= 1;
+  }
+
+  function resolveTargetDoorFromDispensePayload(payload) {
+    if (!payload || typeof payload !== "object" || !payload.hardware_context || typeof payload.hardware_context !== "object") {
+      return null;
+    }
+    const slot = payload.hardware_context.slot;
+    if (!slot || typeof slot !== "object") {
+      return null;
+    }
+    const boardAddress = Number(slot.board_address);
+    const lockNumber = Number(slot.lock_number);
+    if (!Number.isFinite(boardAddress) || boardAddress < 0 || !Number.isFinite(lockNumber) || lockNumber <= 0) {
+      return null;
+    }
+    return {
+      boardAddress: boardAddress,
+      lockNumber: lockNumber,
+    };
+  }
+
+  function buildDoorStatusUrl(targetDoor) {
+    const params = new window.URLSearchParams({
+      board_address: String(targetDoor.boardAddress),
+      lock_number: String(targetDoor.lockNumber),
+    });
+    return USER_DOOR_STATUS_ENDPOINT + "?" + params.toString();
+  }
+
+  function clearTargetDoorMonitoring() {
+    state.targetDoor = null;
+    state.targetDoorPollId += 1;
+    if (state.targetDoorPollTimeoutId) {
+      window.clearTimeout(state.targetDoorPollTimeoutId);
+      state.targetDoorPollTimeoutId = null;
+    }
+  }
+
+  function scheduleTargetDoorStatusPoll(pollId) {
+    if (state.targetDoorPollId !== pollId || !state.targetDoor) {
+      return;
+    }
+    state.targetDoorPollTimeoutId = window.setTimeout(function () {
+      void pollTargetDoorStatus(pollId);
+    }, USER_DOOR_STATUS_POLL_INTERVAL_MS);
+  }
+
+  async function pollTargetDoorStatus(pollId) {
+    if (state.targetDoorPollId !== pollId || !state.targetDoor || !USER_DOOR_STATUS_ENDPOINT) {
+      return;
+    }
+
+    try {
+      const response = await window.fetch(buildDoorStatusUrl(state.targetDoor), {
+        method: "GET",
+        headers: {
+          Accept: "application/json",
+        },
+      });
+
+      if (state.targetDoorPollId !== pollId || !state.targetDoor) {
+        return;
+      }
+
+      const payload = await response.json().catch(function () {
+        return {};
+      });
+
+      if (response.ok) {
+        if (state.currentScreen === "userItemAvailable" && payload.is_open === true) {
+          showScreen("userItemSuccess");
+          return;
+        }
+        if (state.currentScreen === "userItemSuccess" && payload.is_closed === true) {
+          handleAction("go-start");
+          return;
+        }
+      }
+    } catch (_error) {
+      return scheduleTargetDoorStatusPoll(pollId);
+    }
+
+    scheduleTargetDoorStatusPoll(pollId);
+  }
+
+  function syncTargetDoorMonitoringForScreen() {
+    if (!state.targetDoor) {
+      return;
+    }
+    if (state.currentScreen !== "userItemAvailable" && state.currentScreen !== "userItemSuccess") {
+      return;
+    }
+    const pollId = state.targetDoorPollId;
+    void pollTargetDoorStatus(pollId);
   }
 
   function renderScreenContent(screenKey) {
@@ -487,6 +590,8 @@
     if (screenKey === "auth") {
       void readAndResolveRfid();
     }
+
+    syncTargetDoorMonitoringForScreen();
 
     if (screen.enableIdleTimeout && canUseSharedInactivityTimeout(screenKey)) {
       scheduleIdleTimeout();
@@ -615,6 +720,7 @@
     state.dispensedUserItemName = selectedItem.name;
     const requestId = state.pendingUserDispenseRequestId + 1;
     state.pendingUserDispenseRequestId = requestId;
+    clearTargetDoorMonitoring();
     showScreen("userItemAvailable");
 
     try {
@@ -640,21 +746,24 @@
       });
 
       if (!response.ok || !isCompletedUserDispense(payload)) {
+        clearTargetDoorMonitoring();
         showScreen("userItemUnavailable");
         return;
       }
-
-      await new Promise(function (resolve) {
-        window.setTimeout(resolve, userDispenseWaitingDelayMs);
-      });
-      if (state.pendingUserDispenseRequestId !== requestId) {
+      const targetDoor = resolveTargetDoorFromDispensePayload(payload);
+      if (!targetDoor) {
+        clearTargetDoorMonitoring();
+        showScreen("userItemUnavailable");
         return;
       }
-      showScreen("userItemSuccess");
+      state.targetDoor = targetDoor;
+      state.targetDoorPollId += 1;
+      syncTargetDoorMonitoringForScreen();
     } catch (_error) {
       if (state.pendingUserDispenseRequestId !== requestId) {
         return;
       }
+      clearTargetDoorMonitoring();
       showScreen("userItemUnavailable");
     }
   }
@@ -753,6 +862,7 @@
       state.pendingRoutePath = null;
       state.dispensedUserItemName = "";
       state.pendingUserDispenseRequestId += 1;
+      clearTargetDoorMonitoring();
       showScreen("start");
       return;
     }

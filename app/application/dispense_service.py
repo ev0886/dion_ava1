@@ -15,6 +15,7 @@ from app.application.dto.operations import (
 from app.application.exceptions import AuthorizationError, NotFoundError, ValidationError
 from app.application.inventory_mutation import InventoryMutationService
 from app.application.operation_recorder import OperationRecorder
+from app.application.open_door_guard import OpenDoorGuard
 from app.application.state_machine import assert_transition_allowed, can_transition
 from app.application.time import runtime_day_bounds, runtime_today, utc_now
 from app.domain.enums import DispenseRestrictionPolicy, OperationState, OperationType, UserStatus
@@ -31,6 +32,7 @@ class DispenseOperationService:
     operation_repository: OperationRepository
     inventory_repository: InventoryRepository
     post_move_unlock_delay_ms: int = 0
+    open_door_guard: OpenDoorGuard | None = None
     _sleep: Callable[[float], None] = field(default=sleep, repr=False)
     _recorder: OperationRecorder = field(init=False, repr=False)
     _inventory_mutation: InventoryMutationService = field(init=False, repr=False)
@@ -66,6 +68,7 @@ class DispenseOperationService:
         return self._to_dto(operation)
 
     def execute(self, request: DispenseRequest, hardware_facade: HardwareFacade) -> OperationDTO:
+        self._ensure_all_cells_closed(hardware_facade)
         if request.slot_id is None:
             resolved_option = self.inventory_repository.resolve_available_dispense_option(request.item_id)
             if resolved_option is None:
@@ -141,6 +144,14 @@ class DispenseOperationService:
             raise
 
         return self._to_dto(operation)
+
+    def _ensure_all_cells_closed(self, hardware_facade: HardwareFacade) -> None:
+        if self.open_door_guard is None:
+            return
+        self.open_door_guard.ensure_all_closed(
+            hardware_facade,
+            error_message="Dispense blocked: one or more cells are open",
+        )
 
     def _enforce_dispense_restriction(self, user_id: int) -> None:
         user = self.operation_repository.session.get(User, user_id)

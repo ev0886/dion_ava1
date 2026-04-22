@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+
 from app.application.dto.operations import (
     CreateOperationCommand,
     OperationContextDTO,
@@ -12,6 +13,7 @@ from app.application.dto.operations import (
 from app.application.exceptions import NotFoundError, ValidationError
 from app.application.inventory_mutation import InventoryMutationService
 from app.application.operation_recorder import OperationRecorder
+from app.application.open_door_guard import OpenDoorGuard
 from app.application.state_machine import assert_transition_allowed, can_transition
 from app.application.time import utc_now
 from app.domain.enums import OperationState, OperationType
@@ -27,6 +29,7 @@ from app.persistence.repositories.operations import OperationRepository
 class ReturnOperationService:
     operation_repository: OperationRepository
     inventory_repository: InventoryRepository
+    open_door_guard: OpenDoorGuard | None = None
     _recorder: OperationRecorder = field(init=False, repr=False)
     _inventory_mutation: InventoryMutationService = field(init=False, repr=False)
 
@@ -49,6 +52,7 @@ class ReturnOperationService:
         return self._to_dto(operation)
 
     def execute(self, request: ReturnRequest, hardware_facade: HardwareFacade) -> OperationDTO:
+        self._ensure_all_cells_closed(hardware_facade)
         validation = self.validate_request(request)
         if not validation.valid:
             raise ValidationError("; ".join(validation.messages))
@@ -122,6 +126,14 @@ class ReturnOperationService:
             raise
 
         return self._to_dto(operation)
+
+    def _ensure_all_cells_closed(self, hardware_facade: HardwareFacade) -> None:
+        if self.open_door_guard is None:
+            return
+        self.open_door_guard.ensure_all_closed(
+            hardware_facade,
+            error_message="Return blocked: one or more cells are open",
+        )
 
     def assert_transition_allowed(self, current_state: OperationState, target_state: OperationState) -> None:
         assert_transition_allowed(OperationType.RETURN, current_state, target_state)

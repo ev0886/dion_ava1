@@ -4,6 +4,7 @@ import time
 
 from app.application.dto.auth import AuthRequest, AuthenticatedUserDTO, RfidResolvedUserDTO
 from app.application.exceptions import AuthorizationError, NotFoundError, ValidationError
+from app.application.open_door_guard import OpenDoorGuard
 from app.domain.enums import RoleCode, UserStatus
 from app.hardware import HardwareFacade
 from app.hardware.dto import HardwareOperationStatus, RfidReadResult
@@ -15,8 +16,9 @@ class AuthService:
     _RFID_AUTH_WINDOW_SECONDS = 3.5
     _RFID_POLL_INTERVAL_SECONDS = 0.05
 
-    def __init__(self, user_repository: UserRepository) -> None:
+    def __init__(self, user_repository: UserRepository, open_door_guard: OpenDoorGuard | None = None) -> None:
         self.user_repository = user_repository
+        self._open_door_guard = open_door_guard
 
     def authorize(self, request: AuthRequest) -> AuthenticatedUserDTO:
         user = self._load_user(request)
@@ -48,6 +50,7 @@ class AuthService:
         hardware_facade: HardwareFacade,
         allowed_roles: tuple[RoleCode, ...] = (),
     ) -> RfidResolvedUserDTO:
+        self._ensure_all_cells_closed(hardware_facade)
         read_result = self._read_rfid_for_authorization(hardware_facade)
         if read_result.uid is None:
             raise AuthorizationError(read_result.message or "No valid RFID card present")
@@ -65,6 +68,17 @@ class AuthService:
             rfid_uid=normalized_uid,
             is_duplicate=read_result.is_duplicate,
             user=self._to_dto(user, role_code),
+        )
+
+    def ensure_authorization_allowed(self, hardware_facade: HardwareFacade) -> None:
+        self._ensure_all_cells_closed(hardware_facade)
+
+    def _ensure_all_cells_closed(self, hardware_facade: HardwareFacade | None = None) -> None:
+        if self._open_door_guard is None or hardware_facade is None:
+            return
+        self._open_door_guard.ensure_all_closed(
+            hardware_facade,
+            error_message="Authorization blocked: one or more cells are open",
         )
 
     def _read_rfid_for_authorization(self, hardware_facade: HardwareFacade) -> RfidReadResult:

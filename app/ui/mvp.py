@@ -50,6 +50,8 @@ def render_user_page(settings: AppSettings) -> HTMLResponse:
         "touchAuthStorageKey": "dion.touchAuthContext",
         "userDispenseOptionsEndpoint": "/user/dispense-options",
         "userDispenseSubmitEndpoint": "/user/dispense",
+        "userDoorStatusEndpoint": "/user/door-status",
+        "userDoorStatusPollIntervalMs": 300,
         "emptyNomenclatureMessage": "Номенклатура не настроена",
     }
     return HTMLResponse(

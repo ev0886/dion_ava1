@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from collections.abc import Callable
+
 from app.domain.enums import HardwareEndpointType
 from app.hardware.contracts import DrumControllerContract, LockControllerContract, RfidReaderContract
 from app.hardware.dto import (
@@ -25,6 +27,7 @@ class HardwareFacade:
         self._drum_controller = drum_controller
         self._lock_controller = lock_controller
         self._rfid_reader = rfid_reader
+        self._controlled_locks_by_board_resolver: Callable[[], tuple[tuple[int, tuple[int, ...]], ...]] | None = None
 
     def hardware_healthcheck(self) -> HardwareHealthSnapshot:
         return HardwareHealthSnapshot(
@@ -37,7 +40,14 @@ class HardwareFacade:
         return self._drum_controller.get_position()
 
     def move_drum_to_position(self, position: int) -> DrumPositionResult:
+        self._ensure_drum_movement_allowed()
         return self._drum_controller.move_to_position(position)
+
+    def set_controlled_locks_by_board_resolver(
+        self,
+        resolver: Callable[[], tuple[tuple[int, tuple[int, ...]], ...]] | None,
+    ) -> None:
+        self._controlled_locks_by_board_resolver = resolver
 
     def get_board_lock_status(self, board_address: int) -> LockBoardStatusResult:
         return self._lock_controller.get_board_status(board_address)
@@ -110,3 +120,13 @@ class HardwareFacade:
         if isinstance(error, HardwareFailureError):
             return HardwareOperationStatus.FAILURE
         return HardwareOperationStatus.FAILURE
+
+    def _ensure_drum_movement_allowed(self) -> None:
+        if self._controlled_locks_by_board_resolver is None:
+            return
+        from app.application.exceptions import ValidationError
+
+        for board_address, lock_numbers in self._controlled_locks_by_board_resolver():
+            board_status = self.get_board_lock_status(board_address)
+            if any(board_status.is_lock_open(lock_number) for lock_number in lock_numbers):
+                raise ValidationError("Drum movement blocked: one or more cells are open")

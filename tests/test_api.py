@@ -119,6 +119,8 @@ def test_ui_user_page_serves_configured_dispense_flow(tmp_path: Path) -> None:
     assert '"touchRoleRoutes": {"user": "/ui/user", "operator": "/ui/operator", "admin": "/ui/admin-touch"}' in response.text
     assert '"userDispenseOptionsEndpoint": "/user/dispense-options"' in response.text
     assert '"userDispenseSubmitEndpoint": "/user/dispense"' in response.text
+    assert '"userDoorStatusEndpoint": "/user/door-status"' in response.text
+    assert '"userDoorStatusPollIntervalMs": 300' in response.text
     assert '"emptyNomenclatureMessage": "\\u041d\\u043e\\u043c\\u0435\\u043d\\u043a\\u043b\\u0430\\u0442\\u0443\\u0440\\u0430 \\u043d\\u0435 \\u043d\\u0430\\u0441\\u0442\\u0440\\u043e\\u0435\\u043d\\u0430"' in response.text
     assert '"/touch/nomenclature"' not in response.text
     assert '"/inventory/kiosk-dispense-options"' not in response.text
@@ -348,6 +350,8 @@ def test_ui_mvp_javascript_asset_uses_rfid_auth_and_explicit_touch_role_routes(t
     assert "TOUCH_ROLE_ROUTES" in response.text
     assert "USER_DISPENSE_OPTIONS_ENDPOINT" in response.text
     assert "USER_DISPENSE_SUBMIT_ENDPOINT" in response.text
+    assert "USER_DOOR_STATUS_ENDPOINT" in response.text
+    assert "USER_DOOR_STATUS_POLL_INTERVAL_MS" in response.text
     assert "buildTouchAuthContext" in response.text
     assert "loadUserItemsForResolvedUser" in response.text
     assert "const userId = Number(resolvedUser.user_id);" in response.text
@@ -356,6 +360,9 @@ def test_ui_mvp_javascript_asset_uses_rfid_auth_and_explicit_touch_role_routes(t
     assert 'window.location.assign(routePath)' in response.text
     assert 'showScreen("userItemSelect")' in response.text
     assert "isCompletedUserDispense" in response.text
+    assert "resolveTargetDoorFromDispensePayload" in response.text
+    assert "pollTargetDoorStatus" in response.text
+    assert 'showScreen("userItemAvailable")' in response.text
     assert 'if (!response.ok || !isCompletedUserDispense(payload)) {' in response.text
     assert 'showScreen("userItemSuccess")' in response.text
     assert "await loadUserItemsForResolvedUser();" not in response.text
@@ -859,6 +866,107 @@ def test_user_dispense_returns_hardware_failure_without_inventory_mutation(
     assert response.json()["result"] == "hardware_error"
     assert inventory_response.status_code == 200
     assert inventory_response.json()["balance"]["quantity"] == 5
+
+
+def test_user_door_status_endpoint_reports_real_target_lock_state(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    hardware_bundle = _open_door_hardware_bundle(board_address=1, lock_number=1)
+    monkeypatch.setattr("app.application.composition.create_hardware_bundle", lambda _settings: hardware_bundle)
+    app = create_app(_settings(tmp_path, "api_user_door_status.sqlite3"))
+    _seed_base_domain(app)
+
+    with TestClient(app) as client:
+        response = client.get("/user/door-status", params={"board_address": 1, "lock_number": 1})
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "board_address": 1,
+        "lock_number": 1,
+        "lock_state": "open",
+        "is_open": True,
+        "is_closed": False,
+    }
+
+
+def test_open_door_guard_blocks_auth_and_user_dispense_flow_endpoints(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    hardware_bundle = _open_door_hardware_bundle(board_address=1, lock_number=1)
+    monkeypatch.setattr("app.application.composition.create_hardware_bundle", lambda _settings: hardware_bundle)
+    app = create_app(_settings(tmp_path, "api_open_door_user_flow_block.sqlite3"))
+    _seed_base_domain(app)
+
+    with TestClient(app) as client:
+        auth_resolve_response = client.post("/auth/resolve", json={"user_id": 1})
+        auth_rfid_response = client.post("/auth/read-and-resolve-rfid", json={})
+        options_response = client.get("/user/dispense-options", params={"user_id": 1})
+        user_dispense_response = client.post("/user/dispense", json={"user_id": 1, "item_id": 1, "quantity": 1})
+        dispense_response = client.post("/operations/dispense", json={"user_id": 1, "item_id": 1, "slot_id": 1, "quantity": 1})
+        return_response = client.post("/operations/return", json={"user_id": 1, "item_id": 1, "slot_id": 1, "quantity": 1})
+
+    assert auth_resolve_response.status_code == 400
+    assert auth_resolve_response.json()["detail"] == "Authorization blocked: one or more cells are open"
+    assert auth_rfid_response.status_code == 400
+    assert auth_rfid_response.json()["detail"] == "Authorization blocked: one or more cells are open"
+    assert options_response.status_code == 200
+    assert options_response.json() == {
+        "options": [],
+        "restriction_blocked": True,
+        "unavailable_reason": "Dispense blocked: one or more cells are open",
+    }
+    assert user_dispense_response.status_code == 400
+    assert user_dispense_response.json()["detail"] == "Dispense blocked: one or more cells are open"
+    assert dispense_response.status_code == 400
+    assert dispense_response.json()["detail"] == "Dispense blocked: one or more cells are open"
+    assert return_response.status_code == 400
+    assert return_response.json()["detail"] == "Return blocked: one or more cells are open"
+
+
+def test_open_door_guard_blocks_operator_and_refill_endpoints(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    hardware_bundle = _open_door_hardware_bundle(board_address=0, lock_number=1)
+    monkeypatch.setattr("app.application.composition.create_hardware_bundle", lambda _settings: hardware_bundle)
+    app = create_app(_settings(tmp_path, "api_open_door_operator_flow_block.sqlite3"))
+    ids = _seed_operator_touch_domain(app)
+
+    with TestClient(app) as client:
+        replenish_response = client.post(
+            "/operator/inventory/replenish",
+            json={
+                "operator_user_id": ids.operator_user_id,
+                "nomenclature_id": ids.nomenclature_id,
+                "slot_ids": [ids.slot_two_id],
+            },
+        )
+        remove_response = client.post(
+            "/operator/inventory/remove",
+            json={
+                "operator_user_id": ids.operator_user_id,
+                "slot_ids": [ids.slot_one_id],
+            },
+        )
+        refill_response = client.post(
+            "/operations/refill",
+            json={
+                "operator_user_id": ids.operator_user_id,
+                "item_id": ids.item_id,
+                "slot_id": ids.slot_one_id,
+                "quantity": 1,
+                "mode": "add",
+            },
+        )
+
+    assert replenish_response.status_code == 400
+    assert replenish_response.json()["detail"] == "Operator replenish blocked: one or more cells are open"
+    assert remove_response.status_code == 400
+    assert remove_response.json()["detail"] == "Operator removal blocked: one or more cells are open"
+    assert refill_response.status_code == 400
+    assert refill_response.json()["detail"] == "Refill blocked: one or more cells are open"
 
 
 def test_auth_read_and_resolve_rfid_happy_path(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -2720,6 +2828,20 @@ def _real_settings(tmp_path: Path, sqlite_filename: str) -> AppSettings:
     )
 
 
+def _open_door_hardware_bundle(*, board_address: int, lock_number: int) -> HardwareBundle:
+    return HardwareBundle(
+        provider=HardwareProvider.MOCK,
+        drum_controller=MockDrumAdapter(),
+        lock_controller=MockLockAdapter(lock_states={(board_address, lock_number): LockState.OPEN}),
+        rfid_reader=MockRfidAdapter(),
+        facade=HardwareFacade(
+            drum_controller=MockDrumAdapter(),
+            lock_controller=MockLockAdapter(lock_states={(board_address, lock_number): LockState.OPEN}),
+            rfid_reader=MockRfidAdapter(),
+        ),
+    )
+
+
 class _OperatorTouchSeedIds:
     def __init__(
         self,
@@ -2989,10 +3111,22 @@ def _fake_real_dispense_transport_client(config):
     if config is None:
         return None
     if config.endpoint.code == "lock-1":
-        return _FakeRealDispenseTransport([bytes.fromhex("02 00 00 81 10 00 03 96")])
+        return _FakeRealDispenseTransport(
+            [
+                _fake_lock_board_status_response(data=bytes.fromhex("FF 7F 00")),
+                _fake_lock_board_status_response(data=bytes.fromhex("FF 7F 00")),
+                bytes.fromhex("02 00 00 81 10 00 03 96"),
+            ]
+        )
     if config.endpoint.code == "rfid-1":
         return _FakeRealDispenseTransport([b"PONG\n"])
     return _FakeRealDispenseTransport([], sequence_responses=[bytes.fromhex("21 AA AA C4"), bytes.fromhex("25 C0")])
+
+
+def _fake_lock_board_status_response(*, data: bytes, board_address: int = 0, lock_number: int = 0) -> bytes:
+    header = bytes((0x02, board_address, lock_number, 0x80, 0x10, len(data), 0x03))
+    checksum = (sum(header) + sum(data)) & 0xFF
+    return header + bytes((checksum,)) + data
 
 
 def _serial_endpoint_config(*, code: str, driver_name: str, port: str) -> dict[str, object]:

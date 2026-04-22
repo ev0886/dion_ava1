@@ -29,6 +29,7 @@ from app.api.schemas import (
 )
 from app.application.composition import ApplicationContainer
 from app.application.dto.auth import AuthRequest
+from app.application.exceptions import ValidationError
 from app.application.dto.operations import DispenseRequest, RefillRequest, ReturnRequest
 from app.bootstrap import bootstrap
 from app.config import AppSettings, get_settings
@@ -282,6 +283,7 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
         payload: AuthResolveRequest,
         container: ApplicationContainer = Depends(get_application_container),
     ) -> JSONResponse:
+        container.services.auth.ensure_authorization_allowed(container.hardware.facade)
         dto = container.services.auth.authorize(
             AuthRequest(
                 user_id=payload.user_id,
@@ -344,6 +346,7 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
                     operator_user_id=payload.operator_user_id,
                     nomenclature_id=payload.nomenclature_id,
                     slot_ids=payload.slot_ids,
+                    hardware_facade=container.hardware.facade,
                 )
             )
         )
@@ -358,6 +361,29 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
                 container.services.inventory.operator_remove_slots(
                     operator_user_id=payload.operator_user_id,
                     slot_ids=payload.slot_ids,
+                    hardware_facade=container.hardware.facade,
+                )
+            )
+        )
+
+    @app.get("/user/door-status")
+    def user_door_status(
+        board_address: int,
+        lock_number: int,
+        container: ApplicationContainer = Depends(get_application_container),
+    ) -> JSONResponse:
+        if board_address < 0:
+            raise ValidationError("board_address must be non-negative")
+        if lock_number <= 0:
+            raise ValidationError("lock_number must be positive")
+        if container.services.user_dispense.open_door_guard is None:
+            raise ValidationError("Door status polling is unavailable")
+        return JSONResponse(
+            to_api_payload(
+                container.services.user_dispense.open_door_guard.get_target_door_status(
+                    container.hardware.facade,
+                    board_address=board_address,
+                    lock_number=lock_number,
                 )
             )
         )

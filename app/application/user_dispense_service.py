@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from app.application.dispense_service import DispenseOperationService
 from app.application.dto.inventory import UserDispenseOptionDTO, UserDispenseOptionsResult
 from app.application.dto.operations import DispenseRequest, OperationDTO
+from app.application.open_door_guard import OpenDoorGuard
 from app.application.exceptions import ValidationError
 from app.hardware import HardwareFacade
 from app.persistence.repositories.inventory import InventoryRepository
@@ -15,11 +16,13 @@ class UserDispenseService:
     inventory_repository: InventoryRepository
     dispense_service: DispenseOperationService
     hardware_facade: HardwareFacade
+    open_door_guard: OpenDoorGuard | None = None
 
     def list_options_for_user(self, user_id: int) -> UserDispenseOptionsResult:
         self._validate_user_id(user_id)
 
         try:
+            self._ensure_all_cells_closed()
             self.dispense_service._enforce_dispense_restriction(user_id)
         except ValidationError as error:
             return UserDispenseOptionsResult(
@@ -74,3 +77,11 @@ class UserDispenseService:
     def _validate_user_id(user_id: int) -> None:
         if user_id <= 0:
             raise ValidationError("user_id must be positive")
+
+    def _ensure_all_cells_closed(self) -> None:
+        if self.open_door_guard is None:
+            return
+        self.open_door_guard.ensure_all_closed(
+            self.hardware_facade,
+            error_message="Dispense blocked: one or more cells are open",
+        )

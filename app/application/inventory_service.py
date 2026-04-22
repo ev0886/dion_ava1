@@ -17,6 +17,7 @@ from app.application.dto.inventory import (
     SlotBindingDTO,
 )
 from app.application.exceptions import NotFoundError, ValidationError
+from app.application.open_door_guard import OpenDoorGuard
 from app.application.time import utc_now
 from app.domain.enums import BindingType, InventoryTransactionType, OperationState, OperationType
 from app.persistence.models import (
@@ -40,11 +41,13 @@ class InventoryService:
         nomenclature_repository: NomenclatureRepository,
         operation_repository: OperationRepository,
         event_log_repository: EventLogRepository,
+        open_door_guard: OpenDoorGuard | None = None,
     ) -> None:
         self.inventory_repository = inventory_repository
         self.nomenclature_repository = nomenclature_repository
         self.operation_repository = operation_repository
         self.event_log_repository = event_log_repository
+        self._open_door_guard = open_door_guard
 
     def get_balance(self, slot_id: int, item_id: int) -> InventoryBalanceDTO | None:
         self._validate_slot_item_ids(slot_id, item_id)
@@ -127,7 +130,9 @@ class InventoryService:
         operator_user_id: int,
         nomenclature_id: int,
         slot_ids: tuple[int, ...],
+        hardware_facade=None,
     ) -> OperatorInventoryActionResult:
+        self._ensure_all_cells_closed(hardware_facade, "Operator replenish blocked: one or more cells are open")
         normalized_slot_ids = self._normalize_slot_ids(slot_ids)
         if operator_user_id <= 0:
             raise ValidationError("operator_user_id must be positive")
@@ -297,7 +302,9 @@ class InventoryService:
         *,
         operator_user_id: int,
         slot_ids: tuple[int, ...],
+        hardware_facade=None,
     ) -> OperatorInventoryActionResult:
+        self._ensure_all_cells_closed(hardware_facade, "Operator removal blocked: one or more cells are open")
         normalized_slot_ids = self._normalize_slot_ids(slot_ids)
         if operator_user_id <= 0:
             raise ValidationError("operator_user_id must be positive")
@@ -502,3 +509,8 @@ class InventoryService:
     @staticmethod
     def _cell_number(drum_position: int, lock_number: int) -> int:
         return (drum_position * 15) + lock_number
+
+    def _ensure_all_cells_closed(self, hardware_facade, error_message: str) -> None:
+        if self._open_door_guard is None or hardware_facade is None:
+            return
+        self._open_door_guard.ensure_all_closed(hardware_facade, error_message=error_message)

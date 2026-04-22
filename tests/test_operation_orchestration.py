@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from app.application.dispense_service import DispenseOperationService
 from app.application.dto.operations import DispenseRequest, RefillRequest, ReturnRequest
+from app.application.open_door_guard import OpenDoorGuard
 from app.application.refill_service import RefillOperationService
 from app.application.return_service import ReturnOperationService
 from app.config import AppSettings
@@ -82,6 +83,22 @@ def test_successful_dispense_flow_with_mock_hardware(session_factory: sessionmak
         assert operation.qty_confirmed == 2
 
 
+def test_dispense_flow_is_blocked_when_any_controlled_cell_is_open(session_factory: sessionmaker[Session]) -> None:
+    with session_factory() as session:
+        ids = _seed_catalog(session, starting_quantity=5)
+        service = DispenseOperationService(
+            OperationRepository(session),
+            InventoryRepository(session),
+            open_door_guard=OpenDoorGuard(session),
+        )
+
+        with pytest.raises(ValidationError, match="Dispense blocked: one or more cells are open"):
+            service.execute(
+                DispenseRequest(user_id=ids.user_id, item_id=ids.item_id, slot_id=ids.slot_id, quantity=1),
+                _hardware_facade_with_open_door(),
+            )
+
+
 def test_dispense_zero_post_move_unlock_delay_does_not_sleep(session_factory: sessionmaker[Session]) -> None:
     with session_factory() as session:
         ids = _seed_catalog(session, starting_quantity=5)
@@ -142,6 +159,22 @@ def test_successful_return_flow_with_mock_hardware(session_factory: sessionmaker
         assert balance.quantity == 3
 
 
+def test_return_flow_is_blocked_when_any_controlled_cell_is_open(session_factory: sessionmaker[Session]) -> None:
+    with session_factory() as session:
+        ids = _seed_catalog(session, starting_quantity=1)
+        service = ReturnOperationService(
+            OperationRepository(session),
+            InventoryRepository(session),
+            open_door_guard=OpenDoorGuard(session),
+        )
+
+        with pytest.raises(ValidationError, match="Return blocked: one or more cells are open"):
+            service.execute(
+                ReturnRequest(user_id=ids.user_id, item_id=ids.item_id, slot_id=None, quantity=1),
+                _hardware_facade_with_open_door(),
+            )
+
+
 def test_successful_refill_flow_with_mock_hardware(session_factory: sessionmaker[Session]) -> None:
     with session_factory() as session:
         ids = _seed_catalog(session, starting_quantity=4)
@@ -168,6 +201,29 @@ def test_successful_refill_flow_with_mock_hardware(session_factory: sessionmaker
         assert balance.quantity == 7
         assert refill_session is not None
         assert refill_session.status is SessionStatus.COMPLETED
+
+
+def test_refill_flow_is_blocked_when_any_controlled_cell_is_open(session_factory: sessionmaker[Session]) -> None:
+    with session_factory() as session:
+        ids = _seed_catalog(session, starting_quantity=4)
+        service = RefillOperationService(
+            OperationRepository(session),
+            InventoryRepository(session),
+            OperationSessionRepository(session),
+            open_door_guard=OpenDoorGuard(session),
+        )
+
+        with pytest.raises(ValidationError, match="Refill blocked: one or more cells are open"):
+            service.execute(
+                RefillRequest(
+                    operator_user_id=ids.operator_user_id,
+                    item_id=ids.item_id,
+                    slot_id=ids.slot_id,
+                    quantity=1,
+                    mode="add",
+                ),
+                _hardware_facade_with_open_door(),
+            )
 
 
 def test_dispense_hardware_failure_does_not_mutate_inventory_incorrectly(
@@ -456,6 +512,14 @@ def _hardware_facade(drum_mode: MockHardwareMode = MockHardwareMode.SUCCESS) -> 
     return HardwareFacade(
         drum_controller=MockDrumAdapter(initial_position=0, move_mode=drum_mode),
         lock_controller=MockLockAdapter(lock_states={(1, 1): LockState.LOCKED}),
+        rfid_reader=MockRfidAdapter(),
+    )
+
+
+def _hardware_facade_with_open_door() -> HardwareFacade:
+    return HardwareFacade(
+        drum_controller=MockDrumAdapter(initial_position=0),
+        lock_controller=MockLockAdapter(lock_states={(1, 1): LockState.OPEN}),
         rfid_reader=MockRfidAdapter(),
     )
 

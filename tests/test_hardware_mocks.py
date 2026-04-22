@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import pytest
 
+from app.application.exceptions import ValidationError
 from app.hardware import (
     HardwareBusyError,
     HardwareFacade,
@@ -123,3 +124,15 @@ def test_hardware_facade_exposes_board_wide_lock_helpers() -> None:
     assert facade.is_lock_open(1, 5) is True
     assert facade.is_lock_closed(1, 1) is True
     assert facade.any_open(1) is True
+
+
+def test_hardware_facade_blocks_drum_movement_when_any_controlled_cell_is_open() -> None:
+    facade = HardwareFacade(
+        drum_controller=MockDrumAdapter(),
+        lock_controller=MockLockAdapter(lock_states={(1, 5): LockState.OPEN}),
+        rfid_reader=MockRfidAdapter(),
+    )
+    facade.set_controlled_locks_by_board_resolver(lambda: ((1, (5,)),))
+
+    with pytest.raises(ValidationError, match="Drum movement blocked: one or more cells are open"):
+        facade.move_drum_to_position(6)

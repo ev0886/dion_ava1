@@ -13,6 +13,7 @@ from app.application.dto.operations import (
 from app.application.exceptions import NotFoundError, ValidationError
 from app.application.inventory_mutation import InventoryMutationService
 from app.application.operation_recorder import OperationRecorder
+from app.application.open_door_guard import OpenDoorGuard
 from app.application.state_machine import assert_transition_allowed, can_transition
 from app.application.time import utc_now
 from app.domain.enums import OperationState, OperationType, SessionStatus, SessionType
@@ -29,6 +30,7 @@ class RefillOperationService:
     operation_repository: OperationRepository
     inventory_repository: InventoryRepository
     session_repository: OperationSessionRepository
+    open_door_guard: OpenDoorGuard | None = None
     _recorder: OperationRecorder = field(init=False, repr=False)
     _inventory_mutation: InventoryMutationService = field(init=False, repr=False)
 
@@ -51,6 +53,7 @@ class RefillOperationService:
         return self._to_dto(operation)
 
     def execute(self, request: RefillRequest, hardware_facade: HardwareFacade) -> OperationDTO:
+        self._ensure_all_cells_closed(hardware_facade)
         validation = self.validate_request(request)
         if not validation.valid:
             raise ValidationError("; ".join(validation.messages))
@@ -137,6 +140,14 @@ class RefillOperationService:
             raise
 
         return self._to_dto(operation)
+
+    def _ensure_all_cells_closed(self, hardware_facade: HardwareFacade) -> None:
+        if self.open_door_guard is None:
+            return
+        self.open_door_guard.ensure_all_closed(
+            hardware_facade,
+            error_message="Refill blocked: one or more cells are open",
+        )
 
     def assert_transition_allowed(self, current_state: OperationState, target_state: OperationState) -> None:
         assert_transition_allowed(OperationType.REFILL_ITEM, current_state, target_state)
