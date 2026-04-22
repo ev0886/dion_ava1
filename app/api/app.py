@@ -384,7 +384,7 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
         payload: DispenseOperationRequest,
         container: ApplicationContainer = Depends(get_application_container),
     ) -> JSONResponse:
-        dto = container.services.user_dispense.dispense_without_hardware(
+        dto = container.services.user_dispense.dispense(
             DispenseRequest(
                 user_id=payload.user_id,
                 item_id=payload.item_id,

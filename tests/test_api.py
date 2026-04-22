@@ -12,7 +12,7 @@ from app.application.local_usb_export_service import LocalUsbExportService
 from app.application.usb_storage_service import UsbStorageDiscoveryService
 from app.config import AppSettings, HardwareProvider
 from app.domain.enums import HardwareEndpointType
-from app.hardware import HardwareFacade, LockState, MockDrumAdapter, MockLockAdapter, MockRfidAdapter
+from app.hardware import HardwareFacade, LockState, MockDrumAdapter, MockHardwareMode, MockLockAdapter, MockRfidAdapter
 from app.hardware.dto import HardwareOperationStatus, RfidReadResult
 from app.hardware.factory import HardwareBundle
 from app.domain.enums import (
@@ -732,7 +732,7 @@ def test_dispense_operation_resolves_first_stocked_slot_for_item_when_slot_not_p
     assert second_slot_inventory.json()["balance"]["quantity"] == 3
 
 
-def test_user_dispense_endpoint_resolves_first_filled_slot_and_clears_slot_inventory(tmp_path: Path) -> None:
+def test_user_dispense_endpoint_resolves_first_filled_slot_and_debits_single_quantity_via_hardware_path(tmp_path: Path) -> None:
     app = create_app(_settings(tmp_path, "api_user_dispense.sqlite3"))
     _seed_base_domain(app)
     _seed_additional_slot_for_same_item(app)
@@ -748,9 +748,13 @@ def test_user_dispense_endpoint_resolves_first_filled_slot_and_clears_slot_inven
     assert response.status_code == 200
     assert response.json()["operation_state"] == "completed"
     assert response.json()["slot_id"] == 1
-    assert response.json()["hardware_context"] == {}
+    assert response.json()["hardware_context"]["slot"] == {
+        "drum_position": 3,
+        "board_address": 1,
+        "lock_number": 1,
+    }
     assert first_slot_inventory.status_code == 200
-    assert first_slot_inventory.json()["balance"]["quantity"] == 0
+    assert first_slot_inventory.json()["balance"]["quantity"] == 4
     assert second_slot_inventory.status_code == 200
     assert second_slot_inventory.json()["balance"]["quantity"] == 3
 
@@ -758,17 +762,14 @@ def test_user_dispense_endpoint_resolves_first_filled_slot_and_clears_slot_inven
         operation = session.query(Operation).filter_by(id=response.json()["operation_id"]).one()
         history = session.query(OperationStateHistory).filter_by(operation_id=operation.id).all()
         transaction = session.query(InventoryTransaction).filter_by(operation_id=operation.id).one()
-        event = session.query(EventLog).filter_by(operation_id=operation.id).one()
 
     assert operation.operation_type == OperationType.DISPENSE
     assert operation.operation_state == OperationState.COMPLETED
-    assert len(history) >= 2
+    assert len(history) >= 10
     assert transaction.quantity_before == 5
-    assert transaction.quantity_after == 0
-    assert transaction.quantity_delta == -5
+    assert transaction.quantity_after == 4
+    assert transaction.quantity_delta == -1
     assert transaction.transaction_type == "dispense_debit"
-    assert event.event_type == "user_dispense_no_hardware"
-    assert event.source == "user_touch"
 
 
 def test_user_dispense_endpoint_rejects_when_selected_item_no_longer_has_filled_slot(tmp_path: Path) -> None:
@@ -776,18 +777,84 @@ def test_user_dispense_endpoint_rejects_when_selected_item_no_longer_has_filled_
     _seed_base_domain(app)
 
     with TestClient(app) as client:
-        first_response = client.post(
-            "/user/dispense",
-            json={"user_id": 1, "item_id": 1, "quantity": 1},
-        )
-        second_response = client.post(
-            "/user/dispense",
-            json={"user_id": 1, "item_id": 1, "quantity": 1},
-        )
+        responses = [
+            client.post(
+                "/user/dispense",
+                json={"user_id": 1, "item_id": 1, "quantity": 1},
+            )
+            for _ in range(6)
+        ]
 
-    assert first_response.status_code == 200
-    assert second_response.status_code == 404
-    assert second_response.json()["detail"] == "No available dispense slot found for item: 1"
+    assert all(response.status_code == 200 for response in responses[:5])
+    assert responses[5].status_code == 404
+    assert responses[5].json()["detail"] == "No available dispense slot found for item: 1"
+
+
+def test_real_user_dispense_uses_existing_real_hardware_path_and_only_mutates_inventory_on_success(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.hardware import factory as hardware_factory
+
+    sqlite_filename = "api_real_user_dispense.sqlite3"
+    setup_app = create_app(_settings(tmp_path, sqlite_filename))
+    _seed_base_domain(setup_app)
+    _seed_additional_slot_for_same_item(setup_app)
+
+    monkeypatch.setattr(hardware_factory, "_create_transport_client", _fake_real_dispense_transport_client)
+    real_app = create_app(_real_settings(tmp_path, sqlite_filename))
+
+    with TestClient(real_app) as client:
+        response = client.post(
+            "/user/dispense",
+            json={"user_id": 1, "item_id": 1, "quantity": 1},
+        )
+        first_slot_inventory = client.get("/inventory/1/1")
+        second_slot_inventory = client.get("/inventory/2/1")
+
+    assert response.status_code == 200
+    assert response.json()["operation_state"] == "completed"
+    assert response.json()["slot_id"] == 1
+    assert response.json()["hardware_context"]["slot"]["board_address"] == 0
+    assert response.json()["hardware_context"]["slot"]["lock_number"] == 1
+    assert first_slot_inventory.status_code == 200
+    assert first_slot_inventory.json()["balance"]["quantity"] == 4
+    assert second_slot_inventory.status_code == 200
+    assert second_slot_inventory.json()["balance"]["quantity"] == 3
+
+
+def test_user_dispense_returns_hardware_failure_without_inventory_mutation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    hardware_bundle = HardwareBundle(
+        provider=HardwareProvider.MOCK,
+        drum_controller=MockDrumAdapter(move_mode=MockHardwareMode.TIMEOUT),
+        lock_controller=MockLockAdapter(lock_states={(1, 1): LockState.LOCKED}),
+        rfid_reader=MockRfidAdapter(),
+        facade=HardwareFacade(
+            drum_controller=MockDrumAdapter(move_mode=MockHardwareMode.TIMEOUT),
+            lock_controller=MockLockAdapter(lock_states={(1, 1): LockState.LOCKED}),
+            rfid_reader=MockRfidAdapter(),
+        ),
+    )
+    monkeypatch.setattr("app.application.composition.create_hardware_bundle", lambda _settings: hardware_bundle)
+
+    app = create_app(_settings(tmp_path, "api_user_dispense_hardware_failure.sqlite3"))
+    _seed_base_domain(app)
+
+    with TestClient(app) as client:
+        response = client.post(
+            "/user/dispense",
+            json={"user_id": 1, "item_id": 1, "quantity": 1},
+        )
+        inventory_response = client.get("/inventory/1/1")
+
+    assert response.status_code == 200
+    assert response.json()["operation_state"] == "failed"
+    assert response.json()["result"] == "hardware_error"
+    assert inventory_response.status_code == 200
+    assert inventory_response.json()["balance"]["quantity"] == 5
 
 
 def test_auth_read_and_resolve_rfid_happy_path(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

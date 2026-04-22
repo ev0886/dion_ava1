@@ -129,6 +129,11 @@ def build_services(
         repositories.event_logs,
     )
     usb_storage_service = UsbStorageDiscoveryService()
+    dispense_service = DispenseOperationService(
+        repositories.operations,
+        repositories.inventory,
+        post_move_unlock_delay_ms=_resolve_dispense_post_move_unlock_delay_ms(settings),
+    )
     return ServiceBundle(
         admin_users=admin_users_service,
         admin_nomenclature=admin_nomenclature_service,
@@ -137,15 +142,11 @@ def build_services(
         auth=auth_service,
         inventory=inventory_service,
         operation_sessions=operation_session_service,
+        dispense=dispense_service,
         user_dispense=UserDispenseService(
-            repositories.operations,
             repositories.inventory,
-            repositories.event_logs,
-        ),
-        dispense=DispenseOperationService(
-            repositories.operations,
-            repositories.inventory,
-            post_move_unlock_delay_ms=_resolve_dispense_post_move_unlock_delay_ms(settings),
+            dispense_service,
+            hardware.facade,
         ),
         return_ops=ReturnOperationService(repositories.operations, repositories.inventory),
         refill=RefillOperationService(
