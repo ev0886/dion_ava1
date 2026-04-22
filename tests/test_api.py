@@ -355,6 +355,10 @@ def test_ui_mvp_javascript_asset_uses_rfid_auth_and_explicit_touch_role_routes(t
     assert 'window.sessionStorage.setItem(TOUCH_AUTH_STORAGE_KEY, JSON.stringify(authContext));' in response.text
     assert 'window.location.assign(routePath)' in response.text
     assert 'showScreen("userItemSelect")' in response.text
+    assert "isCompletedUserDispense" in response.text
+    assert 'if (!response.ok || !isCompletedUserDispense(payload)) {' in response.text
+    assert 'showScreen("userItemSuccess")' in response.text
+    assert "await loadUserItemsForResolvedUser();" not in response.text
     assert "go-user-role" not in response.text
     assert "go-operator-role" not in response.text
     assert "go-admin-role" not in response.text
