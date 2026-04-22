@@ -63,3 +63,31 @@ class KioskDispenseOptionDTO:
 @dataclass(frozen=True, slots=True)
 class KioskDispenseOptionsResult:
     options: tuple[KioskDispenseOptionDTO, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class OperatorBoardCellDTO:
+    slot_id: int
+    cell_number: int
+    sector_number: int
+    quarter_number: int
+    drum_position: int
+    lock_number: int
+    filled: bool
+
+
+@dataclass(frozen=True, slots=True)
+class OperatorBoardStateResult:
+    cells: tuple[OperatorBoardCellDTO, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class OperatorInventoryActionResult:
+    action: str
+    operator_user_id: int
+    item_id: int | None
+    item_name: str | None
+    nomenclature_id: int | None
+    slot_ids: tuple[int, ...]
+    cell_numbers: tuple[int, ...]
+    operation_ids: tuple[int, ...]

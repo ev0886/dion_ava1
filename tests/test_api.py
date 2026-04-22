@@ -27,8 +27,11 @@ from app.domain.enums import (
     UserStatus,
 )
 from app.persistence.models import (
+    EventLog,
     InventoryBalance,
+    InventoryTransaction,
     Item,
+    NomenclatureEntry,
     Operation,
     OperationStateHistory,
     RecoveryCase,
@@ -145,8 +148,12 @@ def test_ui_operator_page_serves_role_foundation(tmp_path: Path) -> None:
     assert "Пополнить" in response.text
     assert "Выход" in response.text
     assert '"uiRole": "operator"' in response.text
-    assert '"refillWorkflowStatus": "planned"' in response.text
+    assert '"refillWorkflowStatus": "real-db-no-hardware"' in response.text
+    assert '"touchAuthStorageKey": "dion.touchAuthContext"' in response.text
     assert '"listTouchNomenclatureEndpoint": "/touch/nomenclature"' in response.text
+    assert '"operatorBoardStateEndpoint": "/operator/board"' in response.text
+    assert '"operatorReplenishEndpoint": "/operator/inventory/replenish"' in response.text
+    assert '"operatorRemoveEndpoint": "/operator/inventory/remove"' in response.text
     assert '"emptyNomenclatureMessage": "\\u041d\\u043e\\u043c\\u0435\\u043d\\u043a\\u043b\\u0430\\u0442\\u0443\\u0440\\u0430 \\u043d\\u0435 \\u043d\\u0430\\u0441\\u0442\\u0440\\u043e\\u0435\\u043d\\u0430"' in response.text
 
 
@@ -354,7 +361,7 @@ def test_ui_operator_javascript_asset_enforces_single_quarter_selection(tmp_path
     assert response.status_code == 200
     assert "prepareSelectionForQuarter" in response.text
     assert "getSelectedQuarter" in response.text
-    assert "prepareSelectionForQuarter(currentQuarter);" in response.text
+    assert "isCellSelectable" in response.text
 
 
 def test_admin_touch_balances_export_endpoint_writes_aggregated_csv_to_usb(tmp_path: Path, monkeypatch) -> None:
@@ -987,8 +994,124 @@ def test_touch_ui_assets_no_longer_embed_mock_nomenclature_lists(tmp_path: Path)
     assert "Перчатки защитные" not in user_js.text
     assert "loadReplenishItems" in operator_js.text
     assert 'fetch(TOUCH_NOMENCLATURE_ENDPOINT' in operator_js.text
+    assert "refreshBoardState" in operator_js.text
+    assert "submitReplenish" in operator_js.text
+    assert "submitRemove" in operator_js.text
     assert "item-01" not in operator_js.text
     assert "Вода негазированная 0,5 л" not in operator_js.text
+
+
+def test_operator_board_endpoint_returns_real_fill_state(tmp_path: Path) -> None:
+    app = create_app(_settings(tmp_path, "api_operator_board.sqlite3"))
+    ids = _seed_operator_touch_domain(app)
+
+    with TestClient(app) as client:
+        response = client.get("/operator/board")
+
+    assert response.status_code == 200
+    cells = {cell["cell_number"]: cell for cell in response.json()["cells"]}
+    assert cells[1]["slot_id"] == ids.slot_one_id
+    assert cells[1]["filled"] is True
+    assert cells[2]["slot_id"] == ids.slot_two_id
+    assert cells[2]["filled"] is False
+    assert cells[121]["slot_id"] == ids.slot_three_id
+    assert cells[121]["filled"] is True
+
+
+def test_operator_replenish_endpoint_writes_real_inventory_operations_and_events(tmp_path: Path) -> None:
+    app = create_app(_settings(tmp_path, "api_operator_replenish.sqlite3"))
+    ids = _seed_operator_touch_domain(app)
+
+    with TestClient(app) as client:
+        response = client.post(
+            "/operator/inventory/replenish",
+            json={
+                "operator_user_id": ids.operator_user_id,
+                "nomenclature_id": ids.nomenclature_id,
+                "slot_ids": [ids.slot_two_id],
+            },
+        )
+
+    assert response.status_code == 200
+    assert response.json()["action"] == "replenish"
+    assert response.json()["cell_numbers"] == [2]
+
+    with app.state.session_factory() as session:
+        replenished_balance = session.query(InventoryBalance).filter_by(slot_id=ids.slot_two_id, item_id=ids.item_id).one()
+        operation = session.query(Operation).filter_by(slot_id=ids.slot_two_id, operation_type=OperationType.INVENTORY_ADJUSTMENT).one()
+        history = session.query(OperationStateHistory).filter_by(operation_id=operation.id).one()
+        transaction = session.query(InventoryTransaction).filter_by(operation_id=operation.id).one()
+        event = session.query(EventLog).filter_by(operation_id=operation.id).one()
+        binding = session.query(SlotItemBinding).filter_by(slot_id=ids.slot_two_id, item_id=ids.item_id, binding_type=BindingType.PRIMARY).one()
+
+    assert replenished_balance.quantity == 1
+    assert operation.user_id == ids.operator_user_id
+    assert operation.item_id == ids.item_id
+    assert operation.operation_state == OperationState.COMPLETED
+    assert history.state == OperationState.COMPLETED
+    assert transaction.quantity_before == 0
+    assert transaction.quantity_after == 1
+    assert transaction.quantity_delta == 1
+    assert event.event_type == "operator_inventory_replenish"
+    assert binding.is_active is True
+
+
+def test_operator_remove_endpoint_rejects_mixed_invalid_batch_without_partial_changes(tmp_path: Path) -> None:
+    app = create_app(_settings(tmp_path, "api_operator_remove_validation.sqlite3"))
+    ids = _seed_operator_touch_domain(app)
+
+    with TestClient(app) as client:
+        response = client.post(
+            "/operator/inventory/remove",
+            json={
+                "operator_user_id": ids.operator_user_id,
+                "slot_ids": [ids.slot_one_id, ids.slot_two_id],
+            },
+        )
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "Removal rejected: selected slots are already empty: 2"
+
+    with app.state.session_factory() as session:
+        slot_one_balance = session.query(InventoryBalance).filter_by(slot_id=ids.slot_one_id, item_id=ids.item_id).one()
+        operations = session.query(Operation).filter_by(operation_type=OperationType.INVENTORY_ADJUSTMENT).all()
+        transactions = session.query(InventoryTransaction).all()
+        events = session.query(EventLog).all()
+
+    assert slot_one_balance.quantity == 2
+    assert operations == []
+    assert transactions == []
+    assert events == []
+
+
+def test_operator_remove_endpoint_clears_filled_slot_and_records_inventory_changes(tmp_path: Path) -> None:
+    app = create_app(_settings(tmp_path, "api_operator_remove.sqlite3"))
+    ids = _seed_operator_touch_domain(app)
+
+    with TestClient(app) as client:
+        response = client.post(
+            "/operator/inventory/remove",
+            json={
+                "operator_user_id": ids.operator_user_id,
+                "slot_ids": [ids.slot_one_id],
+            },
+        )
+
+    assert response.status_code == 200
+    assert response.json()["action"] == "remove"
+    assert response.json()["cell_numbers"] == [1]
+
+    with app.state.session_factory() as session:
+        slot_one_balance = session.query(InventoryBalance).filter_by(slot_id=ids.slot_one_id, item_id=ids.item_id).one()
+        operation = session.query(Operation).filter_by(slot_id=ids.slot_one_id, operation_type=OperationType.INVENTORY_ADJUSTMENT).one()
+        transaction = session.query(InventoryTransaction).filter_by(operation_id=operation.id).one()
+        event = session.query(EventLog).filter_by(operation_id=operation.id).one()
+
+    assert slot_one_balance.quantity == 0
+    assert transaction.quantity_before == 2
+    assert transaction.quantity_after == 0
+    assert transaction.quantity_delta == -2
+    assert event.event_type == "operator_inventory_remove"
 
 
 def test_admin_recent_operations_endpoint_returns_latest_slice_newest_first(tmp_path: Path) -> None:
@@ -2046,6 +2169,139 @@ def _real_settings(tmp_path: Path, sqlite_filename: str) -> AppSettings:
             "lock_controller": _lock_serial_endpoint_config(code="lock-1", driver_name="lock-driver", port="COM2"),
             "rfid_reader": _serial_endpoint_config(code="rfid-1", driver_name="rfid-driver", port="COM3"),
         },
+    )
+
+
+class _OperatorTouchSeedIds:
+    def __init__(
+        self,
+        *,
+        operator_user_id: int,
+        item_id: int,
+        nomenclature_id: int,
+        slot_one_id: int,
+        slot_two_id: int,
+        slot_three_id: int,
+    ) -> None:
+        self.operator_user_id = operator_user_id
+        self.item_id = item_id
+        self.nomenclature_id = nomenclature_id
+        self.slot_one_id = slot_one_id
+        self.slot_two_id = slot_two_id
+        self.slot_three_id = slot_three_id
+
+
+def _seed_operator_touch_domain(app) -> _OperatorTouchSeedIds:
+    with app.state.session_factory() as session:
+        operator_role = Role(code=RoleCode.OPERATOR, name="Operator")
+        session.add(operator_role)
+        session.flush()
+
+        operator = User(
+            role_id=operator_role.id,
+            user_code="operator-1",
+            full_name="Operator One",
+            status=UserStatus.ACTIVE,
+            dispense_restriction_policy=DispenseRestrictionPolicy.ONCE_PER_DAY,
+            is_active=True,
+        )
+        item = Item(
+            item_group_id=None,
+            sku="operator-item-1",
+            name="Operator Item One",
+            description=None,
+            unit="pcs",
+            return_allowed=True,
+            min_level=0,
+            status=ItemStatus.ACTIVE,
+        )
+        nomenclature = NomenclatureEntry(
+            name="Operator Item One",
+            normalized_name="operator item one",
+            is_active=True,
+        )
+        session.add_all((operator, item, nomenclature))
+        session.flush()
+
+        slot_one = session.query(Slot).filter_by(drum_position=0, lock_number=1).one_or_none()
+        if slot_one is None:
+            slot_one = Slot(
+                code="slot-p00-l01",
+                slot_type=SlotType.UNIVERSAL,
+                drum_position=0,
+                board_address=0,
+                lock_number=1,
+                capacity=1,
+                status=SlotStatus.ACTIVE,
+            )
+            session.add(slot_one)
+        slot_two = session.query(Slot).filter_by(drum_position=0, lock_number=2).one_or_none()
+        if slot_two is None:
+            slot_two = Slot(
+                code="slot-p00-l02",
+                slot_type=SlotType.UNIVERSAL,
+                drum_position=0,
+                board_address=0,
+                lock_number=2,
+                capacity=1,
+                status=SlotStatus.ACTIVE,
+            )
+            session.add(slot_two)
+        slot_three = session.query(Slot).filter_by(drum_position=8, lock_number=1).one_or_none()
+        if slot_three is None:
+            slot_three = Slot(
+                code="slot-p08-l01",
+                slot_type=SlotType.UNIVERSAL,
+                drum_position=8,
+                board_address=0,
+                lock_number=1,
+                capacity=1,
+                status=SlotStatus.ACTIVE,
+            )
+            session.add(slot_three)
+        session.flush()
+
+        session.add_all(
+            [
+                SlotItemBinding(
+                    slot_id=slot_one.id,
+                    item_id=item.id,
+                    binding_type=BindingType.PRIMARY,
+                    is_active=True,
+                    valid_from=None,
+                    valid_to=None,
+                ),
+                SlotItemBinding(
+                    slot_id=slot_three.id,
+                    item_id=item.id,
+                    binding_type=BindingType.PRIMARY,
+                    is_active=True,
+                    valid_from=None,
+                    valid_to=None,
+                ),
+            ]
+        )
+        session.add_all(
+            [
+                InventoryBalance(slot_id=slot_one.id, item_id=item.id, quantity=2),
+                InventoryBalance(slot_id=slot_three.id, item_id=item.id, quantity=1),
+            ]
+        )
+        operator_user_id = operator.id
+        item_id = item.id
+        nomenclature_id = nomenclature.id
+        slot_one_id = slot_one.id
+        slot_two_id = slot_two.id
+        slot_three_id = slot_three.id
+        session.commit()
+
+    return _OperatorTouchSeedIds(
+        operator_user_id=operator_user_id,
+        item_id=item_id,
+        nomenclature_id=nomenclature_id,
+        slot_one_id=slot_one_id,
+        slot_two_id=slot_two_id,
+        slot_three_id=slot_three_id,
     )
 
 

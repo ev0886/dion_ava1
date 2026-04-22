@@ -31,6 +31,14 @@ class FilledBalanceSummaryRecord:
     quantity: int
 
 
+@dataclass(frozen=True, slots=True)
+class OperatorBoardSlotRecord:
+    slot_id: int
+    drum_position: int
+    lock_number: int
+    filled: bool
+
+
 class InventoryRepository(Repository):
     def get_balance(self, slot_id: int, item_id: int) -> InventoryBalance | None:
         statement = select(InventoryBalance).where(
@@ -47,6 +55,101 @@ class InventoryRepository(Repository):
 
     def get_slot(self, slot_id: int) -> Slot | None:
         return self.session.get(Slot, slot_id)
+
+    def list_active_slots_by_ids(self, slot_ids: tuple[int, ...]) -> tuple[Slot, ...]:
+        if not slot_ids:
+            return ()
+        statement = (
+            select(Slot)
+            .where(
+                Slot.id.in_(slot_ids),
+                Slot.status == SlotStatus.ACTIVE,
+            )
+            .order_by(Slot.drum_position.asc(), Slot.lock_number.asc(), Slot.id.asc())
+        )
+        return tuple(self.session.execute(statement).scalars())
+
+    def list_operator_board_slots(self) -> tuple[OperatorBoardSlotRecord, ...]:
+        positive_balance_slots = (
+            select(InventoryBalance.slot_id.label("slot_id"))
+            .where(InventoryBalance.quantity > 0)
+            .group_by(InventoryBalance.slot_id)
+            .subquery()
+        )
+        statement = (
+            select(
+                Slot.id,
+                Slot.drum_position,
+                Slot.lock_number,
+                positive_balance_slots.c.slot_id.is_not(None),
+            )
+            .outerjoin(positive_balance_slots, positive_balance_slots.c.slot_id == Slot.id)
+            .where(
+                Slot.status == SlotStatus.ACTIVE,
+                Slot.lock_number >= 1,
+                Slot.lock_number <= 15,
+                Slot.drum_position >= 0,
+                Slot.drum_position < 32,
+            )
+            .order_by(Slot.drum_position.asc(), Slot.lock_number.asc(), Slot.id.asc())
+        )
+        rows = self.session.execute(statement).all()
+        return tuple(
+            OperatorBoardSlotRecord(
+                slot_id=row[0],
+                drum_position=row[1],
+                lock_number=row[2],
+                filled=bool(row[3]),
+            )
+            for row in rows
+        )
+
+    def list_balances_for_slot_ids(self, slot_ids: tuple[int, ...]) -> tuple[InventoryBalance, ...]:
+        if not slot_ids:
+            return ()
+        statement = (
+            select(InventoryBalance)
+            .where(InventoryBalance.slot_id.in_(slot_ids))
+            .order_by(InventoryBalance.slot_id.asc(), InventoryBalance.item_id.asc(), InventoryBalance.id.asc())
+        )
+        return tuple(self.session.execute(statement).scalars())
+
+    def list_positive_balances_for_slot_ids(self, slot_ids: tuple[int, ...]) -> tuple[InventoryBalance, ...]:
+        if not slot_ids:
+            return ()
+        statement = (
+            select(InventoryBalance)
+            .where(
+                InventoryBalance.slot_id.in_(slot_ids),
+                InventoryBalance.quantity > 0,
+            )
+            .order_by(InventoryBalance.slot_id.asc(), InventoryBalance.item_id.asc(), InventoryBalance.id.asc())
+        )
+        return tuple(self.session.execute(statement).scalars())
+
+    def get_active_item_by_normalized_name(self, normalized_name: str):
+        from app.persistence.models import Item
+
+        statement = (
+            select(Item)
+            .where(Item.status == ItemStatus.ACTIVE)
+            .order_by(Item.id.asc())
+        )
+        for item in self.session.execute(statement).scalars():
+            if " ".join(item.name.split()).casefold() == normalized_name:
+                return item
+        return None
+
+    def get_binding(self, *, slot_id: int, item_id: int, binding_type: BindingType) -> SlotItemBinding | None:
+        statement = select(SlotItemBinding).where(
+            SlotItemBinding.slot_id == slot_id,
+            SlotItemBinding.item_id == item_id,
+            SlotItemBinding.binding_type == binding_type,
+        )
+        return self.session.execute(statement).scalar_one_or_none()
+
+    def add_binding(self, binding: SlotItemBinding) -> None:
+        self.session.add(binding)
 
     def has_active_dispense_path(self, slot_id: int, item_id: int) -> bool:
         from app.persistence.models import Item

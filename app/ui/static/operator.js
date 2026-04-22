@@ -9,6 +9,10 @@
   const PRESENCE_COUNTDOWN_SECONDS = 30;
   const config = window.DION_OPERATOR_UI_CONFIG || {};
   const TOUCH_NOMENCLATURE_ENDPOINT = config.listTouchNomenclatureEndpoint || "";
+  const OPERATOR_BOARD_STATE_ENDPOINT = config.operatorBoardStateEndpoint || "";
+  const OPERATOR_REPLENISH_ENDPOINT = config.operatorReplenishEndpoint || "";
+  const OPERATOR_REMOVE_ENDPOINT = config.operatorRemoveEndpoint || "";
+  const TOUCH_AUTH_STORAGE_KEY = config.touchAuthStorageKey || "";
   const EMPTY_NOMENCLATURE_MESSAGE = config.emptyNomenclatureMessage || "Номенклатура не настроена";
   const REPLENISH_SAMPLE_ITEMS = [];
 
@@ -17,7 +21,6 @@
   let currentView = "board";
   let pendingAction = null;
   let pendingActionType = null;
-  let isActionConfirmed = false;
   let removeSuccessTimerId = null;
   let replenishSuccessTimerId = null;
   let inactivityTimerId = null;
@@ -27,8 +30,12 @@
   let presenceReturnView = null;
   let isPresenceOverlayVisible = false;
   let selectedReplenishItemId = null;
+  let selectionMode = null;
+  let authContext = null;
+  let isBusy = false;
 
   const selectedCells = new Set();
+  const boardStateByCell = new Map();
 
   const boardView = document.getElementById("operator-board-view");
   const confirmationView = document.getElementById("operator-confirmation-view");
@@ -156,12 +163,10 @@
       window.clearInterval(presenceCountdownIntervalId);
       presenceCountdownIntervalId = null;
     }
-
     if (presenceCountdownTimeoutId !== null) {
       window.clearTimeout(presenceCountdownTimeoutId);
       presenceCountdownTimeoutId = null;
     }
-
     presenceCountdownDeadline = null;
     presenceOverlayCountdown.textContent = String(PRESENCE_COUNTDOWN_SECONDS);
   }
@@ -170,7 +175,6 @@
     if (presenceCountdownDeadline === null) {
       return;
     }
-
     const remainingMs = Math.max(0, presenceCountdownDeadline - Date.now());
     const remainingSeconds = Math.ceil(remainingMs / 1000);
     presenceOverlayCountdown.textContent = String(remainingSeconds);
@@ -182,14 +186,12 @@
 
   function hidePresenceOverlay(options) {
     const settings = options || {};
-
     clearPresenceCountdown();
     isPresenceOverlayVisible = false;
     presenceReturnView = null;
     presenceOverlay.hidden = true;
     presenceOverlay.setAttribute("aria-hidden", "true");
     document.body.classList.remove("presence-overlay-active");
-
     if (settings.restartIdleTimer !== false) {
       scheduleInactivityTimeout();
     }
@@ -199,7 +201,6 @@
     if (isPresenceOverlayVisible || !canUseSharedInactivityTimeout()) {
       return;
     }
-
     clearInactivityTimer();
     clearPresenceCountdown();
     presenceReturnView = currentView;
@@ -218,11 +219,9 @@
 
   function scheduleInactivityTimeout() {
     clearInactivityTimer();
-
     if (isPresenceOverlayVisible || !canUseSharedInactivityTimeout()) {
       return;
     }
-
     inactivityTimerId = window.setTimeout(function () {
       showPresenceOverlay();
     }, UI_IDLE_TIMEOUT_MS);
@@ -232,7 +231,6 @@
     if (isPresenceOverlayVisible) {
       return;
     }
-
     scheduleInactivityTimeout();
   }
 
@@ -240,26 +238,21 @@
     if (!isPresenceOverlayVisible) {
       return;
     }
-
     if (presenceReturnView && currentView !== presenceReturnView) {
       currentView = presenceReturnView;
       syncViewState();
     }
-
     hidePresenceOverlay({ restartIdleTimer: true });
   }
 
   function handlePresenceInteraction(event) {
     const target = event.target;
-
     if (!(target instanceof Element)) {
       return;
     }
-
     if (target.closest("#presence-overlay")) {
       return;
     }
-
     restartInactivityTimeout();
   }
 
@@ -278,25 +271,22 @@
   function getSectorCellNumbers(quarter, sectorNumber) {
     const sectorStart = getQuarterSectorStart(quarter);
     const columnIndex = sectorNumber - sectorStart;
-
     if (columnIndex < 0 || columnIndex >= SECTORS_PER_QUARTER) {
       return [];
     }
-
     const cellNumbers = [];
-
     for (let rowIndex = 0; rowIndex < CELLS_PER_SECTOR; rowIndex += 1) {
       cellNumbers.push(getVisibleCellNumber(quarter, columnIndex, rowIndex));
     }
-
     return cellNumbers;
   }
 
   function isSectorFullySelected(quarter, sectorNumber) {
-    const sectorCellNumbers = getSectorCellNumbers(quarter, sectorNumber);
-
+    const sectorCellNumbers = getSectorCellNumbers(quarter, sectorNumber).filter(function (cellNumber) {
+      return isCellSelectable(cellNumber);
+    });
     return (
-      sectorCellNumbers.length === CELLS_PER_SECTOR &&
+      sectorCellNumbers.length > 0 &&
       sectorCellNumbers.every(function (cellNumber) {
         return selectedCells.has(cellNumber);
       })
@@ -318,23 +308,21 @@
     if (firstSelectedCell.done) {
       return null;
     }
-
     return getQuarterForCellNumber(firstSelectedCell.value);
   }
 
   function prepareSelectionForQuarter(targetQuarter) {
     const selectedQuarter = getSelectedQuarter();
-
     if (selectedQuarter !== null && selectedQuarter !== targetQuarter) {
       selectedCells.clear();
       return true;
     }
-
     return false;
   }
 
   function updateSelectionSummary() {
-    selectionSummary.textContent = "Выбрано: " + selectedCells.size;
+    const modeLabel = selectionMode === "remove" ? " • режим изъятия" : selectionMode === "refill" ? " • режим пополнения" : "";
+    selectionSummary.textContent = "Выбрано: " + selectedCells.size + modeLabel;
   }
 
   function setStatusMessage(message) {
@@ -346,9 +334,7 @@
     const sectorEnd = sectorStart + SECTORS_PER_QUARTER - 1;
     const cellStart = getQuarterCellStart(currentQuarter);
     const cellEnd = cellStart + CELLS_PER_QUARTER - 1;
-
-    operatorSummary.textContent =
-      "Секторы " + sectorStart + "-" + sectorEnd + " • Ячейки " + cellStart + "-" + cellEnd;
+    operatorSummary.textContent = "Секторы " + sectorStart + "-" + sectorEnd + " • Ячейки " + cellStart + "-" + cellEnd;
     quarterIndicator.textContent = currentQuarter + "/4";
   }
 
@@ -368,12 +354,9 @@
 
   function clearPendingActionState(options) {
     const settings = options || {};
-
     pendingAction = null;
     pendingActionType = null;
-    isActionConfirmed = false;
     confirmationNote.hidden = true;
-
     if (settings.preserveSelectedReplenishItem !== true) {
       selectedReplenishItemId = null;
     }
@@ -429,7 +412,6 @@
   function renderCellChips(container) {
     const cellNumbers = getSelectedCellNumbers();
     container.innerHTML = "";
-
     cellNumbers.forEach(function (cellNumber) {
       const chip = document.createElement("span");
       chip.className = "confirmation-cell-chip";
@@ -454,14 +436,13 @@
   }
 
   function syncReplenishConfirmState() {
-    const isReady = selectedReplenishItemId !== null;
+    const isReady = selectedReplenishItemId !== null && !isBusy;
     replenishItemSelectConfirmButton.disabled = !isReady;
     replenishItemSelectConfirmButton.classList.toggle("is-ready", isReady);
   }
 
   function renderReplenishItemOptions() {
     replenishItemList.innerHTML = "";
-
     if (!hasReplenishItems()) {
       const emptyState = document.createElement("div");
       emptyState.className = "replenish-item-empty-state";
@@ -474,29 +455,27 @@
       const option = document.createElement("button");
       const isSelected = item.id === selectedReplenishItemId;
       const name = document.createElement("span");
-
       option.type = "button";
       option.className = "replenish-item-option";
       option.dataset.itemId = item.id;
       option.setAttribute("role", "option");
       option.setAttribute("aria-selected", isSelected ? "true" : "false");
-
+      option.disabled = isBusy;
       if (isSelected) {
         option.classList.add("is-selected");
       }
-
       name.className = "replenish-item-name";
       name.textContent = item.name;
-
       option.appendChild(name);
-
       option.addEventListener("click", function () {
+        if (isBusy) {
+          return;
+        }
         selectedReplenishItemId = item.id;
         renderReplenishItemOptions();
         syncReplenishConfirmState();
         setStatusMessage("Пополнить: выбран товар");
       });
-
       replenishItemList.appendChild(option);
     });
   }
@@ -510,8 +489,7 @@
 
   function renderReplenishExecution() {
     const selectedItem = getSelectedReplenishItem();
-    const itemName = selectedItem ? selectedItem.name : "item #";
-
+    const itemName = selectedItem ? selectedItem.name : "товар";
     replenishExecutionTitle.textContent =
       "Осуществите пополнение остатков выбранных ячеек товаром " + itemName;
     replenishExecutionDescription.textContent =
@@ -523,8 +501,7 @@
 
   function renderReplenishSuccess() {
     const selectedItem = getSelectedReplenishItem();
-    const itemName = selectedItem ? selectedItem.name : "item #";
-
+    const itemName = selectedItem ? selectedItem.name : "товар";
     replenishSuccessMessage.textContent =
       "Выбранные ячейки успешно пополнены товаром " + itemName;
     renderCellChips(replenishSuccessCells);
@@ -534,8 +511,8 @@
     confirmationAction.textContent = pendingAction || "-";
     confirmationCount.textContent = String(selectedCells.size);
     confirmationKicker.textContent = pendingAction || "Подтверждение";
-    confirmationTitle.textContent = isActionConfirmed ? "Действие подтверждено" : "Подтвердите действие";
-    confirmationNote.hidden = !isActionConfirmed;
+    confirmationTitle.textContent = "Подтвердите действие";
+    confirmationNote.hidden = true;
     renderConfirmationCells();
   }
 
@@ -552,7 +529,6 @@
     clearReplenishSuccessTimer();
     pendingActionType = actionType;
     pendingAction = actionLabel;
-    isActionConfirmed = false;
     renderConfirmation();
     currentView = "confirmation";
     syncViewState();
@@ -586,13 +562,13 @@
     scheduleInactivityTimeout();
   }
 
-  function returnToBoardAfterRemoveSuccess() {
+  async function returnToBoardAfterRemoveSuccess() {
     clearRemoveSuccessTimer();
     selectedCells.clear();
     clearPendingActionState();
-    renderSectors();
-    renderCells();
-    updateSelectionSummary();
+    selectionMode = null;
+    await refreshBoardState();
+    renderBoard();
     showBoardView();
     setStatusMessage("Выберите ячейки");
   }
@@ -605,17 +581,17 @@
     currentView = "remove-success";
     syncViewState();
     removeSuccessTimerId = window.setTimeout(function () {
-      returnToBoardAfterRemoveSuccess();
+      void returnToBoardAfterRemoveSuccess();
     }, REMOVE_SUCCESS_RETURN_DELAY_MS);
   }
 
-  function returnToBoardAfterReplenishSuccess() {
+  async function returnToBoardAfterReplenishSuccess() {
     clearReplenishSuccessTimer();
     selectedCells.clear();
     clearPendingActionState();
-    renderSectors();
-    renderCells();
-    updateSelectionSummary();
+    selectionMode = null;
+    await refreshBoardState();
+    renderBoard();
     showBoardView();
     setStatusMessage("Выберите ячейки");
   }
@@ -629,13 +605,90 @@
     currentView = "replenish-success";
     syncViewState();
     replenishSuccessTimerId = window.setTimeout(function () {
-      returnToBoardAfterReplenishSuccess();
+      void returnToBoardAfterReplenishSuccess();
     }, REPLENISH_SUCCESS_RETURN_DELAY_MS);
+  }
+
+  function setBusy(nextBusy) {
+    isBusy = nextBusy;
+    removeButton.disabled = nextBusy;
+    refillButton.disabled = nextBusy;
+    confirmationBackButton.disabled = nextBusy;
+    confirmationConfirmButton.disabled = nextBusy;
+    removeExecutionCancelButton.disabled = nextBusy;
+    removeExecutionCompleteButton.disabled = nextBusy;
+    replenishItemSelectCancelButton.disabled = nextBusy;
+    replenishExecutionCancelButton.disabled = nextBusy;
+    replenishExecutionCompleteButton.disabled = nextBusy;
+    syncReplenishConfirmState();
+    renderCells();
+  }
+
+  function getSelectedSlotIds() {
+    return getSelectedCellNumbers()
+      .map(function (cellNumber) {
+        const cell = boardStateByCell.get(cellNumber);
+        return cell ? cell.slot_id : null;
+      })
+      .filter(function (slotId) {
+        return slotId !== null;
+      });
+  }
+
+  function getCellState(cellNumber) {
+    return boardStateByCell.get(cellNumber) || null;
+  }
+
+  function isCellSelectable(cellNumber) {
+    const cellState = getCellState(cellNumber);
+    if (!cellState) {
+      return false;
+    }
+    if (selectionMode === "refill") {
+      return !cellState.filled;
+    }
+    if (selectionMode === "remove") {
+      return cellState.filled;
+    }
+    return true;
+  }
+
+  function getBlockedSelectionMessage(cellNumber) {
+    if (selectionMode === "refill") {
+      return "Ячейка " + cellNumber + " уже заполнена и недоступна для пополнения";
+    }
+    if (selectionMode === "remove") {
+      return "Ячейка " + cellNumber + " пуста и недоступна для изъятия";
+    }
+    return "Ячейка " + cellNumber + " недоступна";
+  }
+
+  function getActionLabel(actionType) {
+    return actionType === "remove" ? "Изъять" : "Пополнить";
+  }
+
+  function applySelectionMode(actionType) {
+    selectionMode = actionType;
+    const invalidSelectedCells = getSelectedCellNumbers().filter(function (cellNumber) {
+      return !isCellSelectable(cellNumber);
+    });
+    invalidSelectedCells.forEach(function (cellNumber) {
+      selectedCells.delete(cellNumber);
+    });
+    updateSelectionSummary();
+    renderSectors();
+    renderCells();
+  }
+
+  function resetActionMode() {
+    selectionMode = null;
+    updateSelectionSummary();
+    renderSectors();
+    renderCells();
   }
 
   function renderSectors() {
     sectorGrid.innerHTML = "";
-
     for (let index = 0; index < SECTORS_PER_QUARTER; index += 1) {
       const sectorNumber = getQuarterSectorStart(currentQuarter) + index;
       const isActiveSector = sectorNumber === activeSector;
@@ -648,55 +701,58 @@
       button.setAttribute("aria-label", "Сектор " + sectorNumber);
       button.setAttribute("aria-pressed", isActiveSector ? "true" : "false");
       button.setAttribute("aria-selected", isFullySelected ? "true" : "false");
-
+      button.disabled = isBusy;
       if (isActiveSector) {
         button.classList.add("is-active");
       }
-
       if (isFullySelected) {
         button.classList.add("is-fully-selected");
       }
-
       button.addEventListener("click", function () {
-        const sectorCellNumbers = getSectorCellNumbers(currentQuarter, sectorNumber);
-        const shouldClearSector = sectorCellNumbers.every(function (cellNumber) {
+        if (isBusy) {
+          return;
+        }
+        const selectableCellNumbers = getSectorCellNumbers(currentQuarter, sectorNumber).filter(function (cellNumber) {
+          return isCellSelectable(cellNumber);
+        });
+        if (selectableCellNumbers.length === 0) {
+          setStatusMessage("Сектор " + sectorNumber + " не содержит доступных ячеек для текущего режима");
+          return;
+        }
+        const shouldClearSector = selectableCellNumbers.every(function (cellNumber) {
           return selectedCells.has(cellNumber);
         });
-        const didClearPreviousQuarter = !shouldClearSector && prepareSelectionForQuarter(currentQuarter);
-
+        if (!shouldClearSector) {
+          prepareSelectionForQuarter(currentQuarter);
+        }
         activeSector = sectorNumber;
-
-        sectorCellNumbers.forEach(function (cellNumber) {
+        selectableCellNumbers.forEach(function (cellNumber) {
           if (shouldClearSector) {
             selectedCells.delete(cellNumber);
           } else {
             selectedCells.add(cellNumber);
           }
         });
-
         renderSectors();
         renderCells();
         updateSelectionSummary();
-
-        if (shouldClearSector) {
-          setStatusMessage("Сектор " + sectorNumber + " снят");
-        } else {
-          setStatusMessage("Сектор " + sectorNumber + " выбран полностью");
-        }
+        setStatusMessage(
+          shouldClearSector ? "Сектор " + sectorNumber + " снят" : "Сектор " + sectorNumber + " выбран полностью"
+        );
       });
-
       sectorGrid.appendChild(button);
     }
   }
 
   function renderCells() {
     cellsGrid.innerHTML = "";
-
     for (let rowIndex = 0; rowIndex < CELLS_PER_SECTOR; rowIndex += 1) {
       for (let columnIndex = 0; columnIndex < SECTORS_PER_QUARTER; columnIndex += 1) {
         const cellNumber = getVisibleCellNumber(currentQuarter, columnIndex, rowIndex);
+        const cellState = getCellState(cellNumber);
+        const isFilled = Boolean(cellState && cellState.filled);
+        const selectable = isCellSelectable(cellNumber);
         const button = document.createElement("button");
-
         button.type = "button";
         button.className = "cell-button";
         button.dataset.cell = String(cellNumber);
@@ -704,69 +760,237 @@
         button.setAttribute("aria-pressed", selectedCells.has(cellNumber) ? "true" : "false");
         button.setAttribute("aria-label", "Ячейка " + cellNumber);
         button.textContent = String(cellNumber);
-
+        button.disabled = isBusy || !selectable;
         if (selectedCells.has(cellNumber)) {
           button.classList.add("is-selected");
         }
-
+        if (isFilled) {
+          button.classList.add("is-filled");
+        }
+        if (!selectable) {
+          button.classList.add("is-blocked");
+        }
         button.addEventListener("click", function () {
+          if (isBusy) {
+            return;
+          }
+          if (!selectable) {
+            setStatusMessage(getBlockedSelectionMessage(cellNumber));
+            return;
+          }
           if (selectedCells.has(cellNumber)) {
             selectedCells.delete(cellNumber);
-            button.classList.remove("is-selected");
-            button.setAttribute("aria-pressed", "false");
             setStatusMessage("Ячейка " + cellNumber + " снята");
           } else {
             prepareSelectionForQuarter(currentQuarter);
             selectedCells.add(cellNumber);
-            button.classList.add("is-selected");
-            button.setAttribute("aria-pressed", "true");
             setStatusMessage("Ячейка " + cellNumber + " выбрана");
           }
-
           updateSelectionSummary();
           renderSectors();
           renderCells();
-
           if (currentView === "confirmation") {
             renderConfirmation();
           }
-
           if (currentView === "remove-execution") {
             renderRemoveExecution();
           }
-
           if (currentView === "replenish-item-select") {
             renderReplenishItemSelect();
           }
-
           if (currentView === "replenish-execution") {
             renderReplenishExecution();
           }
         });
-
         cellsGrid.appendChild(button);
       }
     }
   }
 
+  function renderBoard() {
+    renderSectors();
+    renderCells();
+    updateSelectionSummary();
+    updateQuarterMeta();
+  }
+
   function setQuarter(nextQuarter) {
     currentQuarter = nextQuarter;
     activeSector = getQuarterSectorStart(currentQuarter);
-    updateQuarterMeta();
-    renderSectors();
-    renderCells();
+    renderBoard();
     setStatusMessage("Четверть " + currentQuarter + "/4");
   }
 
-  function wireActionButton(button, actionType, actionLabel) {
-    button.addEventListener("click", function () {
-      if (selectedCells.size === 0) {
-        setStatusMessage(actionLabel + ": выберите ячейки");
+  function postJson(url, payload) {
+    return window.fetch(url, {
+      method: "POST",
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(payload),
+    });
+  }
+
+  function loadAuthContext() {
+    if (!TOUCH_AUTH_STORAGE_KEY || !window.sessionStorage) {
+      return null;
+    }
+    try {
+      const raw = window.sessionStorage.getItem(TOUCH_AUTH_STORAGE_KEY);
+      if (!raw) {
+        return null;
+      }
+      const parsed = JSON.parse(raw);
+      if (!parsed || parsed.role_code !== "operator" || typeof parsed.user_id !== "number") {
+        return null;
+      }
+      return parsed;
+    } catch (_error) {
+      return null;
+    }
+  }
+
+  async function refreshBoardState() {
+    if (!OPERATOR_BOARD_STATE_ENDPOINT) {
+      return;
+    }
+    const response = await window.fetch(OPERATOR_BOARD_STATE_ENDPOINT, {
+      method: "GET",
+      headers: {
+        Accept: "application/json",
+      },
+    });
+    if (!response.ok) {
+      throw new Error("board_state_error");
+    }
+    const payload = await response.json();
+    boardStateByCell.clear();
+    if (payload && Array.isArray(payload.cells)) {
+      payload.cells.forEach(function (cell) {
+        if (!cell || typeof cell.cell_number !== "number" || typeof cell.slot_id !== "number") {
+          return;
+        }
+        boardStateByCell.set(cell.cell_number, {
+          slot_id: cell.slot_id,
+          filled: Boolean(cell.filled),
+        });
+      });
+    }
+  }
+
+  async function loadReplenishItems() {
+    REPLENISH_SAMPLE_ITEMS.splice(0, REPLENISH_SAMPLE_ITEMS.length);
+    selectedReplenishItemId = null;
+    if (!TOUCH_NOMENCLATURE_ENDPOINT) {
+      return;
+    }
+    try {
+      const response = await window.fetch(TOUCH_NOMENCLATURE_ENDPOINT, {
+        method: "GET",
+        headers: {
+          Accept: "application/json",
+        },
+      });
+      if (!response.ok) {
         return;
       }
+      const payload = await response.json();
+      if (!Array.isArray(payload.nomenclature)) {
+        return;
+      }
+      payload.nomenclature.forEach(function (item) {
+        if (!item || !item.name || typeof item.id !== "number") {
+          return;
+        }
+        REPLENISH_SAMPLE_ITEMS.push({
+          id: "nomenclature-" + String(item.id),
+          name: String(item.name),
+          nomenclatureId: item.id,
+        });
+      });
+    } catch (_error) {
+      REPLENISH_SAMPLE_ITEMS.splice(0, REPLENISH_SAMPLE_ITEMS.length);
+    }
+  }
 
-      showConfirmationView(actionType, actionLabel);
-    });
+  function parseErrorDetail(payload) {
+    if (payload && typeof payload.detail === "string" && payload.detail) {
+      return payload.detail;
+    }
+    return "Операция временно недоступна";
+  }
+
+  async function startAction(actionType) {
+    if (isBusy) {
+      return;
+    }
+    applySelectionMode(actionType);
+    if (selectedCells.size === 0) {
+      setStatusMessage(getActionLabel(actionType) + ": выберите ячейки");
+      return;
+    }
+    showConfirmationView(actionType, getActionLabel(actionType));
+  }
+
+  async function submitRemove() {
+    if (!authContext || !OPERATOR_REMOVE_ENDPOINT) {
+      setStatusMessage("Изъять: отсутствует операторский контекст");
+      return;
+    }
+    setBusy(true);
+    try {
+      const response = await postJson(OPERATOR_REMOVE_ENDPOINT, {
+        operator_user_id: authContext.user_id,
+        slot_ids: getSelectedSlotIds(),
+      });
+      const payload = await response.json().catch(function () {
+        return {};
+      });
+      if (!response.ok) {
+        setStatusMessage(parseErrorDetail(payload));
+        showBoardView();
+        return;
+      }
+      showRemoveSuccessView();
+      setStatusMessage("Изъять: остатки удалены");
+    } catch (_error) {
+      setStatusMessage("Изъять: ошибка связи с сервером");
+      showBoardView();
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function submitReplenish() {
+    const selectedItem = getSelectedReplenishItem();
+    if (!authContext || !OPERATOR_REPLENISH_ENDPOINT || !selectedItem) {
+      setStatusMessage("Пополнить: отсутствуют данные для выполнения");
+      return;
+    }
+    setBusy(true);
+    try {
+      const response = await postJson(OPERATOR_REPLENISH_ENDPOINT, {
+        operator_user_id: authContext.user_id,
+        nomenclature_id: selectedItem.nomenclatureId,
+        slot_ids: getSelectedSlotIds(),
+      });
+      const payload = await response.json().catch(function () {
+        return {};
+      });
+      if (!response.ok) {
+        setStatusMessage(parseErrorDetail(payload));
+        showBoardView();
+        return;
+      }
+      showReplenishSuccessView();
+      setStatusMessage("Пополнить: выбранные ячейки пополнены товаром " + selectedItem.name);
+    } catch (_error) {
+      setStatusMessage("Пополнить: ошибка связи с сервером");
+      showBoardView();
+    } finally {
+      setBusy(false);
+    }
   }
 
   quarterPrev.addEventListener("click", function () {
@@ -777,6 +1001,14 @@
   quarterNext.addEventListener("click", function () {
     const nextQuarter = currentQuarter === TOTAL_QUARTERS ? 1 : currentQuarter + 1;
     setQuarter(nextQuarter);
+  });
+
+  removeButton.addEventListener("click", function () {
+    void startAction("remove");
+  });
+
+  refillButton.addEventListener("click", function () {
+    void startAction("refill");
   });
 
   confirmationBackButton.addEventListener("click", function () {
@@ -792,15 +1024,10 @@
       setStatusMessage("Изъять: выполните изъятие по выбранным ячейкам");
       return;
     }
-
     if (pendingActionType === "refill") {
       showReplenishItemSelectView();
       setStatusMessage("Пополнить: выберите товар для выбранных ячеек");
-      return;
     }
-
-    isActionConfirmed = true;
-    renderConfirmation();
   });
 
   removeExecutionCancelButton.addEventListener("click", function () {
@@ -809,8 +1036,7 @@
   });
 
   removeExecutionCompleteButton.addEventListener("click", function () {
-    showRemoveSuccessView();
-    setStatusMessage("Изъять: остатки удалены");
+    void submitRemove();
   });
 
   replenishItemSelectCancelButton.addEventListener("click", function () {
@@ -820,12 +1046,10 @@
 
   replenishItemSelectConfirmButton.addEventListener("click", function () {
     const selectedItem = getSelectedReplenishItem();
-
     if (!selectedItem) {
       syncReplenishConfirmState();
       return;
     }
-
     showReplenishExecutionView();
     setStatusMessage("Пополнить: выполните пополнение для товара " + selectedItem.name);
   });
@@ -836,22 +1060,9 @@
   });
 
   replenishExecutionCompleteButton.addEventListener("click", function () {
-    const selectedItem = getSelectedReplenishItem();
-
-    showReplenishSuccessView();
-    setStatusMessage(
-      "Пополнить: выбранные ячейки пополнены" +
-        (selectedItem ? " товаром " + selectedItem.name : "")
-    );
+    void submitReplenish();
   });
 
-  updateSelectionSummary();
-  updateQuarterMeta();
-  renderSectors();
-  renderCells();
-  syncViewState();
-  wireActionButton(removeButton, "remove", "Изъять");
-  wireActionButton(refillButton, "refill", "Пополнить");
   presenceOverlayYesButton.addEventListener("click", function () {
     handlePresenceResume();
   });
@@ -861,54 +1072,40 @@
   });
 
   document.addEventListener("pointerdown", handlePresenceInteraction, true);
-  document.addEventListener("keydown", function (event) {
-    if (isPresenceOverlayVisible) {
-      return;
-    }
-
-    handlePresenceInteraction(event);
-  }, true);
+  document.addEventListener(
+    "keydown",
+    function (event) {
+      if (isPresenceOverlayVisible) {
+        return;
+      }
+      handlePresenceInteraction(event);
+    },
+    true
+  );
   document.addEventListener("touchstart", handlePresenceInteraction, true);
 
-  async function loadReplenishItems() {
-    REPLENISH_SAMPLE_ITEMS.splice(0, REPLENISH_SAMPLE_ITEMS.length);
-    selectedReplenishItemId = null;
-
-    if (!TOUCH_NOMENCLATURE_ENDPOINT) {
+  async function initialize() {
+    authContext = loadAuthContext();
+    if (!authContext) {
+      goToStartScreen();
       return;
     }
-
     try {
-      const response = await window.fetch(TOUCH_NOMENCLATURE_ENDPOINT, {
-        method: "GET",
-        headers: {
-          Accept: "application/json",
-        },
-      });
-      if (!response.ok) {
-        return;
-      }
-
-      const payload = await response.json();
-      if (!Array.isArray(payload.nomenclature)) {
-        return;
-      }
-
-      payload.nomenclature.forEach(function (item) {
-        if (!item || !item.name) {
-          return;
-        }
-        REPLENISH_SAMPLE_ITEMS.push({
-          id: "nomenclature-" + String(item.id),
-          name: String(item.name),
-        });
-      });
-    } catch (error) {
-      REPLENISH_SAMPLE_ITEMS.splice(0, REPLENISH_SAMPLE_ITEMS.length);
+      await Promise.all([refreshBoardState(), loadReplenishItems()]);
+      renderBoard();
+      syncViewState();
+      setStatusMessage("Выберите ячейки");
+      scheduleInactivityTimeout();
+    } catch (_error) {
+      renderBoard();
+      syncViewState();
+      setStatusMessage("Не удалось загрузить состояние ячеек");
+      scheduleInactivityTimeout();
     }
   }
 
-  loadReplenishItems().finally(function () {
-    scheduleInactivityTimeout();
-  });
+  updateSelectionSummary();
+  updateQuarterMeta();
+  syncViewState();
+  void initialize();
 })();

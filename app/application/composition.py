@@ -103,7 +103,12 @@ def build_services(
     hardware: HardwareBundle,
 ) -> ServiceBundle:
     auth_service = AuthService(repositories.users)
-    inventory_service = InventoryService(repositories.inventory)
+    inventory_service = InventoryService(
+        repositories.inventory,
+        repositories.nomenclature,
+        repositories.operations,
+        repositories.event_logs,
+    )
     operation_session_service = OperationSessionService(repositories.operation_sessions)
     recovery_service = RecoveryService(
         repositories.recovery,

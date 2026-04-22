@@ -5,6 +5,7 @@
   const userDispenseWaitingDelayMs = 1800;
   const AUTH_READ_AND_RESOLVE_RFID_ENDPOINT = config.authReadAndResolveRfidEndpoint || "";
   const TOUCH_ROLE_ROUTES = config.touchRoleRoutes || {};
+  const TOUCH_AUTH_STORAGE_KEY = config.touchAuthStorageKey || "";
   const TOUCH_NOMENCLATURE_ENDPOINT = config.listTouchNomenclatureEndpoint || "";
   const EMPTY_NOMENCLATURE_MESSAGE =
     config.emptyNomenclatureMessage || "\u041d\u043e\u043c\u0435\u043d\u043a\u043b\u0430\u0442\u0443\u0440\u0430 \u043d\u0435 \u043d\u0430\u0441\u0442\u0440\u043e\u0435\u043d\u0430";
@@ -530,6 +531,24 @@
     return TOUCH_ROLE_ROUTES[roleCode] || null;
   }
 
+  function persistResolvedTouchAuth(resolvedUser) {
+    if (!TOUCH_AUTH_STORAGE_KEY || !window.sessionStorage || !resolvedUser) {
+      return;
+    }
+    try {
+      window.sessionStorage.setItem(
+        TOUCH_AUTH_STORAGE_KEY,
+        JSON.stringify({
+          user_id: resolvedUser.user_id,
+          user_code: resolvedUser.user_code,
+          role_code: resolvedUser.role_code,
+        })
+      );
+    } catch (_error) {
+      return;
+    }
+  }
+
   function showAuthError(title) {
     state.authErrorTitle = title || DEFAULT_AUTH_ERROR_TITLE;
     state.authResolvedUser = null;
@@ -604,6 +623,7 @@
       }
 
       state.authResolvedUser = resolvedUser;
+      persistResolvedTouchAuth(resolvedUser);
       state.pendingRoutePath = routePath;
       showScreen("authSuccess");
     } catch (_error) {

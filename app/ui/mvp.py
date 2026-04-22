@@ -47,6 +47,7 @@ def render_user_page(settings: AppSettings) -> HTMLResponse:
             "operator": "/ui/operator",
             "admin": "/ui/admin-touch",
         },
+        "touchAuthStorageKey": "dion.touchAuthContext",
         "listTouchNomenclatureEndpoint": "/touch/nomenclature",
         "emptyNomenclatureMessage": "Номенклатура не настроена",
     }
@@ -62,8 +63,12 @@ def render_operator_page(settings: AppSettings) -> HTMLResponse:
     template = _OPERATOR_TEMPLATE_PATH.read_text(encoding="utf-8")
     ui_config = {
         "uiRole": "operator",
-        "refillWorkflowStatus": "planned",
+        "refillWorkflowStatus": "real-db-no-hardware",
+        "touchAuthStorageKey": "dion.touchAuthContext",
         "listTouchNomenclatureEndpoint": "/touch/nomenclature",
+        "operatorBoardStateEndpoint": "/operator/board",
+        "operatorReplenishEndpoint": "/operator/inventory/replenish",
+        "operatorRemoveEndpoint": "/operator/inventory/remove",
         "emptyNomenclatureMessage": "Номенклатура не настроена",
     }
     return HTMLResponse(

@@ -19,6 +19,8 @@ from app.api.schemas import (
     DispenseOperationRequest,
     ExportCreateRequest,
     LocalUsbOperationsExportRequest,
+    OperatorRemoveRequest,
+    OperatorReplenishRequest,
     RefillOperationRequest,
     ReturnOperationRequest,
     ServiceModeFinishRequest,
@@ -319,6 +321,39 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
         container: ApplicationContainer = Depends(get_application_container),
     ) -> JSONResponse:
         return JSONResponse(to_api_payload(container.services.inventory.list_kiosk_dispense_options()))
+
+    @app.get("/operator/board")
+    def operator_board_state(container: ApplicationContainer = Depends(get_application_container)) -> JSONResponse:
+        return JSONResponse(to_api_payload(container.services.inventory.get_operator_board_state()))
+
+    @app.post("/operator/inventory/replenish")
+    def operator_replenish(
+        payload: OperatorReplenishRequest,
+        container: ApplicationContainer = Depends(get_application_container),
+    ) -> JSONResponse:
+        return JSONResponse(
+            to_api_payload(
+                container.services.inventory.operator_replenish_slots(
+                    operator_user_id=payload.operator_user_id,
+                    nomenclature_id=payload.nomenclature_id,
+                    slot_ids=payload.slot_ids,
+                )
+            )
+        )
+
+    @app.post("/operator/inventory/remove")
+    def operator_remove(
+        payload: OperatorRemoveRequest,
+        container: ApplicationContainer = Depends(get_application_container),
+    ) -> JSONResponse:
+        return JSONResponse(
+            to_api_payload(
+                container.services.inventory.operator_remove_slots(
+                    operator_user_id=payload.operator_user_id,
+                    slot_ids=payload.slot_ids,
+                )
+            )
+        )
 
     @app.post("/operations/dispense")
     def dispense_operation(

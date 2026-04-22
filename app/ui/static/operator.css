@@ -247,6 +247,30 @@ a {
   box-shadow: inset 0 0 0 1px rgba(18, 86, 69, 0.18);
 }
 
+.cell-button.is-filled {
+  border-color: rgba(18, 86, 69, 0.36);
+  background:
+    linear-gradient(180deg, rgba(68, 163, 108, 0.2) 0%, rgba(68, 163, 108, 0.3) 100%);
+  color: #14523f;
+  box-shadow: inset 0 0 0 1px rgba(18, 86, 69, 0.12);
+}
+
+.cell-button.is-blocked {
+  opacity: 0.62;
+  cursor: default;
+}
+
+.cell-button.is-filled.is-selected {
+  border-color: rgba(18, 86, 69, 0.58);
+  background:
+    linear-gradient(180deg, rgba(36, 140, 85, 0.3) 0%, rgba(27, 124, 101, 0.36) 100%);
+}
+
+.cell-button:disabled {
+  transform: none;
+  box-shadow: none;
+}
+
 .quarter-nav {
   display: grid;
   grid-template-columns: 52px 1fr 52px;
@@ -717,8 +741,6 @@ a {
 .action-button:focus-visible,
 .sector-chip:hover,
 .sector-chip:focus-visible,
-.cell-button:hover,
-.cell-button:focus-visible,
 .quarter-button:hover,
 .quarter-button:focus-visible,
 .replenish-item-option:hover,
@@ -726,6 +748,19 @@ a {
   transform: translateY(-1px);
   box-shadow: 0 10px 22px rgba(31, 49, 39, 0.12);
   outline: none;
+}
+
+.cell-button:hover,
+.cell-button:focus-visible {
+  transform: translateY(-1px);
+  box-shadow: 0 10px 22px rgba(31, 49, 39, 0.12);
+  outline: none;
+}
+
+.cell-button:disabled:hover,
+.cell-button:disabled:focus-visible {
+  transform: none;
+  box-shadow: none;
 }
 
 .presence-overlay {

@@ -84,6 +84,17 @@ class AdminNomenclatureUpdateRequest(ApiModel):
     name: str
 
 
+class OperatorRemoveRequest(ApiModel):
+    operator_user_id: int
+    slot_ids: tuple[int, ...]
+
+
+class OperatorReplenishRequest(ApiModel):
+    operator_user_id: int
+    nomenclature_id: int
+    slot_ids: tuple[int, ...]
+
+
 class ErrorResponse(ApiModel):
     error: str
     detail: str
