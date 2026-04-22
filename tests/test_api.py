@@ -2260,6 +2260,40 @@ def test_admin_operations_export_endpoint_returns_csv_for_selected_inclusive_day
                 ),
                 Operation(
                     session_id=None,
+                    operation_type=OperationType.INVENTORY_ADJUSTMENT,
+                    operation_state=OperationState.COMPLETED,
+                    user_id=2,
+                    item_id=1,
+                    slot_id=1,
+                    qty_requested=3,
+                    qty_confirmed=3,
+                    result="ok",
+                    error_code=None,
+                    error_message=None,
+                    hardware_context_json={},
+                    business_context_json={},
+                    started_at=datetime(2026, 4, 14, 8, 0, 0),
+                    finished_at=datetime(2026, 4, 14, 8, 5, 0),
+                ),
+                Operation(
+                    session_id=None,
+                    operation_type=OperationType.INVENTORY_ADJUSTMENT,
+                    operation_state=OperationState.COMPLETED,
+                    user_id=2,
+                    item_id=1,
+                    slot_id=1,
+                    qty_requested=2,
+                    qty_confirmed=2,
+                    result="ok",
+                    error_code=None,
+                    error_message=None,
+                    hardware_context_json={},
+                    business_context_json={},
+                    started_at=datetime(2026, 4, 14, 12, 0, 0),
+                    finished_at=datetime(2026, 4, 14, 12, 5, 0),
+                ),
+                Operation(
+                    session_id=None,
                     operation_type=OperationType.REFILL_ITEM,
                     operation_state=OperationState.COMPLETED,
                     user_id=2,
@@ -2294,6 +2328,35 @@ def test_admin_operations_export_endpoint_returns_csv_for_selected_inclusive_day
                 ),
             ]
         )
+        session.flush()
+        session.add_all(
+            [
+                InventoryTransaction(
+                    slot_id=1,
+                    item_id=1,
+                    operation_id=3,
+                    session_id=None,
+                    transaction_type=InventoryTransactionType.INVENTORY_ADJUSTMENT,
+                    quantity_delta=3,
+                    quantity_before=2,
+                    quantity_after=5,
+                    comment=None,
+                    created_at=datetime(2026, 4, 14, 8, 0, 30),
+                ),
+                InventoryTransaction(
+                    slot_id=1,
+                    item_id=1,
+                    operation_id=4,
+                    session_id=None,
+                    transaction_type=InventoryTransactionType.INVENTORY_ADJUSTMENT,
+                    quantity_delta=-2,
+                    quantity_before=5,
+                    quantity_after=3,
+                    comment=None,
+                    created_at=datetime(2026, 4, 14, 12, 0, 30),
+                ),
+            ]
+        )
         session.commit()
 
     with TestClient(app) as client:
@@ -2306,8 +2369,10 @@ def test_admin_operations_export_endpoint_returns_csv_for_selected_inclusive_day
     assert response.content.decode("utf-8-sig") == "\n".join(
         (
             "operation_id,started_at,finished_at,operation_type,operation_state,user_code,user_full_name,item_name,quantity,slot_code,result,error_code,error_message",
-            "2,2026-04-14T00:00:00,2026-04-14T00:01:00,return,failed,operator-1,Operator One,Item One,2,slot-1,hardware_error,lock_timeout,Door lock timeout",
-            "3,2026-04-14T23:59:59,2026-04-15T00:05:00,refill_item,completed,operator-1,Operator One,Item One,5,slot-1,ok,,",
+            "2,2026-04-14T00:00:00,2026-04-14T00:01:00,Возврат,failed,operator-1,Operator One,Item One,2,slot-1,hardware_error,lock_timeout,Door lock timeout",
+            "3,2026-04-14T08:00:00,2026-04-14T08:05:00,Пополнение,completed,operator-1,Operator One,Item One,3,slot-1,ok,,",
+            "4,2026-04-14T12:00:00,2026-04-14T12:05:00,Изъятие,completed,operator-1,Operator One,Item One,2,slot-1,ok,,",
+            "5,2026-04-14T23:59:59,2026-04-15T00:05:00,Пополнение,completed,operator-1,Operator One,Item One,5,slot-1,ok,,",
             "",
         )
     )

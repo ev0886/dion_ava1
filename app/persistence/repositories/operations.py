@@ -184,6 +184,7 @@ class OperationRepository(Repository):
                 Operation.started_at,
                 Operation.finished_at,
                 Operation.operation_type,
+                InventoryTransaction.quantity_delta,
                 Operation.operation_state,
                 User.user_code,
                 User.full_name,
@@ -198,6 +199,7 @@ class OperationRepository(Repository):
             .outerjoin(User, User.id == Operation.user_id)
             .outerjoin(Item, Item.id == Operation.item_id)
             .outerjoin(Slot, Slot.id == Operation.slot_id)
+            .outerjoin(InventoryTransaction, InventoryTransaction.operation_id == Operation.id)
             .where(anchor_timestamp.is_not(None))
             .where(anchor_timestamp >= range_start)
             .where(anchor_timestamp < range_end)
@@ -209,6 +211,7 @@ class OperationRepository(Repository):
                 started_at=started_at,
                 finished_at=finished_at,
                 operation_type=operation_type,
+                quantity_delta=quantity_delta,
                 operation_state=operation_state,
                 user_code=user_code,
                 user_full_name=full_name,
@@ -224,6 +227,7 @@ class OperationRepository(Repository):
                 started_at,
                 finished_at,
                 operation_type,
+                quantity_delta,
                 operation_state,
                 user_code,
                 full_name,

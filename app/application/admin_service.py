@@ -19,7 +19,7 @@ from app.application.startup_service import StartupOrchestrationService
 from app.config import AppSettings
 from app.config.settings import HardwareProvider
 from app.application.exceptions import NotFoundError, ValidationError
-from app.domain.enums import DispenseRestrictionPolicy, RoleCode, UserStatus
+from app.domain.enums import DispenseRestrictionPolicy, OperationType, RoleCode, UserStatus
 from app.persistence.models import User
 from app.persistence.repositories.logs import EventLogRepository
 from app.persistence.repositories.nomenclature import NomenclatureRepository
@@ -425,6 +425,12 @@ class AdminNomenclatureService:
 
 
 class AdminOperationService:
+    _CSV_OPERATION_TYPE_LABELS: dict[OperationType, str] = {
+        OperationType.DISPENSE: "Выдача",
+        OperationType.RETURN: "Возврат",
+        OperationType.REFILL_ITEM: "Пополнение",
+        OperationType.RECOVERY: "Восстановление",
+    }
     _CSV_COLUMNS = (
         "operation_id",
         "started_at",
@@ -517,7 +523,7 @@ class AdminOperationService:
             row.operation_id,
             row.started_at.isoformat() if row.started_at is not None else "",
             row.finished_at.isoformat() if row.finished_at is not None else "",
-            row.operation_type.value,
+            AdminOperationService._csv_operation_type_label(row),
             row.operation_state.value,
             row.user_code or "",
             row.user_full_name or "",
@@ -528,6 +534,16 @@ class AdminOperationService:
             row.error_code or "",
             row.error_message or "",
         )
+
+    @classmethod
+    def _csv_operation_type_label(cls, row: AdminOperationExportRowDTO) -> str:
+        if row.operation_type is OperationType.INVENTORY_ADJUSTMENT:
+            if row.quantity_delta is not None:
+                if row.quantity_delta > 0:
+                    return "Пополнение"
+                if row.quantity_delta < 0:
+                    return "Изъятие"
+        return cls._CSV_OPERATION_TYPE_LABELS.get(row.operation_type, row.operation_type.value)
 
     @staticmethod
     def _csv_sort_key(row: tuple[object, ...]) -> tuple[str, str]:

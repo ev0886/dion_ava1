@@ -737,6 +737,40 @@ def test_export_operations_csv_filters_inclusive_date_range_and_emits_expected_c
                 ),
                 Operation(
                     session_id=None,
+                    operation_type=OperationType.INVENTORY_ADJUSTMENT,
+                    operation_state=OperationState.COMPLETED,
+                    user_id=2,
+                    item_id=item.id,
+                    slot_id=slot.id,
+                    qty_requested=3,
+                    qty_confirmed=3,
+                    result="ok",
+                    error_code=None,
+                    error_message=None,
+                    hardware_context_json={},
+                    business_context_json={},
+                    started_at=datetime(2026, 4, 14, 10, 0, 0),
+                    finished_at=datetime(2026, 4, 14, 10, 5, 0),
+                ),
+                Operation(
+                    session_id=None,
+                    operation_type=OperationType.INVENTORY_ADJUSTMENT,
+                    operation_state=OperationState.COMPLETED,
+                    user_id=2,
+                    item_id=item.id,
+                    slot_id=slot.id,
+                    qty_requested=2,
+                    qty_confirmed=2,
+                    result="ok",
+                    error_code=None,
+                    error_message=None,
+                    hardware_context_json={},
+                    business_context_json={},
+                    started_at=datetime(2026, 4, 14, 11, 0, 0),
+                    finished_at=datetime(2026, 4, 14, 11, 5, 0),
+                ),
+                Operation(
+                    session_id=None,
                     operation_type=OperationType.REFILL_ITEM,
                     operation_state=OperationState.COMPLETED,
                     user_id=2,
@@ -754,6 +788,35 @@ def test_export_operations_csv_filters_inclusive_date_range_and_emits_expected_c
                 ),
             )
         )
+        session.flush()
+        session.add_all(
+            (
+                InventoryTransaction(
+                    slot_id=slot.id,
+                    item_id=item.id,
+                    operation_id=3,
+                    session_id=None,
+                    transaction_type=InventoryTransactionType.INVENTORY_ADJUSTMENT,
+                    quantity_delta=3,
+                    quantity_before=2,
+                    quantity_after=5,
+                    comment=None,
+                    created_at=datetime(2026, 4, 14, 10, 0, 30),
+                ),
+                InventoryTransaction(
+                    slot_id=slot.id,
+                    item_id=item.id,
+                    operation_id=4,
+                    session_id=None,
+                    transaction_type=InventoryTransactionType.INVENTORY_ADJUSTMENT,
+                    quantity_delta=-2,
+                    quantity_before=5,
+                    quantity_after=3,
+                    comment=None,
+                    created_at=datetime(2026, 4, 14, 11, 0, 30),
+                ),
+            )
+        )
         session.commit()
 
         exported_csv = AdminOperationService(OperationRepository(session)).export_operations_csv(
@@ -764,7 +827,9 @@ def test_export_operations_csv_filters_inclusive_date_range_and_emits_expected_c
         assert exported_csv == "\n".join(
             (
                 "operation_id,started_at,finished_at,operation_type,operation_state,user_code,user_full_name,item_name,quantity,slot_code,result,error_code,error_message",
-                f"2,2026-04-14T09:00:00,2026-04-14T09:10:00,return,failed,operator-1,Operator One,Item One,2,slot-1,hardware_error,lock_timeout,Door lock timeout",
+                f"2,2026-04-14T09:00:00,2026-04-14T09:10:00,Возврат,failed,operator-1,Operator One,Item One,2,slot-1,hardware_error,lock_timeout,Door lock timeout",
+                f"3,2026-04-14T10:00:00,2026-04-14T10:05:00,Пополнение,completed,operator-1,Operator One,Item One,3,slot-1,ok,,",
+                f"4,2026-04-14T11:00:00,2026-04-14T11:05:00,Изъятие,completed,operator-1,Operator One,Item One,2,slot-1,ok,,",
                 "",
             )
         )

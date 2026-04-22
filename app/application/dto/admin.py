@@ -65,6 +65,7 @@ class AdminOperationExportRowDTO:
     started_at: datetime | None
     finished_at: datetime | None
     operation_type: OperationType
+    quantity_delta: int | None
     operation_state: OperationState
     user_code: str | None
     user_full_name: str | None
