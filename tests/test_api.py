@@ -18,6 +18,7 @@ from app.hardware.factory import HardwareBundle
 from app.domain.enums import (
     BindingType,
     DispenseRestrictionPolicy,
+    InventoryTransactionType,
     ItemStatus,
     OperationState,
     OperationType,
@@ -2026,6 +2027,7 @@ def test_admin_recent_operations_endpoint_returns_latest_slice_newest_first(tmp_
                 "operation_id": 2,
                 "started_at": "2026-04-13T10:00:00",
                 "operation_type": "refill_item",
+                "quantity_delta": None,
                 "operation_state": "completed",
                 "user_code": "operator-1",
                 "user_full_name": "Operator One",
@@ -2038,6 +2040,7 @@ def test_admin_recent_operations_endpoint_returns_latest_slice_newest_first(tmp_
                 "operation_id": 1,
                 "started_at": "2026-04-13T09:00:00",
                 "operation_type": "dispense",
+                "quantity_delta": None,
                 "operation_state": "completed",
                 "user_code": "user-1",
                 "user_full_name": "User One",
@@ -2123,6 +2126,7 @@ def test_admin_problem_operations_endpoint_returns_failed_and_recovery_required_
                 "operation_id": 3,
                 "started_at": "2026-04-13T11:00:00",
                 "operation_type": "return",
+                "quantity_delta": None,
                 "operation_state": "recovery_required",
                 "user_code": "operator-1",
                 "user_full_name": "Operator One",
@@ -2135,6 +2139,7 @@ def test_admin_problem_operations_endpoint_returns_failed_and_recovery_required_
                 "operation_id": 2,
                 "started_at": "2026-04-13T10:00:00",
                 "operation_type": "dispense",
+                "quantity_delta": None,
                 "operation_state": "failed",
                 "user_code": "user-1",
                 "user_full_name": "User One",
@@ -2143,6 +2148,70 @@ def test_admin_problem_operations_endpoint_returns_failed_and_recovery_required_
                 "slot_code": "slot-1",
                 "cell_number": 73,
             },
+        ]
+    }
+
+
+def test_admin_recent_operations_endpoint_includes_inventory_adjustment_quantity_delta(tmp_path: Path) -> None:
+    app = create_app(_settings(tmp_path, "api_admin_recent_inventory_adjustment.sqlite3"))
+    _seed_base_domain(app)
+    _seed_unassigned_user(app)
+
+    with app.state.session_factory() as session:
+        operation = Operation(
+            session_id=None,
+            operation_type=OperationType.INVENTORY_ADJUSTMENT,
+            operation_state=OperationState.COMPLETED,
+            user_id=2,
+            item_id=1,
+            slot_id=1,
+            qty_requested=2,
+            qty_confirmed=2,
+            result=None,
+            error_code=None,
+            error_message=None,
+            hardware_context_json={},
+            business_context_json={},
+            started_at=datetime(2026, 4, 13, 12, 0, 0),
+            finished_at=datetime(2026, 4, 13, 12, 1, 0),
+        )
+        session.add(operation)
+        session.flush()
+        session.add(
+            InventoryTransaction(
+                slot_id=1,
+                item_id=1,
+                operation_id=operation.id,
+                session_id=None,
+                transaction_type=InventoryTransactionType.INVENTORY_ADJUSTMENT,
+                quantity_delta=-2,
+                quantity_before=2,
+                quantity_after=0,
+                comment=None,
+                created_at=datetime(2026, 4, 13, 12, 0, 30),
+            )
+        )
+        session.commit()
+
+    with TestClient(app) as client:
+        response = client.get("/admin/operations/recent")
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "operations": [
+            {
+                "operation_id": 1,
+                "started_at": "2026-04-13T12:00:00",
+                "operation_type": "inventory_adjustment",
+                "quantity_delta": -2,
+                "operation_state": "completed",
+                "user_code": "operator-1",
+                "user_full_name": "Operator One",
+                "item_name": "Item One",
+                "quantity": 2,
+                "slot_code": "slot-1",
+                "cell_number": 73,
+            }
         ]
     }
 
@@ -2519,6 +2588,7 @@ def test_admin_recent_operations_keeps_deactivated_user_in_history(tmp_path: Pat
                 "operation_id": 1,
                 "started_at": "2026-04-13T12:00:00",
                 "operation_type": "dispense",
+                "quantity_delta": None,
                 "operation_state": "completed",
                 "user_code": "user-1",
                 "user_full_name": "User One",

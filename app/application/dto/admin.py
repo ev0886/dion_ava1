@@ -49,6 +49,7 @@ class AdminRecentOperationDTO:
     operation_id: int
     started_at: datetime | None
     operation_type: OperationType
+    quantity_delta: int | None
     operation_state: OperationState
     user_code: str | None
     user_full_name: str | None

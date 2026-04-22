@@ -6,7 +6,7 @@ from sqlalchemy import and_, func, or_, select
 
 from app.application.dto.admin import AdminOperationExportRowDTO, AdminRecentOperationDTO
 from app.domain.enums import OperationState, OperationType
-from app.persistence.models import Item, Operation, OperationSession, OperationStateHistory, Slot, User
+from app.persistence.models import InventoryTransaction, Item, Operation, OperationSession, OperationStateHistory, Slot, User
 from app.persistence.repositories.base import Repository
 
 
@@ -105,6 +105,7 @@ class OperationRepository(Repository):
                 operation_id=operation_id,
                 started_at=started_at,
                 operation_type=operation_type,
+                quantity_delta=quantity_delta,
                 operation_state=operation_state,
                 user_code=user_code,
                 user_full_name=full_name,
@@ -126,6 +127,7 @@ class OperationRepository(Repository):
                 slot_code,
                 drum_position,
                 lock_number,
+                quantity_delta,
             ) in rows
         ]
 
@@ -141,6 +143,7 @@ class OperationRepository(Repository):
                 operation_id=operation_id,
                 started_at=started_at,
                 operation_type=operation_type,
+                quantity_delta=quantity_delta,
                 operation_state=operation_state,
                 user_code=user_code,
                 user_full_name=full_name,
@@ -162,6 +165,7 @@ class OperationRepository(Repository):
                 slot_code,
                 drum_position,
                 lock_number,
+                quantity_delta,
             ) in rows
         ]
 
@@ -253,10 +257,12 @@ class OperationRepository(Repository):
                 Slot.code,
                 Slot.drum_position,
                 Slot.lock_number,
+                InventoryTransaction.quantity_delta,
             )
             .outerjoin(User, User.id == Operation.user_id)
             .outerjoin(Item, Item.id == Operation.item_id)
             .outerjoin(Slot, Slot.id == Operation.slot_id)
+            .outerjoin(InventoryTransaction, InventoryTransaction.operation_id == Operation.id)
         )
         if problem_states is not None:
             statement = statement.where(Operation.operation_state.in_(problem_states))

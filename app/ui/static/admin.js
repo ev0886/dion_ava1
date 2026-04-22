@@ -122,6 +122,22 @@
       : rawValue;
   }
 
+  function getOperationTypeLabel(operation) {
+    if (
+      operation &&
+      operation.operation_type === "inventory_adjustment" &&
+      typeof operation.quantity_delta === "number"
+    ) {
+      if (operation.quantity_delta > 0) {
+        return "Пополнение";
+      }
+      if (operation.quantity_delta < 0) {
+        return "Изъятие";
+      }
+    }
+    return getDisplayLabel("operationType", operation ? operation.operation_type : null);
+  }
+
   function renderSystemStatus() {
     const systemStatus = state.systemStatus;
     if (!systemStatus) {
@@ -335,7 +351,7 @@
       escapeHtml(formatDateTime(operation.started_at)) +
       "</td>" +
       "<td>" +
-      escapeHtml(getDisplayLabel("operationType", operation.operation_type)) +
+      escapeHtml(getOperationTypeLabel(operation)) +
       "</td>" +
       '<td><span class="status-chip">' +
       escapeHtml(getDisplayLabel("operationState", operation.operation_state)) +

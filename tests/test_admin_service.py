@@ -11,9 +11,19 @@ from sqlalchemy.orm import Session, sessionmaker
 from app.application.admin_service import AdminNomenclatureService, AdminOperationService, AdminUserService
 from app.application.dto.admin import AdminRecentOperationDTO
 from app.application.exceptions import ValidationError
-from app.domain.enums import DispenseRestrictionPolicy, ItemStatus, OperationState, OperationType, RoleCode, SlotStatus, SlotType, UserStatus
+from app.domain.enums import (
+    DispenseRestrictionPolicy,
+    InventoryTransactionType,
+    ItemStatus,
+    OperationState,
+    OperationType,
+    RoleCode,
+    SlotStatus,
+    SlotType,
+    UserStatus,
+)
 from app.persistence.base import Base
-from app.persistence.models import Item, Operation, Role, Slot, User, UserRfidCard
+from app.persistence.models import InventoryTransaction, Item, Operation, Role, Slot, User, UserRfidCard
 from app.persistence.repositories.inventory import InventoryRepository
 from app.persistence.repositories.nomenclature import NomenclatureRepository
 from app.persistence.repositories.operations import OperationRepository
@@ -441,6 +451,7 @@ def test_list_recent_operations_for_admin_returns_newest_first_with_joined_field
             operation_id=rows[0].operation_id,
             started_at=datetime(2026, 4, 13, 11, 30, 0),
             operation_type=OperationType.REFILL_ITEM,
+            quantity_delta=None,
             operation_state=OperationState.COMPLETED,
             user_code="operator-1",
             user_full_name="Operator One",
@@ -453,6 +464,7 @@ def test_list_recent_operations_for_admin_returns_newest_first_with_joined_field
             operation_id=rows[1].operation_id,
             started_at=datetime(2026, 4, 13, 10, 0, 0),
             operation_type=OperationType.DISPENSE,
+            quantity_delta=None,
             operation_state=OperationState.FAILED,
             user_code="user-1",
             user_full_name="User One",
@@ -554,6 +566,7 @@ def test_list_problem_operations_for_admin_returns_failed_and_recovery_required_
                 operation_id=rows[0].operation_id,
                 started_at=datetime(2026, 4, 13, 11, 0, 0),
                 operation_type=OperationType.RETURN,
+                quantity_delta=None,
                 operation_state=OperationState.RECOVERY_REQUIRED,
                 user_code="operator-1",
                 user_full_name="Operator One",
@@ -566,6 +579,7 @@ def test_list_problem_operations_for_admin_returns_failed_and_recovery_required_
                 operation_id=rows[1].operation_id,
                 started_at=datetime(2026, 4, 13, 10, 0, 0),
                 operation_type=OperationType.DISPENSE,
+                quantity_delta=None,
                 operation_state=OperationState.FAILED,
                 user_code="user-1",
                 user_full_name="User One",
@@ -574,6 +588,87 @@ def test_list_problem_operations_for_admin_returns_failed_and_recovery_required_
                 slot_code="slot-1",
                 cell_number=25,
             ),
+        ]
+
+
+def test_list_recent_operations_for_admin_includes_inventory_adjustment_quantity_delta(
+    session_factory: sessionmaker[Session],
+) -> None:
+    with session_factory() as session:
+        _seed_import_duplicate_rfid_domain(session)
+        item = Item(
+            item_group_id=None,
+            sku="item-1",
+            name="Item One",
+            description=None,
+            unit="pcs",
+            return_allowed=True,
+            min_level=0,
+            status=ItemStatus.ACTIVE,
+        )
+        slot = Slot(
+            code="slot-1",
+            slot_type=SlotType.UNIVERSAL,
+            drum_position=1,
+            board_address=1,
+            lock_number=1,
+            capacity=10,
+            status=SlotStatus.ACTIVE,
+        )
+        session.add_all((item, slot))
+        session.flush()
+
+        operation = Operation(
+            session_id=None,
+            operation_type=OperationType.INVENTORY_ADJUSTMENT,
+            operation_state=OperationState.COMPLETED,
+            user_id=2,
+            item_id=item.id,
+            slot_id=slot.id,
+            qty_requested=3,
+            qty_confirmed=3,
+            result=None,
+            error_code=None,
+            error_message=None,
+            hardware_context_json={},
+            business_context_json={},
+            started_at=datetime(2026, 4, 13, 12, 0, 0),
+            finished_at=datetime(2026, 4, 13, 12, 1, 0),
+        )
+        session.add(operation)
+        session.flush()
+        session.add(
+            InventoryTransaction(
+                slot_id=slot.id,
+                item_id=item.id,
+                operation_id=operation.id,
+                session_id=None,
+                transaction_type=InventoryTransactionType.INVENTORY_ADJUSTMENT,
+                quantity_delta=3,
+                quantity_before=2,
+                quantity_after=5,
+                comment=None,
+                created_at=datetime(2026, 4, 13, 12, 0, 30),
+            )
+        )
+        session.commit()
+
+        rows = OperationRepository(session).list_recent_for_admin(limit=20)
+
+        assert rows == [
+            AdminRecentOperationDTO(
+                operation_id=operation.id,
+                started_at=datetime(2026, 4, 13, 12, 0, 0),
+                operation_type=OperationType.INVENTORY_ADJUSTMENT,
+                quantity_delta=3,
+                operation_state=OperationState.COMPLETED,
+                user_code="operator-1",
+                user_full_name="Operator One",
+                item_name="Item One",
+                quantity=3,
+                slot_code="slot-1",
+                cell_number=25,
+            )
         ]
 
 
