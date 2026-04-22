@@ -432,7 +432,7 @@ class AdminOperationService:
         OperationType.RECOVERY: "Восстановление",
     }
     _CSV_OPERATION_STATE_LABELS: dict[OperationState, str] = {
-        OperationState.COMPLETED: "Завершено",
+        OperationState.COMPLETED: "Успешно",
         OperationState.FAILED: "Ошибка",
         OperationState.RECOVERY_REQUIRED: "Требуется проверка",
     }
@@ -445,9 +445,7 @@ class AdminOperationService:
         "user_code",
         "user_full_name",
         "item_name",
-        "quantity",
         "cell_number",
-        "result",
         "error_code",
         "error_message",
     )
@@ -509,13 +507,12 @@ class AdminOperationService:
                     event.created_at.isoformat(),
                     event.created_at.isoformat(),
                     "data_transfer",
-                    "Завершено" if event.result == "success" else "Ошибка",
+                    "Успешно" if event.result == "success" else "Ошибка",
                     "",
                     "",
                     "",
                     "",
                     "",
-                    event.result or "",
                     "",
                     event.message or event.comment or "",
                 )
@@ -533,9 +530,7 @@ class AdminOperationService:
             row.user_code or "",
             row.user_full_name or "",
             row.item_name or "",
-            row.quantity if row.quantity is not None else "",
             row.cell_number if row.cell_number is not None else "",
-            row.result or "",
             row.error_code or "",
             row.error_message or "",
         )

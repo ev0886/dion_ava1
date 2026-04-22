@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from datetime import date, datetime
 from pathlib import Path
@@ -150,8 +150,8 @@ def test_local_usb_operations_export_service_writes_csv_file_to_usb_mount(tmp_pa
     assert exported_path == usb_mount / "operations_14-04-2026_14-04-2026_12-34-56.csv"
     assert exported_path.read_text(encoding="utf-8-sig") == "\n".join(
         (
-            "operation_id,started_at,finished_at,operation_type,operation_state,user_code,user_full_name,item_name,quantity,cell_number,result,error_code,error_message",
-            "1,2026-04-14T09:00:00,2026-04-14T09:10:00,Выдача,Завершено,user-1,User One,Item One,1,25,ok,,",
+            "operation_id,started_at,finished_at,operation_type,operation_state,user_code,user_full_name,item_name,cell_number,error_code,error_message",
+            "1,2026-04-14T09:00:00,2026-04-14T09:10:00,\u0412\u044b\u0434\u0430\u0447\u0430,\u0423\u0441\u043f\u0435\u0448\u043d\u043e,user-1,User One,Item One,25,,",
             "",
         )
     )
@@ -197,8 +197,8 @@ def test_local_usb_operations_export_endpoint_returns_success_payload_and_writes
     }
     assert exported_path.read_text(encoding="utf-8-sig") == "\n".join(
         (
-            "operation_id,started_at,finished_at,operation_type,operation_state,user_code,user_full_name,item_name,quantity,cell_number,result,error_code,error_message",
-            "1,2026-04-14T09:00:00,2026-04-14T09:10:00,Выдача,Завершено,user-1,User One,Item One,1,25,ok,,",
+            "operation_id,started_at,finished_at,operation_type,operation_state,user_code,user_full_name,item_name,cell_number,error_code,error_message",
+            "1,2026-04-14T09:00:00,2026-04-14T09:10:00,\u0412\u044b\u0434\u0430\u0447\u0430,\u0423\u0441\u043f\u0435\u0448\u043d\u043e,user-1,User One,Item One,25,,",
             "",
         )
     )
@@ -381,7 +381,7 @@ def test_local_usb_balances_export_service_writes_csv_file_to_usb_mount(tmp_path
     assert exported_path == usb_mount / "balances_export_16-04-2026_08-09-10.csv"
     assert exported_path.read_text(encoding="utf-8-sig") == "\n".join(
         (
-            "Номенклатура,Количество",
+            "РќРѕРјРµРЅРєР»Р°С‚СѓСЂР°,РљРѕР»РёС‡РµСЃС‚РІРѕ",
             "Item One,5",
             "Item Two,2",
             "",
@@ -428,7 +428,7 @@ def test_local_usb_balances_export_endpoint_returns_success_payload_and_writes_f
     }
     assert exported_path.read_text(encoding="utf-8-sig") == "\n".join(
         (
-            "Номенклатура,Количество",
+            "РќРѕРјРµРЅРєР»Р°С‚СѓСЂР°,РљРѕР»РёС‡РµСЃС‚РІРѕ",
             "Item One,5",
             "Item Two,2",
             "",
@@ -457,7 +457,7 @@ def test_local_usb_users_import_service_blocks_when_usb_is_missing(tmp_path: Pat
     finally:
         session.close()
 
-    assert str(exc_info.value) == "USB-носитель не найден"
+    assert str(exc_info.value) == "USB-РЅРѕСЃРёС‚РµР»СЊ РЅРµ РЅР°Р№РґРµРЅ"
 
 
 def test_local_usb_users_import_service_blocks_when_users_csv_is_missing(tmp_path: Path) -> None:
@@ -484,7 +484,7 @@ def test_local_usb_users_import_service_blocks_when_users_csv_is_missing(tmp_pat
     finally:
         session.close()
 
-    assert str(exc_info.value) == "Файл users_import.csv не найден"
+    assert str(exc_info.value) == "Р¤Р°Р№Р» users_import.csv РЅРµ РЅР°Р№РґРµРЅ"
 
 
 def test_local_usb_users_import_service_reads_fixed_users_csv_and_returns_summary(tmp_path: Path) -> None:
@@ -640,7 +640,7 @@ def test_local_usb_users_import_endpoint_returns_clear_error_when_users_csv_is_m
     assert response.status_code == 400
     assert response.json() == {
         "error": "validation_error",
-        "detail": "Файл users_import.csv не найден",
+        "detail": "Р¤Р°Р№Р» users_import.csv РЅРµ РЅР°Р№РґРµРЅ",
     }
 
 

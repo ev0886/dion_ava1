@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from pathlib import Path
 from datetime import datetime
@@ -143,12 +143,12 @@ def test_ui_operator_page_serves_role_foundation(tmp_path: Path) -> None:
 
     assert response.status_code == 200
     assert "Operator UI" in response.text
-    assert "Навигация оператора по ячейкам" in response.text
-    assert "4 сектора / 120 ячеек" in response.text
+    assert "РќР°РІРёРіР°С†РёСЏ РѕРїРµСЂР°С‚РѕСЂР° РїРѕ СЏС‡РµР№РєР°Рј" in response.text
+    assert "4 СЃРµРєС‚РѕСЂР° / 120 СЏС‡РµРµРє" in response.text
     assert 'id="cells-grid"' in response.text
-    assert "Изъять" in response.text
-    assert "Пополнить" in response.text
-    assert "Выход" in response.text
+    assert "РР·СЉСЏС‚СЊ" in response.text
+    assert "РџРѕРїРѕР»РЅРёС‚СЊ" in response.text
+    assert "Р’С‹С…РѕРґ" in response.text
     assert '"uiRole": "operator"' in response.text
     assert '"refillWorkflowStatus": "real-db-no-hardware"' in response.text
     assert '"touchAuthStorageKey": "dion.touchAuthContext"' in response.text
@@ -193,27 +193,27 @@ def test_ui_admin_page_serves_user_management_config(tmp_path: Path) -> None:
 
     assert response.status_code == 200
     assert "Admin UI" in response.text
-    assert "Справочник номенклатуры" in response.text
-    assert "Добавить" in response.text
-    assert "Операции, требующие внимания" in response.text
-    assert "Экспорт CSV" in response.text
-    assert "Дата с" in response.text
-    assert "Дата по" in response.text
-    assert "Диапазон по дням. Если дата не указана, экспорт не запускается." in response.text
+    assert "РЎРїСЂР°РІРѕС‡РЅРёРє РЅРѕРјРµРЅРєР»Р°С‚СѓСЂС‹" in response.text
+    assert "Р”РѕР±Р°РІРёС‚СЊ" in response.text
+    assert "РћРїРµСЂР°С†РёРё, С‚СЂРµР±СѓСЋС‰РёРµ РІРЅРёРјР°РЅРёСЏ" in response.text
+    assert "Р­РєСЃРїРѕСЂС‚ CSV" in response.text
+    assert "Р”Р°С‚Р° СЃ" in response.text
+    assert "Р”Р°С‚Р° РїРѕ" in response.text
+    assert "Р”РёР°РїР°Р·РѕРЅ РїРѕ РґРЅСЏРј. Р•СЃР»Рё РґР°С‚Р° РЅРµ СѓРєР°Р·Р°РЅР°, СЌРєСЃРїРѕСЂС‚ РЅРµ Р·Р°РїСѓСЃРєР°РµС‚СЃСЏ." in response.text
     assert 'class="table-wrap table-wrap-scroll"' in response.text
-    assert "Администрирование вендингового аппарата DION" in response.text
-    assert "Админка оператора MVP" not in response.text
-    assert "Импорт CSV" in response.text
-    assert "Импортировать CSV" in response.text
-    assert "Загрузить пример" in response.text
-    assert "Скачать пример CSV" in response.text
-    assert "Последние действия системы" in response.text
-    assert "Состояние API" in response.text
-    assert "Оборудование" in response.text
-    assert "Режим оборудования" in response.text
-    assert "Открытые ячейки" in response.text
-    assert "Последняя проверка" in response.text
-    assert "Привязка API" not in response.text
+    assert "РђРґРјРёРЅРёСЃС‚СЂРёСЂРѕРІР°РЅРёРµ РІРµРЅРґРёРЅРіРѕРІРѕРіРѕ Р°РїРїР°СЂР°С‚Р° DION" in response.text
+    assert "РђРґРјРёРЅРєР° РѕРїРµСЂР°С‚РѕСЂР° MVP" not in response.text
+    assert "РРјРїРѕСЂС‚ CSV" in response.text
+    assert "РРјРїРѕСЂС‚РёСЂРѕРІР°С‚СЊ CSV" in response.text
+    assert "Р—Р°РіСЂСѓР·РёС‚СЊ РїСЂРёРјРµСЂ" in response.text
+    assert "РЎРєР°С‡Р°С‚СЊ РїСЂРёРјРµСЂ CSV" in response.text
+    assert "РџРѕСЃР»РµРґРЅРёРµ РґРµР№СЃС‚РІРёСЏ СЃРёСЃС‚РµРјС‹" in response.text
+    assert "РЎРѕСЃС‚РѕСЏРЅРёРµ API" in response.text
+    assert "РћР±РѕСЂСѓРґРѕРІР°РЅРёРµ" in response.text
+    assert "Р РµР¶РёРј РѕР±РѕСЂСѓРґРѕРІР°РЅРёСЏ" in response.text
+    assert "РћС‚РєСЂС‹С‚С‹Рµ СЏС‡РµР№РєРё" in response.text
+    assert "РџРѕСЃР»РµРґРЅСЏСЏ РїСЂРѕРІРµСЂРєР°" in response.text
+    assert "РџСЂРёРІСЏР·РєР° API" not in response.text
     assert '"/admin/users"' in response.text
     assert '"/admin/nomenclature"' in response.text
     assert '"/admin/system/status"' in response.text
@@ -271,13 +271,13 @@ def test_ui_admin_touch_page_serves_separate_touch_shell(tmp_path: Path) -> None
     assert 'id="admin-touch-presence-overlay-countdown"' in response.text
     assert 'id="admin-touch-presence-overlay-yes"' in response.text
     assert 'id="admin-touch-presence-overlay-no"' in response.text
-    assert "Выход" in response.text
-    assert "Вы еще здесь?" in response.text
-    assert "Администратор" in response.text
-    assert "Экспорт остатков" in response.text
-    assert "Экспорт операций" in response.text
-    assert "Экспорт пользователей" in response.text
-    assert "Импорт пользователей" in response.text
+    assert "Р’С‹С…РѕРґ" in response.text
+    assert "Р’С‹ РµС‰Рµ Р·РґРµСЃСЊ?" in response.text
+    assert "РђРґРјРёРЅРёСЃС‚СЂР°С‚РѕСЂ" in response.text
+    assert "Р­РєСЃРїРѕСЂС‚ РѕСЃС‚Р°С‚РєРѕРІ" in response.text
+    assert "Р­РєСЃРїРѕСЂС‚ РѕРїРµСЂР°С†РёР№" in response.text
+    assert "Р­РєСЃРїРѕСЂС‚ РїРѕР»СЊР·РѕРІР°С‚РµР»РµР№" in response.text
+    assert "РРјРїРѕСЂС‚ РїРѕР»СЊР·РѕРІР°С‚РµР»РµР№" in response.text
     assert '"/ui-assets/admin-touch.css?v=' in response.text
     assert '"/ui-assets/admin-touch.js?v=' in response.text
     assert '"uiRole": "admin-touch"' in response.text
@@ -430,7 +430,7 @@ def test_admin_touch_balances_export_endpoint_writes_aggregated_csv_to_usb(tmp_p
     }
     assert exported_path.read_text(encoding="utf-8-sig") == "\n".join(
         (
-            "Номенклатура,Количество",
+            "РќРѕРјРµРЅРєР»Р°С‚СѓСЂР°,РљРѕР»РёС‡РµСЃС‚РІРѕ",
             "Item One,8",
             "",
         )
@@ -460,7 +460,7 @@ def test_admin_touch_import_users_check_returns_missing_fixed_filename_message(t
     assert response.status_code == 400
     assert response.json() == {
         "error": "validation_error",
-        "detail": "Файл users_import.csv не найден",
+        "detail": "Р¤Р°Р№Р» users_import.csv РЅРµ РЅР°Р№РґРµРЅ",
     }
 
 
@@ -585,8 +585,8 @@ def test_ui_admin_static_assets_are_served(tmp_path: Path) -> None:
     assert "created_count" in response.text
     assert "updated_count" in response.text
     assert "total_rows" in response.text
-    assert "Укажите даты «с» и «по» для экспорта CSV." in response.text
-    assert "Ошибка экспорта CSV" in response.text
+    assert "РЈРєР°Р¶РёС‚Рµ РґР°С‚С‹ В«СЃВ» Рё В«РїРѕВ» РґР»СЏ СЌРєСЃРїРѕСЂС‚Р° CSV." in response.text
+    assert "РћС€РёР±РєР° СЌРєСЃРїРѕСЂС‚Р° CSV" in response.text
     assert "getDisplayLabel" in response.text
     assert 'name="is_active"' in response.text
     assert "active-chip" not in response.text
@@ -1333,7 +1333,7 @@ def test_touch_ui_assets_no_longer_embed_mock_nomenclature_lists(tmp_path: Path)
     assert "USER_DISPENSE_OPTIONS_ENDPOINT" in user_js.text
     assert 'window.fetch(USER_DISPENSE_SUBMIT_ENDPOINT' in user_js.text
     assert "item-1" not in user_js.text
-    assert "Перчатки защитные" not in user_js.text
+    assert "РџРµСЂС‡Р°С‚РєРё Р·Р°С‰РёС‚РЅС‹Рµ" not in user_js.text
     assert "loadReplenishItems" in operator_js.text
     assert 'fetch(TOUCH_NOMENCLATURE_ENDPOINT' in operator_js.text
     assert "refreshBoardState" in operator_js.text
@@ -1341,7 +1341,7 @@ def test_touch_ui_assets_no_longer_embed_mock_nomenclature_lists(tmp_path: Path)
     assert "submitReplenish" in operator_js.text
     assert "submitRemove" in operator_js.text
     assert "item-01" not in operator_js.text
-    assert "Вода негазированная 0,5 л" not in operator_js.text
+    assert "Р’РѕРґР° РЅРµРіР°Р·РёСЂРѕРІР°РЅРЅР°СЏ 0,5 Р»" not in operator_js.text
 
 
 def test_operator_board_endpoint_returns_real_fill_state(tmp_path: Path) -> None:
@@ -2368,11 +2368,11 @@ def test_admin_operations_export_endpoint_returns_csv_for_selected_inclusive_day
     assert response.content.startswith(b"\xef\xbb\xbf")
     assert response.content.decode("utf-8-sig") == "\n".join(
         (
-            "operation_id,started_at,finished_at,operation_type,operation_state,user_code,user_full_name,item_name,quantity,cell_number,result,error_code,error_message",
-            "2,2026-04-14T00:00:00,2026-04-14T00:01:00,Возврат,Ошибка,operator-1,Operator One,Item One,2,73,hardware_error,lock_timeout,Door lock timeout",
-            "3,2026-04-14T08:00:00,2026-04-14T08:05:00,Пополнение,Завершено,operator-1,Operator One,Item One,3,73,ok,,",
-            "4,2026-04-14T12:00:00,2026-04-14T12:05:00,Изъятие,Завершено,operator-1,Operator One,Item One,2,73,ok,,",
-            "5,2026-04-14T23:59:59,2026-04-15T00:05:00,Пополнение,Завершено,operator-1,Operator One,Item One,5,73,ok,,",
+            "operation_id,started_at,finished_at,operation_type,operation_state,user_code,user_full_name,item_name,cell_number,error_code,error_message",
+            "2,2026-04-14T00:00:00,2026-04-14T00:01:00,\u0412\u043e\u0437\u0432\u0440\u0430\u0442,\u041e\u0448\u0438\u0431\u043a\u0430,operator-1,Operator One,Item One,73,lock_timeout,Door lock timeout",
+            "3,2026-04-14T08:00:00,2026-04-14T08:05:00,\u041f\u043e\u043f\u043e\u043b\u043d\u0435\u043d\u0438\u0435,\u0423\u0441\u043f\u0435\u0448\u043d\u043e,operator-1,Operator One,Item One,73,,",
+            "4,2026-04-14T12:00:00,2026-04-14T12:05:00,\u0418\u0437\u044a\u044f\u0442\u0438\u0435,\u0423\u0441\u043f\u0435\u0448\u043d\u043e,operator-1,Operator One,Item One,73,,",
+            "5,2026-04-14T23:59:59,2026-04-15T00:05:00,\u041f\u043e\u043f\u043e\u043b\u043d\u0435\u043d\u0438\u0435,\u0423\u0441\u043f\u0435\u0448\u043d\u043e,operator-1,Operator One,Item One,73,,",
             "",
         )
     )
@@ -2419,7 +2419,7 @@ def test_admin_users_export_endpoint_emits_utf8_bom_and_preserves_russian_text(t
 
     with app.state.session_factory() as session:
         user = session.query(User).filter_by(id=1).one()
-        user.full_name = "Иван Петров"
+        user.full_name = "РРІР°РЅ РџРµС‚СЂРѕРІ"
         session.commit()
 
     with TestClient(app) as client:
@@ -2429,7 +2429,7 @@ def test_admin_users_export_endpoint_emits_utf8_bom_and_preserves_russian_text(t
     assert response.content.startswith(b"\xef\xbb\xbf")
     exported_csv = response.content.decode("utf-8-sig")
     assert exported_csv.splitlines()[0] == "user_code,full_name,role_code,rfid_uid,dispense_restriction_policy"
-    assert "user-1,Иван Петров,user,000FE2767C0045,unlimited" in exported_csv
+    assert "user-1,РРІР°РЅ РџРµС‚СЂРѕРІ,user,000FE2767C0045,unlimited" in exported_csv
 
 
 def test_admin_update_user_assigns_rfid_uid_and_changes_policy(tmp_path: Path) -> None:

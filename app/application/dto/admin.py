@@ -70,10 +70,8 @@ class AdminOperationExportRowDTO:
     user_code: str | None
     user_full_name: str | None
     item_name: str | None
-    quantity: int | None
     slot_code: str | None
     cell_number: int | None
-    result: str | None
     error_code: str | None
     error_message: str | None
 

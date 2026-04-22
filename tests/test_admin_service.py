@@ -826,10 +826,10 @@ def test_export_operations_csv_filters_inclusive_date_range_and_emits_expected_c
 
         assert exported_csv == "\n".join(
             (
-                "operation_id,started_at,finished_at,operation_type,operation_state,user_code,user_full_name,item_name,quantity,cell_number,result,error_code,error_message",
-                "2,2026-04-14T09:00:00,2026-04-14T09:10:00,Возврат,Ошибка,operator-1,Operator One,Item One,2,25,hardware_error,lock_timeout,Door lock timeout",
-                "3,2026-04-14T10:00:00,2026-04-14T10:05:00,Пополнение,Завершено,operator-1,Operator One,Item One,3,25,ok,,",
-                "4,2026-04-14T11:00:00,2026-04-14T11:05:00,Изъятие,Завершено,operator-1,Operator One,Item One,2,25,ok,,",
+                "operation_id,started_at,finished_at,operation_type,operation_state,user_code,user_full_name,item_name,cell_number,error_code,error_message",
+                "2,2026-04-14T09:00:00,2026-04-14T09:10:00,Возврат,Ошибка,operator-1,Operator One,Item One,25,lock_timeout,Door lock timeout",
+                "3,2026-04-14T10:00:00,2026-04-14T10:05:00,Пополнение,Успешно,operator-1,Operator One,Item One,25,,",
+                "4,2026-04-14T11:00:00,2026-04-14T11:05:00,Изъятие,Успешно,operator-1,Operator One,Item One,25,,",
                 "",
             )
         )
