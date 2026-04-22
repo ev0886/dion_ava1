@@ -5,7 +5,7 @@ from datetime import date, datetime
 from pathlib import Path
 
 import pytest
-from sqlalchemy import create_engine, select
+from sqlalchemy import create_engine, select, text
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.application.admin_service import AdminNomenclatureService, AdminOperationService, AdminUserService
@@ -14,6 +14,7 @@ from app.application.exceptions import ValidationError
 from app.domain.enums import DispenseRestrictionPolicy, ItemStatus, OperationState, OperationType, RoleCode, SlotStatus, SlotType, UserStatus
 from app.persistence.base import Base
 from app.persistence.models import Item, Operation, Role, Slot, User, UserRfidCard
+from app.persistence.repositories.inventory import InventoryRepository
 from app.persistence.repositories.nomenclature import NomenclatureRepository
 from app.persistence.repositories.operations import OperationRepository
 from app.persistence.repositories.users import UserRepository
@@ -244,12 +245,25 @@ def test_create_nomenclature_creates_real_active_item(
         item = session.execute(
             select(Item).where(Item.sku == repository.sync_item_sku(created.record.id))
         ).scalar_one()
+        persisted_status = session.execute(
+            text("SELECT status FROM items WHERE id = :item_id"),
+            {"item_id": item.id},
+        ).scalar_one()
+        resolution = InventoryRepository(session).resolve_authoritative_replenish_item(
+            normalized_name="очки защитные",
+            slot_ids=(),
+        )
 
         assert created.record.name == "Очки защитные"
         assert item.name == "Очки защитные"
         assert item.status is ItemStatus.ACTIVE
+        assert persisted_status == _persisted_item_status(session, ItemStatus.ACTIVE)
         assert item.unit == "pcs"
         assert item.return_allowed is True
+        assert resolution.item is not None
+        assert resolution.item.id == item.id
+        assert resolution.matched_candidate_count == 1
+        assert resolution.resolution_source == "single_name_match"
 
 
 def test_update_nomenclature_renames_paired_item(
@@ -677,3 +691,13 @@ def _seed_import_duplicate_rfid_domain(session: Session) -> None:
         )
     )
     session.commit()
+
+
+def _persisted_item_status(session: Session, status: ItemStatus) -> str:
+    bind = session.get_bind()
+    assert bind is not None
+    processor = Item.__table__.c.status.type.bind_processor(bind.dialect)
+    assert processor is not None
+    persisted = processor(status)
+    assert persisted is not None
+    return persisted

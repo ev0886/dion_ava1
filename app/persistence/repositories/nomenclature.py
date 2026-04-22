@@ -10,6 +10,7 @@ from app.persistence.repositories.base import Repository
 
 class NomenclatureRepository(Repository):
     DEFAULT_SYNC_ITEM_UNIT = "pcs"
+    ACTIVE_SYNC_ITEM_STATUS = ItemStatus.ACTIVE
 
     def list_for_admin(self) -> list[AdminNomenclatureRecordDTO]:
         statement = select(NomenclatureEntry).order_by(NomenclatureEntry.name.asc(), NomenclatureEntry.id.asc())
@@ -60,7 +61,7 @@ class NomenclatureRepository(Repository):
         sync_item = self._get_item_by_sync_sku(entry.id)
         if sync_item is not None:
             sync_item.name = entry.name
-            sync_item.status = ItemStatus.ACTIVE
+            sync_item.status = self.ACTIVE_SYNC_ITEM_STATUS
             return sync_item
 
         active_name_matches = self._list_active_items_by_normalized_name(entry.normalized_name)
@@ -75,7 +76,7 @@ class NomenclatureRepository(Repository):
             unit=self.DEFAULT_SYNC_ITEM_UNIT,
             return_allowed=True,
             min_level=0,
-            status=ItemStatus.ACTIVE,
+            status=self.ACTIVE_SYNC_ITEM_STATUS,
         )
         self.session.add(created)
         self.session.flush()
@@ -85,7 +86,7 @@ class NomenclatureRepository(Repository):
         sync_item = self._get_item_by_sync_sku(entry.id)
         if sync_item is not None:
             sync_item.name = entry.name
-            sync_item.status = ItemStatus.ACTIVE
+            sync_item.status = self.ACTIVE_SYNC_ITEM_STATUS
             return sync_item
 
         active_name_matches = self._list_active_items_by_normalized_name(entry.normalized_name)
@@ -118,7 +119,7 @@ class NomenclatureRepository(Repository):
     def _list_active_items_by_normalized_name(self, normalized_name: str) -> tuple[Item, ...]:
         statement = (
             select(Item)
-            .where(Item.status == ItemStatus.ACTIVE)
+            .where(Item.status == self.ACTIVE_SYNC_ITEM_STATUS)
             .order_by(Item.id.asc())
         )
         return tuple(

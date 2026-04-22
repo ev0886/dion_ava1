@@ -6,9 +6,13 @@ from alembic import command
 from alembic.config import Config
 from sqlalchemy import create_engine, inspect
 from sqlalchemy import text
+from sqlalchemy.orm import Session
 
 from app.bootstrap import run_database_migrations
 from app.config import AppSettings
+from app.domain.enums import ItemStatus
+from app.persistence.models import Item
+from app.persistence.repositories.inventory import InventoryRepository
 
 
 def test_alembic_upgrade_creates_core_tables(tmp_path: Path) -> None:
@@ -133,9 +137,20 @@ def test_alembic_upgrade_backfills_active_items_for_existing_nomenclature(tmp_pa
 
     assert rows == [
         ("item-1", "Item One", "active"),
-        ("nomenclature-1", "Очки защитные", "active"),
-        ("nomenclature-2", "Перчатки защитные", "active"),
+        ("nomenclature-1", "Очки защитные", _persisted_item_status(engine, ItemStatus.ACTIVE)),
+        ("nomenclature-2", "Перчатки защитные", _persisted_item_status(engine, ItemStatus.ACTIVE)),
     ]
+
+    with Session(engine) as session:
+        resolution = InventoryRepository(session).resolve_authoritative_replenish_item(
+            normalized_name="очки защитные",
+            slot_ids=(),
+        )
+
+    assert resolution.item is not None
+    assert resolution.item.sku == "nomenclature-1"
+    assert resolution.matched_candidate_count == 1
+    assert resolution.resolution_source == "single_name_match"
 
 
 def _alembic_config(settings: AppSettings) -> Config:
@@ -144,3 +159,11 @@ def _alembic_config(settings: AppSettings) -> Config:
     alembic_path = settings.alembic_config_path.resolve()
     alembic_config.set_main_option("script_location", str((alembic_path.parent / "alembic").resolve()))
     return alembic_config
+
+
+def _persisted_item_status(engine, status: ItemStatus) -> str:
+    processor = Item.__table__.c.status.type.bind_processor(engine.dialect)
+    assert processor is not None
+    persisted = processor(status)
+    assert persisted is not None
+    return persisted

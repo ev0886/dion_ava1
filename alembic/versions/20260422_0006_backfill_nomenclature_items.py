@@ -10,6 +10,8 @@ from __future__ import annotations
 import sqlalchemy as sa
 from alembic import op
 
+from app.domain.enums import ItemStatus
+from app.persistence.models import Item
 
 revision = "20260422_0006"
 down_revision = "20260421_0005"
@@ -23,6 +25,7 @@ def upgrade() -> None:
     table_names = set(inspector.get_table_names())
     if "nomenclature_entries" not in table_names or "items" not in table_names:
         return
+    active_item_status = _persisted_item_status(bind, ItemStatus.ACTIVE)
 
     nomenclature_rows = bind.execute(
         sa.text(
@@ -47,7 +50,7 @@ def upgrade() -> None:
     active_item_names = {
         _normalize_name(row["name"])
         for row in item_rows
-        if row["status"] == "active"
+        if row["status"] == active_item_status
     }
     existing_skus = {row["sku"] for row in item_rows}
 
@@ -63,12 +66,13 @@ def upgrade() -> None:
             sa.text(
                 """
                 INSERT INTO items (item_group_id, sku, name, description, unit, return_allowed, min_level, status)
-                VALUES (NULL, :sku, :name, NULL, 'pcs', 1, 0, 'active')
+                VALUES (NULL, :sku, :name, NULL, 'pcs', 1, 0, :status)
                 """
             ),
             {
                 "sku": sync_sku,
                 "name": row["name"],
+                "status": active_item_status,
             },
         )
         active_item_names.add(row["normalized_name"])
@@ -83,3 +87,13 @@ def downgrade() -> None:
 
 def _normalize_name(value: str) -> str:
     return " ".join(value.split()).casefold()
+
+
+def _persisted_item_status(bind: sa.Connection, status: ItemStatus) -> str:
+    processor = Item.__table__.c.status.type.bind_processor(bind.dialect)
+    if processor is None:
+        raise RuntimeError("Item.status column does not expose a bind processor")
+    persisted = processor(status)
+    if persisted is None:
+        raise RuntimeError(f"Unable to derive persisted Item.status for {status!r}")
+    return persisted
