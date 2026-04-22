@@ -6,7 +6,8 @@
   const AUTH_READ_AND_RESOLVE_RFID_ENDPOINT = config.authReadAndResolveRfidEndpoint || "";
   const TOUCH_ROLE_ROUTES = config.touchRoleRoutes || {};
   const TOUCH_AUTH_STORAGE_KEY = config.touchAuthStorageKey || "";
-  const TOUCH_NOMENCLATURE_ENDPOINT = config.listTouchNomenclatureEndpoint || "";
+  const USER_DISPENSE_OPTIONS_ENDPOINT = config.userDispenseOptionsEndpoint || "";
+  const USER_DISPENSE_SUBMIT_ENDPOINT = config.userDispenseSubmitEndpoint || "";
   const EMPTY_NOMENCLATURE_MESSAGE =
     config.emptyNomenclatureMessage || "\u041d\u043e\u043c\u0435\u043d\u043a\u043b\u0430\u0442\u0443\u0440\u0430 \u043d\u0435 \u043d\u0430\u0441\u0442\u0440\u043e\u0435\u043d\u0430";
   const DEFAULT_AUTH_ERROR_TITLE = "\u041f\u043e\u043b\u044c\u0437\u043e\u0432\u0430\u0442\u0435\u043b\u044c \u043d\u0435 \u043d\u0430\u0439\u0434\u0435\u043d";
@@ -46,6 +47,8 @@
     authResolvedUser: null,
     pendingRoutePath: null,
     authRequestToken: 0,
+    userItemsUnavailableMessage: EMPTY_NOMENCLATURE_MESSAGE,
+    pendingUserDispenseRequestId: 0,
   };
 
   const screens = {
@@ -86,8 +89,6 @@
       kicker: "\u041f\u043e\u0434\u0442\u0432\u0435\u0440\u0436\u0434\u0435\u043d\u043e",
       title: "\u041e\u0436\u0438\u0434\u0430\u0439\u0442\u0435 \u043e\u0442\u043a\u0440\u044b\u0442\u0438\u044f \u044f\u0447\u0435\u0439\u043a\u0438!",
       message: getAvailableUserItemMessage,
-      autoReturnMs: userDispenseWaitingDelayMs,
-      autoReturnTarget: "userItemSuccess",
       actions: [],
       enableIdleTimeout: true,
       roleTheme: "user",
@@ -226,7 +227,7 @@
 
   function getSelectedUserItem() {
     return state.userItems.find(function (item) {
-      return item.id === state.selectedUserItemId;
+      return item.itemId === state.selectedUserItemId;
     }) || null;
   }
 
@@ -301,13 +302,13 @@
     button.type = "button";
     button.className = "item-option";
     button.textContent = item.name;
-    button.dataset.itemId = item.id;
-    button.setAttribute("aria-pressed", item.id === state.selectedUserItemId ? "true" : "false");
-    if (item.id === state.selectedUserItemId) {
+    button.dataset.itemId = String(item.itemId);
+    button.setAttribute("aria-pressed", item.itemId === state.selectedUserItemId ? "true" : "false");
+    if (item.itemId === state.selectedUserItemId) {
       button.classList.add("is-selected");
     }
     button.addEventListener("click", function () {
-      state.selectedUserItemId = item.id;
+      state.selectedUserItemId = item.itemId;
       showScreen("userItemSelect");
     });
     return button;
@@ -322,8 +323,8 @@
       screenContent.appendChild(
         createStatusPanel({
           tone: "empty",
-          badge: "\u041d\u043e\u043c\u0435\u043d\u043a\u043b\u0430\u0442\u0443\u0440\u0430",
-          heading: EMPTY_NOMENCLATURE_MESSAGE,
+          badge: "\u0412\u044b\u0434\u0430\u0447\u0430",
+          heading: state.userItemsUnavailableMessage || EMPTY_NOMENCLATURE_MESSAGE,
           detail:
             "\u041e\u0431\u0440\u0430\u0442\u0438\u0442\u0435\u0441\u044c \u043a \u0430\u0434\u043c\u0438\u043d\u0438\u0441\u0442\u0440\u0430\u0442\u043e\u0440\u0443 \u0434\u043b\u044f \u043d\u0430\u0441\u0442\u0440\u043e\u0439\u043a\u0438 \u0434\u043e\u0441\u0442\u0443\u043f\u043d\u044b\u0445 \u043f\u043e\u0437\u0438\u0446\u0438\u0439.",
         })
@@ -571,7 +572,9 @@
   function applyResolvedTouchRoute() {
     if (state.pendingRoutePath === TOUCH_ROLE_ROUTES.user) {
       state.pendingRoutePath = null;
-      showScreen("userItemSelect");
+      void loadUserItemsForResolvedUser().finally(function () {
+        showScreen("userItemSelect");
+      });
       return;
     }
     if (state.pendingRoutePath) {
@@ -584,6 +587,59 @@
   }
 
   screens.authSuccess.autoReturnAction = applyResolvedTouchRoute;
+
+  async function submitUserDispense() {
+    const selectedItem = getSelectedUserItem();
+    const resolvedUser = state.authResolvedUser;
+    const userId = resolvedUser ? Number(resolvedUser.user_id) : NaN;
+
+    if (!selectedItem || !Number.isFinite(userId) || !USER_DISPENSE_SUBMIT_ENDPOINT) {
+      showScreen("userItemUnavailable");
+      return;
+    }
+
+    const requestId = state.pendingUserDispenseRequestId + 1;
+    state.pendingUserDispenseRequestId = requestId;
+    showScreen("userItemAvailable");
+
+    try {
+      const response = await window.fetch(USER_DISPENSE_SUBMIT_ENDPOINT, {
+        method: "POST",
+        headers: {
+          Accept: "application/json",
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          user_id: userId,
+          item_id: selectedItem.itemId,
+          quantity: 1,
+        }),
+      });
+
+      if (state.pendingUserDispenseRequestId !== requestId) {
+        return;
+      }
+
+      if (!response.ok) {
+        showScreen("userItemUnavailable");
+        return;
+      }
+
+      await new Promise(function (resolve) {
+        window.setTimeout(resolve, userDispenseWaitingDelayMs);
+      });
+      if (state.pendingUserDispenseRequestId !== requestId) {
+        return;
+      }
+      await loadUserItemsForResolvedUser();
+      showScreen("userItemSuccess");
+    } catch (_error) {
+      if (state.pendingUserDispenseRequestId !== requestId) {
+        return;
+      }
+      showScreen("userItemUnavailable");
+    }
+  }
 
   async function readAndResolveRfid() {
     if (!AUTH_READ_AND_RESOLVE_RFID_ENDPOINT) {
@@ -665,7 +721,7 @@
         showScreen("userItemSelect");
         return;
       }
-      showScreen(getSelectedUserItem().isAvailable ? "userItemAvailable" : "userItemUnavailable");
+      void submitUserDispense();
       return;
     }
     if (action === "back-to-user-items") {
@@ -677,6 +733,7 @@
       state.presencePreviousScreen = null;
       state.authResolvedUser = null;
       state.pendingRoutePath = null;
+      state.pendingUserDispenseRequestId += 1;
       showScreen("start");
       return;
     }
@@ -707,48 +764,55 @@
     handleAction("go-start");
   });
 
-  async function loadUserItems() {
+  async function loadUserItemsForResolvedUser() {
     state.userItems = [];
     state.selectedUserItemId = null;
     state.userListExpanded = false;
+    state.userItemsUnavailableMessage = EMPTY_NOMENCLATURE_MESSAGE;
 
-    if (!TOUCH_NOMENCLATURE_ENDPOINT) {
+    const resolvedUser = state.authResolvedUser;
+    const userId = resolvedUser ? Number(resolvedUser.user_id) : NaN;
+    if (!USER_DISPENSE_OPTIONS_ENDPOINT || !Number.isFinite(userId)) {
       return;
     }
 
     try {
-      const response = await window.fetch(TOUCH_NOMENCLATURE_ENDPOINT, {
+      const response = await window.fetch(
+        USER_DISPENSE_OPTIONS_ENDPOINT + "?user_id=" + encodeURIComponent(String(userId)),
+        {
         method: "GET",
         headers: {
           Accept: "application/json",
         },
-      });
+        }
+      );
       if (!response.ok) {
         return;
       }
 
       const payload = await response.json();
-      if (!Array.isArray(payload.nomenclature)) {
+      if (!Array.isArray(payload.options)) {
         return;
       }
+      if (payload.unavailable_reason) {
+        state.userItemsUnavailableMessage = String(payload.unavailable_reason);
+      }
 
-      state.userItems = payload.nomenclature
+      state.userItems = payload.options
         .map(function (item) {
           return {
-            id: "nomenclature-" + String(item.id),
-            name: String(item.name || ""),
-            isAvailable: true,
+            itemId: Number(item.item_id),
+            name: String(item.item_name || ""),
+            totalQuantity: Number(item.total_quantity || 0),
           };
         })
         .filter(function (item) {
-          return item.name !== "";
+          return Number.isFinite(item.itemId) && item.itemId > 0 && item.name !== "";
         });
     } catch (_error) {
       state.userItems = [];
     }
   }
 
-  loadUserItems().finally(function () {
-    showScreen("start");
-  });
+  showScreen("start");
 })();

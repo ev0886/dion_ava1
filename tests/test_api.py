@@ -117,8 +117,10 @@ def test_ui_user_page_serves_configured_dispense_flow(tmp_path: Path) -> None:
     assert '"presenceCountdownSeconds": 30' in response.text
     assert '"/auth/read-and-resolve-rfid"' in response.text
     assert '"touchRoleRoutes": {"user": "/ui/user", "operator": "/ui/operator", "admin": "/ui/admin-touch"}' in response.text
-    assert '"listTouchNomenclatureEndpoint": "/touch/nomenclature"' in response.text
+    assert '"userDispenseOptionsEndpoint": "/user/dispense-options"' in response.text
+    assert '"userDispenseSubmitEndpoint": "/user/dispense"' in response.text
     assert '"emptyNomenclatureMessage": "\\u041d\\u043e\\u043c\\u0435\\u043d\\u043a\\u043b\\u0430\\u0442\\u0443\\u0440\\u0430 \\u043d\\u0435 \\u043d\\u0430\\u0441\\u0442\\u0440\\u043e\\u0435\\u043d\\u0430"' in response.text
+    assert '"/touch/nomenclature"' not in response.text
     assert '"/inventory/kiosk-dispense-options"' not in response.text
     assert '"/operations/dispense"' not in response.text
     assert "UI-only shell" not in response.text
@@ -344,7 +346,10 @@ def test_ui_mvp_javascript_asset_uses_rfid_auth_and_explicit_touch_role_routes(t
     assert "AUTH_READ_AND_RESOLVE_RFID_ENDPOINT" in response.text
     assert 'window.fetch(AUTH_READ_AND_RESOLVE_RFID_ENDPOINT' in response.text
     assert "TOUCH_ROLE_ROUTES" in response.text
+    assert "USER_DISPENSE_OPTIONS_ENDPOINT" in response.text
+    assert "USER_DISPENSE_SUBMIT_ENDPOINT" in response.text
     assert "buildTouchAuthContext" in response.text
+    assert "loadUserItemsForResolvedUser" in response.text
     assert "const userId = Number(resolvedUser.user_id);" in response.text
     assert "Number.isFinite(userId)" in response.text
     assert 'window.sessionStorage.setItem(TOUCH_AUTH_STORAGE_KEY, JSON.stringify(authContext));' in response.text
@@ -645,6 +650,66 @@ def test_kiosk_dispense_options_endpoint_returns_aggregated_item_options(tmp_pat
     }
 
 
+def test_user_dispense_options_endpoint_returns_real_aggregated_available_items(tmp_path: Path) -> None:
+    app = create_app(_settings(tmp_path, "api_user_dispense_options.sqlite3"))
+    _seed_base_domain(app)
+    _seed_additional_slot_for_same_item(app)
+
+    with TestClient(app) as client:
+        response = client.get("/user/dispense-options", params={"user_id": 1})
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "options": [
+            {
+                "item_id": 1,
+                "item_name": "Item One",
+                "item_unit": "pcs",
+                "total_quantity": 8,
+            }
+        ],
+        "restriction_blocked": False,
+        "unavailable_reason": None,
+    }
+
+
+def test_user_dispense_options_endpoint_returns_empty_when_user_policy_blocks_dispense(tmp_path: Path) -> None:
+    app = create_app(_settings(tmp_path, "api_user_dispense_options_blocked.sqlite3"))
+    _seed_base_domain(app, user_policy=DispenseRestrictionPolicy.ONCE_PER_DAY)
+
+    with app.state.session_factory() as session:
+        session.add(
+            Operation(
+                session_id=None,
+                operation_type=OperationType.DISPENSE,
+                operation_state=OperationState.COMPLETED,
+                user_id=1,
+                item_id=1,
+                slot_id=1,
+                qty_requested=1,
+                qty_confirmed=1,
+                result="completed",
+                error_code=None,
+                error_message=None,
+                hardware_context_json={},
+                business_context_json={},
+                started_at=datetime(2026, 4, 22, 8, 0, 0),
+                finished_at=datetime(2026, 4, 22, 8, 1, 0),
+            )
+        )
+        session.commit()
+
+    with TestClient(app) as client:
+        response = client.get("/user/dispense-options", params={"user_id": 1})
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "options": [],
+        "restriction_blocked": True,
+        "unavailable_reason": "Dispense blocked: user is limited to one successful dispense per day",
+    }
+
+
 def test_dispense_operation_resolves_first_stocked_slot_for_item_when_slot_not_provided(tmp_path: Path) -> None:
     app = create_app(_settings(tmp_path, "api_dispense_item_only.sqlite3"))
     _seed_base_domain(app)
@@ -665,6 +730,64 @@ def test_dispense_operation_resolves_first_stocked_slot_for_item_when_slot_not_p
     assert first_slot_inventory.json()["balance"]["quantity"] == 4
     assert second_slot_inventory.status_code == 200
     assert second_slot_inventory.json()["balance"]["quantity"] == 3
+
+
+def test_user_dispense_endpoint_resolves_first_filled_slot_and_clears_slot_inventory(tmp_path: Path) -> None:
+    app = create_app(_settings(tmp_path, "api_user_dispense.sqlite3"))
+    _seed_base_domain(app)
+    _seed_additional_slot_for_same_item(app)
+
+    with TestClient(app) as client:
+        response = client.post(
+            "/user/dispense",
+            json={"user_id": 1, "item_id": 1, "quantity": 1},
+        )
+        first_slot_inventory = client.get("/inventory/1/1")
+        second_slot_inventory = client.get("/inventory/2/1")
+
+    assert response.status_code == 200
+    assert response.json()["operation_state"] == "completed"
+    assert response.json()["slot_id"] == 1
+    assert response.json()["hardware_context"] == {}
+    assert first_slot_inventory.status_code == 200
+    assert first_slot_inventory.json()["balance"]["quantity"] == 0
+    assert second_slot_inventory.status_code == 200
+    assert second_slot_inventory.json()["balance"]["quantity"] == 3
+
+    with app.state.session_factory() as session:
+        operation = session.query(Operation).filter_by(id=response.json()["operation_id"]).one()
+        history = session.query(OperationStateHistory).filter_by(operation_id=operation.id).all()
+        transaction = session.query(InventoryTransaction).filter_by(operation_id=operation.id).one()
+        event = session.query(EventLog).filter_by(operation_id=operation.id).one()
+
+    assert operation.operation_type == OperationType.DISPENSE
+    assert operation.operation_state == OperationState.COMPLETED
+    assert len(history) >= 2
+    assert transaction.quantity_before == 5
+    assert transaction.quantity_after == 0
+    assert transaction.quantity_delta == -5
+    assert transaction.transaction_type == "dispense_debit"
+    assert event.event_type == "user_dispense_no_hardware"
+    assert event.source == "user_touch"
+
+
+def test_user_dispense_endpoint_rejects_when_selected_item_no_longer_has_filled_slot(tmp_path: Path) -> None:
+    app = create_app(_settings(tmp_path, "api_user_dispense_empty.sqlite3"))
+    _seed_base_domain(app)
+
+    with TestClient(app) as client:
+        first_response = client.post(
+            "/user/dispense",
+            json={"user_id": 1, "item_id": 1, "quantity": 1},
+        )
+        second_response = client.post(
+            "/user/dispense",
+            json={"user_id": 1, "item_id": 1, "quantity": 1},
+        )
+
+    assert first_response.status_code == 200
+    assert second_response.status_code == 404
+    assert second_response.json()["detail"] == "No available dispense slot found for item: 1"
 
 
 def test_auth_read_and_resolve_rfid_happy_path(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -992,8 +1115,9 @@ def test_touch_ui_assets_no_longer_embed_mock_nomenclature_lists(tmp_path: Path)
 
     assert user_js.status_code == 200
     assert operator_js.status_code == 200
-    assert "loadUserItems" in user_js.text
-    assert 'fetch(TOUCH_NOMENCLATURE_ENDPOINT' in user_js.text
+    assert "loadUserItemsForResolvedUser" in user_js.text
+    assert "USER_DISPENSE_OPTIONS_ENDPOINT" in user_js.text
+    assert 'window.fetch(USER_DISPENSE_SUBMIT_ENDPOINT' in user_js.text
     assert "item-1" not in user_js.text
     assert "Перчатки защитные" not in user_js.text
     assert "loadReplenishItems" in operator_js.text

@@ -322,6 +322,13 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
     ) -> JSONResponse:
         return JSONResponse(to_api_payload(container.services.inventory.list_kiosk_dispense_options()))
 
+    @app.get("/user/dispense-options")
+    def user_dispense_options(
+        user_id: int,
+        container: ApplicationContainer = Depends(get_application_container),
+    ) -> JSONResponse:
+        return JSONResponse(to_api_payload(container.services.user_dispense.list_options_for_user(user_id)))
+
     @app.get("/operator/board")
     def operator_board_state(container: ApplicationContainer = Depends(get_application_container)) -> JSONResponse:
         return JSONResponse(to_api_payload(container.services.inventory.get_operator_board_state()))
@@ -369,6 +376,22 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
                 session_id=payload.session_id,
             ),
             container.hardware.facade,
+        )
+        return JSONResponse(to_api_payload(dto))
+
+    @app.post("/user/dispense")
+    def user_dispense_operation(
+        payload: DispenseOperationRequest,
+        container: ApplicationContainer = Depends(get_application_container),
+    ) -> JSONResponse:
+        dto = container.services.user_dispense.dispense_without_hardware(
+            DispenseRequest(
+                user_id=payload.user_id,
+                item_id=payload.item_id,
+                slot_id=payload.slot_id,
+                quantity=payload.quantity,
+                session_id=payload.session_id,
+            )
         )
         return JSONResponse(to_api_payload(dto))
 

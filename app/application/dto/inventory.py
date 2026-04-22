@@ -66,6 +66,21 @@ class KioskDispenseOptionsResult:
 
 
 @dataclass(frozen=True, slots=True)
+class UserDispenseOptionDTO:
+    item_id: int
+    item_name: str
+    item_unit: str
+    total_quantity: int
+
+
+@dataclass(frozen=True, slots=True)
+class UserDispenseOptionsResult:
+    options: tuple[UserDispenseOptionDTO, ...]
+    restriction_blocked: bool = False
+    unavailable_reason: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
 class OperatorBoardCellDTO:
     slot_id: int
     cell_number: int

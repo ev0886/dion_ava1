@@ -48,7 +48,8 @@ def render_user_page(settings: AppSettings) -> HTMLResponse:
             "admin": "/ui/admin-touch",
         },
         "touchAuthStorageKey": "dion.touchAuthContext",
-        "listTouchNomenclatureEndpoint": "/touch/nomenclature",
+        "userDispenseOptionsEndpoint": "/user/dispense-options",
+        "userDispenseSubmitEndpoint": "/user/dispense",
         "emptyNomenclatureMessage": "Номенклатура не настроена",
     }
     return HTMLResponse(

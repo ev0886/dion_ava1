@@ -18,6 +18,7 @@ from app.application.return_service import ReturnOperationService
 from app.application.service_mode_service import ServiceModeService
 from app.application.startup_service import StartupOrchestrationService
 from app.application.session_service import OperationSessionService
+from app.application.user_dispense_service import UserDispenseService
 from app.application.usb_storage_service import UsbStorageDiscoveryService
 from app.bootstrap import bootstrap
 from app.config import AppSettings, get_settings
@@ -55,6 +56,7 @@ class ServiceBundle:
     auth: AuthService
     inventory: InventoryService
     operation_sessions: OperationSessionService
+    user_dispense: UserDispenseService
     dispense: DispenseOperationService
     return_ops: ReturnOperationService
     refill: RefillOperationService
@@ -135,6 +137,11 @@ def build_services(
         auth=auth_service,
         inventory=inventory_service,
         operation_sessions=operation_session_service,
+        user_dispense=UserDispenseService(
+            repositories.operations,
+            repositories.inventory,
+            repositories.event_logs,
+        ),
         dispense=DispenseOperationService(
             repositories.operations,
             repositories.inventory,
