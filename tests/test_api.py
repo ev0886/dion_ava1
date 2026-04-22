@@ -354,6 +354,8 @@ def test_ui_mvp_javascript_asset_uses_rfid_auth_and_explicit_touch_role_routes(t
     assert "USER_DOOR_STATUS_POLL_INTERVAL_MS" in response.text
     assert "buildTouchAuthContext" in response.text
     assert "loadUserItemsForResolvedUser" in response.text
+    assert '"\\u0417\\u0430\\u0431\\u0435\\u0440\\u0438\\u0442\\u0435 \\u0442\\u043e\\u0432\\u0430\\u0440 \\u0438 \\u0437\\u0430\\u043a\\u0440\\u043e\\u0439\\u0442\\u0435 \\u044f\\u0447\\u0435\\u0439\\u043a\\u0443!"' in response.text
+    assert '"\\u0417\\u0430\\u043a\\u0440\\u043e\\u0439\\u0442\\u0435 \\u043e\\u0442\\u043a\\u0440\\u044b\\u0442\\u044b\\u0435 \\u044f\\u0447\\u0435\\u0439\\u043a\\u0438"' in response.text
     assert "const userId = Number(resolvedUser.user_id);" in response.text
     assert "Number.isFinite(userId)" in response.text
     assert 'window.sessionStorage.setItem(TOUCH_AUTH_STORAGE_KEY, JSON.stringify(authContext));' in response.text
@@ -364,6 +366,7 @@ def test_ui_mvp_javascript_asset_uses_rfid_auth_and_explicit_touch_role_routes(t
     assert "pollTargetDoorStatus" in response.text
     assert 'showScreen("userItemAvailable")' in response.text
     assert 'if (!response.ok || !isCompletedUserDispense(payload)) {' in response.text
+    assert 'if (response.status === 400 && payload && payload.detail === "Authorization blocked: one or more cells are open") {' in response.text
     assert 'showScreen("userItemSuccess")' in response.text
     assert "await loadUserItemsForResolvedUser();" not in response.text
     assert "go-user-role" not in response.text
