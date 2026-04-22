@@ -65,7 +65,7 @@ def test_health_and_readiness(tmp_path: Path) -> None:
     assert readiness.json()["readiness_status"] == "ready"
 
 
-def test_admin_system_status_endpoint_returns_health_readiness_and_runtime_settings(tmp_path: Path) -> None:
+def test_admin_system_status_endpoint_returns_compact_admin_summary(tmp_path: Path) -> None:
     app = create_app(
         AppSettings(
             data_dir=tmp_path,
@@ -83,15 +83,12 @@ def test_admin_system_status_endpoint_returns_health_readiness_and_runtime_setti
         response = client.get("/admin/system/status")
 
     assert response.status_code == 200
-    assert response.json() == {
-        "health_status": "ok",
-        "readiness_status": "degraded",
-        "hardware_provider": "stub-real",
-        "app_environment": "test",
-        "app_name": "DION ABA1 Test",
-        "api_host": "0.0.0.0",
-        "api_port": 8012,
-    }
+    payload = response.json()
+    assert payload["api_available"] is True
+    assert payload["hardware_status"] == "error"
+    assert payload["hardware_mode"] == "mock"
+    assert payload["open_cells"] is False
+    assert isinstance(payload["checked_at"], str)
 
 
 def test_ui_user_page_serves_configured_dispense_flow(tmp_path: Path) -> None:
@@ -203,14 +200,19 @@ def test_ui_admin_page_serves_user_management_config(tmp_path: Path) -> None:
     assert "Дата по" in response.text
     assert "Диапазон по дням. Если дата не указана, экспорт не запускается." in response.text
     assert 'class="table-wrap table-wrap-scroll"' in response.text
-    assert "Админка оператора MVP" in response.text
+    assert "Администрирование вендингового аппарата DION" in response.text
+    assert "Админка оператора MVP" not in response.text
     assert "Импорт CSV" in response.text
     assert "Импортировать CSV" in response.text
     assert "Загрузить пример" in response.text
     assert "Скачать пример CSV" in response.text
     assert "Последние действия системы" in response.text
-    assert "Провайдер оборудования / режим" in response.text
-    assert "Привязка API" in response.text
+    assert "Состояние API" in response.text
+    assert "Оборудование" in response.text
+    assert "Режим оборудования" in response.text
+    assert "Открытые ячейки" in response.text
+    assert "Последняя проверка" in response.text
+    assert "Привязка API" not in response.text
     assert '"/admin/users"' in response.text
     assert '"/admin/nomenclature"' in response.text
     assert '"/admin/system/status"' in response.text
@@ -225,10 +227,12 @@ def test_ui_admin_page_serves_user_management_config(tmp_path: Path) -> None:
     assert '"recentOperationsEndpoint"' in response.text
     assert '"exportOperationsEndpoint"' in response.text
     assert '"exportUsersEndpoint"' in response.text
+    assert '"createUserEndpoint"' in response.text
     assert '"listNomenclatureEndpoint"' in response.text
     assert '"createNomenclatureEndpoint"' in response.text
     assert '"updateNomenclatureEndpointBase"' in response.text
     assert '"importExampleCsvText"' in response.text
+    assert '"supportedRoles"' in response.text
     assert '"uiRole": "admin"' in response.text
 
 
@@ -585,9 +589,11 @@ def test_ui_admin_static_assets_are_served(tmp_path: Path) -> None:
     assert "getDisplayLabel" in response.text
     assert 'name="is_active"' in response.text
     assert "active-chip" not in response.text
-    assert 'degraded: "\\u041e\\u0433\\u0440\\u0430\\u043d\\u0438\\u0447\\u0435\\u043d\\u043d\\u0430\\u044f \\u0433\\u043e\\u0442\\u043e\\u0432\\u043d\\u043e\\u0441\\u0442\\u044c"' in response.text
+    assert "createUser" in response.text
+    assert 'available: "\\u041e\\u043d\\u043b\\u0430\\u0439\\u043d"' in response.text
+    assert 'error: "\\u0415\\u0441\\u0442\\u044c \\u043e\\u0448\\u0438\\u0431\\u043a\\u0438"' in response.text
     assert 'dispense: "\\u0412\\u044b\\u0434\\u0430\\u0447\\u0430"' in response.text
-    assert 'recovery_required: "\\u0422\\u0440\\u0435\\u0431\\u0443\\u0435\\u0442\\u0441\\u044f \\u0432\\u043e\\u0441\\u0441\\u0442\\u0430\\u043d\\u043e\\u0432\\u043b\\u0435\\u043d\\u0438\\u0435"' in response.text
+    assert 'recovery_required: "\\u0422\\u0440\\u0435\\u0431\\u0443\\u0435\\u0442\\u0441\\u044f \\u043f\\u0440\\u043e\\u0432\\u0435\\u0440\\u043a\\u0430"' in response.text
     assert 'once_per_day: "\\u041e\\u0434\\u0438\\u043d \\u0440\\u0430\\u0437 \\u0432 \\u0434\\u0435\\u043d\\u044c"' in response.text
 
 
@@ -2026,6 +2032,7 @@ def test_admin_recent_operations_endpoint_returns_latest_slice_newest_first(tmp_
                 "item_name": "Item One",
                 "quantity": 5,
                 "slot_code": "slot-1",
+                "cell_number": 73,
             },
             {
                 "operation_id": 1,
@@ -2037,6 +2044,7 @@ def test_admin_recent_operations_endpoint_returns_latest_slice_newest_first(tmp_
                 "item_name": "Item One",
                 "quantity": 1,
                 "slot_code": "slot-1",
+                "cell_number": 73,
             },
         ]
     }
@@ -2121,6 +2129,7 @@ def test_admin_problem_operations_endpoint_returns_failed_and_recovery_required_
                 "item_name": "Item One",
                 "quantity": 3,
                 "slot_code": "slot-1",
+                "cell_number": 73,
             },
             {
                 "operation_id": 2,
@@ -2132,6 +2141,7 @@ def test_admin_problem_operations_endpoint_returns_failed_and_recovery_required_
                 "item_name": "Item One",
                 "quantity": 2,
                 "slot_code": "slot-1",
+                "cell_number": 73,
             },
         ]
     }
@@ -2318,6 +2328,46 @@ def test_admin_update_user_assigns_rfid_uid_and_changes_policy(tmp_path: Path) -
     }
 
 
+def test_admin_create_user_uses_manual_admin_form_payload(tmp_path: Path) -> None:
+    app = create_app(_settings(tmp_path, "api_admin_create_user.sqlite3"))
+    _seed_base_domain(app)
+    _seed_unassigned_user(app)
+
+    with app.state.session_factory() as session:
+        session.add(Role(code=RoleCode.ADMIN, name="Admin"))
+        session.commit()
+
+    with TestClient(app) as client:
+        response = client.post(
+            "/admin/users",
+            json={
+                "user_code": "admin-1",
+                "full_name": "Admin One",
+                "role_code": "admin",
+                "rfid_uid": "aa bb-11 22",
+                "dispense_restriction_policy": "unlimited",
+                "is_active": False,
+            },
+        )
+        list_response = client.get("/admin/users")
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "user": {
+            "user_id": 3,
+            "user_code": "admin-1",
+            "full_name": "Admin One",
+            "status": "inactive",
+            "is_active": False,
+            "role_code": "admin",
+            "rfid_uid": "AABB1122",
+            "dispense_restriction_policy": "unlimited",
+        }
+    }
+    assert list_response.status_code == 200
+    assert list_response.json()["users"][-1] == response.json()["user"]
+
+
 def test_admin_update_user_can_clear_rfid_uid_assignment(tmp_path: Path) -> None:
     app = create_app(_settings(tmp_path, "api_admin_clear_uid.sqlite3"))
     _seed_base_domain(app)
@@ -2475,6 +2525,7 @@ def test_admin_recent_operations_keeps_deactivated_user_in_history(tmp_path: Pat
                 "item_name": "Item One",
                 "quantity": 1,
                 "slot_code": "slot-1",
+                "cell_number": 73,
             }
         ]
     }

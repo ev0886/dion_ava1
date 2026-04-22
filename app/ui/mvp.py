@@ -90,6 +90,7 @@ def render_admin_page(settings: AppSettings) -> HTMLResponse:
         "uiRole": "admin",
         "systemStatusEndpoint": "/admin/system/status",
         "listUsersEndpoint": "/admin/users",
+        "createUserEndpoint": "/admin/users",
         "listNomenclatureEndpoint": "/admin/nomenclature",
         "createNomenclatureEndpoint": "/admin/nomenclature",
         "updateNomenclatureEndpointBase": "/admin/nomenclature",
@@ -101,6 +102,7 @@ def render_admin_page(settings: AppSettings) -> HTMLResponse:
         "importUsersEndpoint": "/admin/users/import",
         "importExampleCsvAssetUrl": "/ui-assets/admin-users-import-example.csv",
         "importExampleCsvText": _ADMIN_USERS_IMPORT_EXAMPLE_CSV,
+        "supportedRoles": ["admin", "operator", "user"],
         "supportedPolicies": ["unlimited", "once_per_day"],
     }
     return HTMLResponse(

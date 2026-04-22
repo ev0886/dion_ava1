@@ -14,8 +14,10 @@ from app.application.dto.admin import (
     AdminUserImportResultDTO,
     AdminUserRecordDTO,
 )
+from app.application.open_door_guard import OpenDoorGuard
 from app.application.startup_service import StartupOrchestrationService
 from app.config import AppSettings
+from app.config.settings import HardwareProvider
 from app.application.exceptions import NotFoundError, ValidationError
 from app.domain.enums import DispenseRestrictionPolicy, RoleCode, UserStatus
 from app.persistence.models import User
@@ -89,6 +91,44 @@ class AdminUserService:
             user.status = UserStatus.INACTIVE
         user.dispense_restriction_policy = dispense_restriction_policy
         self.user_repository.session.commit()
+        return self.user_repository.get_admin_record(user.id)
+
+    def create_user(
+        self,
+        *,
+        user_code: str,
+        full_name: str,
+        role_code: RoleCode,
+        rfid_uid: str | None,
+        dispense_restriction_policy: DispenseRestrictionPolicy,
+        is_active: bool = True,
+    ) -> AdminUserRecordDTO:
+        normalized_user_code = self._require_field_value(user_code, field_name="user_code")
+        normalized_full_name = self._require_field_value(full_name, field_name="full_name")
+        role = self.user_repository.get_role_by_code(role_code)
+        if role is None:
+            raise ValidationError(f"unknown role_code '{role_code.value}'")
+        if self.user_repository.get_by_user_code(normalized_user_code) is not None:
+            raise ValidationError(f"User with user_code '{normalized_user_code}' already exists")
+
+        user = User(
+            role_id=role.id,
+            user_code=normalized_user_code,
+            full_name=normalized_full_name,
+            status=UserStatus.ACTIVE if is_active else UserStatus.INACTIVE,
+            dispense_restriction_policy=dispense_restriction_policy,
+            is_active=is_active,
+        )
+
+        try:
+            self.user_repository.session.add(user)
+            self.user_repository.session.flush()
+            normalized_rfid_uid = self._normalize_optional_rfid_uid(rfid_uid)
+            self._apply_rfid_assignment(user=user, normalized_rfid_uid=normalized_rfid_uid)
+            self.user_repository.session.commit()
+        except Exception:
+            self.user_repository.session.rollback()
+            raise
         return self.user_repository.get_admin_record(user.id)
 
     def import_users_csv(self, csv_text: str) -> AdminUserImportResultDTO:
@@ -248,6 +288,13 @@ class AdminUserService:
         if not value:
             raise ValidationError(f"CSV row {row_number}: {column_name} must not be empty")
         return value
+
+    @staticmethod
+    def _require_field_value(value: str | None, *, field_name: str) -> str:
+        normalized = (value or "").strip()
+        if not normalized:
+            raise ValidationError(f"{field_name} must not be empty")
+        return normalized
 
     @staticmethod
     def _parse_role_code(raw_role_code: str | None, row_number: int) -> RoleCode:
@@ -488,19 +535,26 @@ class AdminOperationService:
 
 
 class AdminSystemStatusService:
-    def __init__(self, startup_service: StartupOrchestrationService) -> None:
+    def __init__(
+        self,
+        startup_service: StartupOrchestrationService,
+        open_door_guard: OpenDoorGuard,
+    ) -> None:
         self.startup_service = startup_service
+        self.open_door_guard = open_door_guard
 
     def get_system_status(self, settings: AppSettings) -> AdminSystemStatusDTO:
         startup_status = self.startup_service.run_startup_checks()
+        try:
+            open_cells = self.open_door_guard.any_controlled_cell_open(self.startup_service.hardware_facade)
+        except Exception:
+            open_cells = False
         return AdminSystemStatusDTO(
-            health_status="ok",
-            readiness_status=startup_status.readiness_status,
-            hardware_provider=settings.hardware_provider,
-            app_environment=settings.app_environment,
-            app_name=settings.app_name,
-            api_host=settings.api_host,
-            api_port=settings.api_port,
+            api_available=True,
+            hardware_status="ready" if startup_status.hardware.ok and not startup_status.hardware.degraded else "error",
+            hardware_mode="real" if settings.hardware_provider is HardwareProvider.REAL else "mock",
+            open_cells=open_cells,
+            checked_at=_utcnow_naive(),
         )
 
 

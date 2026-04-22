@@ -5,13 +5,19 @@
     statusPanel: document.getElementById("status-panel"),
     statusTitle: document.getElementById("status-title"),
     statusMessage: document.getElementById("status-message"),
-    systemHealthStatus: document.getElementById("system-health-status"),
-    systemReadinessStatus: document.getElementById("system-readiness-status"),
-    systemHardwareProvider: document.getElementById("system-hardware-provider"),
-    systemAppEnvironment: document.getElementById("system-app-environment"),
-    systemAppName: document.getElementById("system-app-name"),
-    systemApiBind: document.getElementById("system-api-bind"),
+    systemApiStatus: document.getElementById("system-api-status"),
+    systemHardwareStatus: document.getElementById("system-hardware-status"),
+    systemHardwareMode: document.getElementById("system-hardware-mode"),
+    systemOpenCells: document.getElementById("system-open-cells"),
+    systemCheckedAt: document.getElementById("system-checked-at"),
     refreshButton: document.getElementById("refresh-button"),
+    userCreateCode: document.getElementById("user-create-code"),
+    userCreateName: document.getElementById("user-create-name"),
+    userCreateRole: document.getElementById("user-create-role"),
+    userCreateRfid: document.getElementById("user-create-rfid"),
+    userCreatePolicy: document.getElementById("user-create-policy"),
+    userCreateActive: document.getElementById("user-create-active"),
+    userCreateButton: document.getElementById("user-create-button"),
     nomenclatureCreateName: document.getElementById("nomenclature-create-name"),
     nomenclatureCreateButton: document.getElementById("nomenclature-create-button"),
     nomenclatureTableBody: document.getElementById("nomenclature-table-body"),
@@ -44,19 +50,19 @@
     savingUserIds: new Set(),
     savingNomenclatureIds: new Set(),
     isCreatingNomenclature: false,
+    isCreatingUser: false,
   };
 
   const displayLabels = {
     system: {
-      ok: "OK",
-      degraded: "\u041e\u0433\u0440\u0430\u043d\u0438\u0447\u0435\u043d\u043d\u0430\u044f \u0433\u043e\u0442\u043e\u0432\u043d\u043e\u0441\u0442\u044c",
+      available: "\u041e\u043d\u043b\u0430\u0439\u043d",
+      unavailable: "\u041d\u0435\u0434\u043e\u0441\u0442\u0443\u043f\u043d\u043e",
       ready: "\u0413\u043e\u0442\u043e\u0432\u043e",
-      not_ready: "\u041d\u0435 \u0433\u043e\u0442\u043e\u0432\u043e",
+      error: "\u0415\u0441\u0442\u044c \u043e\u0448\u0438\u0431\u043a\u0438",
       real: "\u0420\u0435\u0430\u043b\u044c\u043d\u044b\u0439",
-      "stub-real": "Stub-real",
       mock: "Mock",
-      development: "\u0420\u0430\u0437\u0440\u0430\u0431\u043e\u0442\u043a\u0430",
-      "production-like": "Production-like",
+      no: "\u041d\u0435\u0442",
+      yes: "\u0415\u0441\u0442\u044c",
     },
     operationType: {
       dispense: "\u0412\u044b\u0434\u0430\u0447\u0430",
@@ -66,7 +72,7 @@
     operationState: {
       completed: "\u0417\u0430\u0432\u0435\u0440\u0448\u0435\u043d\u043e",
       failed: "\u041e\u0448\u0438\u0431\u043a\u0430",
-      recovery_required: "\u0422\u0440\u0435\u0431\u0443\u0435\u0442\u0441\u044f \u0432\u043e\u0441\u0441\u0442\u0430\u043d\u043e\u0432\u043b\u0435\u043d\u0438\u0435",
+      recovery_required: "\u0422\u0440\u0435\u0431\u0443\u0435\u0442\u0441\u044f \u043f\u0440\u043e\u0432\u0435\u0440\u043a\u0430",
     },
     policy: {
       unlimited: "\u0411\u0435\u0437 \u043e\u0433\u0440\u0430\u043d\u0438\u0447\u0435\u043d\u0438\u0439",
@@ -106,13 +112,6 @@
     elements.importResultMessage.textContent = message;
   }
 
-  function formatSystemValue(value) {
-    if (value === null || value === undefined || value === "") {
-      return "n/a";
-    }
-    return String(value);
-  }
-
   function getDisplayLabel(group, value) {
     if (value === null || value === undefined || value === "") {
       return "n/a";
@@ -126,22 +125,19 @@
   function renderSystemStatus() {
     const systemStatus = state.systemStatus;
     if (!systemStatus) {
-      elements.systemHealthStatus.textContent = "n/a";
-      elements.systemReadinessStatus.textContent = "n/a";
-      elements.systemHardwareProvider.textContent = "n/a";
-      elements.systemAppEnvironment.textContent = "n/a";
-      elements.systemAppName.textContent = "n/a";
-      elements.systemApiBind.textContent = "n/a";
+      elements.systemApiStatus.textContent = getDisplayLabel("system", "unavailable");
+      elements.systemHardwareStatus.textContent = "n/a";
+      elements.systemHardwareMode.textContent = "n/a";
+      elements.systemOpenCells.textContent = "n/a";
+      elements.systemCheckedAt.textContent = "n/a";
       return;
     }
 
-    elements.systemHealthStatus.textContent = getDisplayLabel("system", systemStatus.health_status);
-    elements.systemReadinessStatus.textContent = getDisplayLabel("system", systemStatus.readiness_status);
-    elements.systemHardwareProvider.textContent = getDisplayLabel("system", systemStatus.hardware_provider);
-    elements.systemAppEnvironment.textContent = getDisplayLabel("system", systemStatus.app_environment);
-    elements.systemAppName.textContent = formatSystemValue(systemStatus.app_name);
-    elements.systemApiBind.textContent =
-      formatSystemValue(systemStatus.api_host) + ":" + formatSystemValue(systemStatus.api_port);
+    elements.systemApiStatus.textContent = getDisplayLabel("system", systemStatus.api_available ? "available" : "unavailable");
+    elements.systemHardwareStatus.textContent = getDisplayLabel("system", systemStatus.hardware_status);
+    elements.systemHardwareMode.textContent = getDisplayLabel("system", systemStatus.hardware_mode);
+    elements.systemOpenCells.textContent = getDisplayLabel("system", systemStatus.open_cells ? "yes" : "no");
+    elements.systemCheckedAt.textContent = formatDateTime(systemStatus.checked_at);
   }
 
   function nomenclatureRowMarkup(entry) {
@@ -333,9 +329,6 @@
   }
 
   function operationRowMarkup(operation) {
-    const quantity =
-      operation.quantity === null || operation.quantity === undefined ? "n/a" : String(operation.quantity);
-
     return (
       "<tr>" +
       "<td>" +
@@ -354,10 +347,7 @@
       escapeHtml(operation.item_name || "n/a") +
       "</td>" +
       "<td>" +
-      escapeHtml(quantity) +
-      "</td>" +
-      "<td>" +
-      escapeHtml(operation.slot_code || "n/a") +
+      escapeHtml(operation.cell_number === null || operation.cell_number === undefined ? "n/a" : String(operation.cell_number)) +
       "</td>" +
       "</tr>"
     );
@@ -366,7 +356,7 @@
   function renderOperations() {
     if (!state.operations.length) {
       elements.operationsTableBody.innerHTML =
-        '<tr><td colspan="7" class="placeholder-cell">Последние операции пока не найдены.</td></tr>';
+        '<tr><td colspan="6" class="placeholder-cell">Последние операции пока не найдены.</td></tr>';
       return;
     }
 
@@ -376,7 +366,7 @@
   function renderProblemOperations() {
     if (!state.problemOperations.length) {
       elements.problemOperationsTableBody.innerHTML =
-        '<tr><td colspan="7" class="placeholder-cell">Проблемные операции не найдены.</td></tr>';
+        '<tr><td colspan="6" class="placeholder-cell">Проблемные операции не найдены.</td></tr>';
       return;
     }
 
@@ -396,6 +386,13 @@
 
   function syncControls() {
     elements.refreshButton.disabled = state.isLoading;
+    elements.userCreateButton.disabled = state.isLoading || state.isCreatingUser;
+    elements.userCreateCode.disabled = state.isCreatingUser;
+    elements.userCreateName.disabled = state.isCreatingUser;
+    elements.userCreateRole.disabled = state.isCreatingUser;
+    elements.userCreateRfid.disabled = state.isCreatingUser;
+    elements.userCreatePolicy.disabled = state.isCreatingUser;
+    elements.userCreateActive.disabled = state.isCreatingUser;
     elements.nomenclatureCreateButton.disabled = state.isLoading || state.isCreatingNomenclature;
     elements.nomenclatureCreateName.disabled = state.isCreatingNomenclature;
     elements.operationsExportButton.disabled = state.isLoading || state.isExportingOperations;
@@ -603,6 +600,47 @@
     }
   }
 
+  async function createUser() {
+    state.isCreatingUser = true;
+    syncControls();
+    setStatus("", "Пользователи", "Создание нового пользователя.");
+
+    try {
+      const { response, payload } = await readJson(config.createUserEndpoint, {
+        method: "POST",
+        body: JSON.stringify({
+          user_code: elements.userCreateCode.value,
+          full_name: elements.userCreateName.value,
+          role_code: elements.userCreateRole.value,
+          rfid_uid: elements.userCreateRfid.value,
+          dispense_restriction_policy: elements.userCreatePolicy.value,
+          is_active: elements.userCreateActive.value === "true",
+        }),
+      });
+      if (!response.ok) {
+        throw new Error(payload.detail || "Не удалось создать пользователя.");
+      }
+
+      state.users.push(payload.user);
+      state.users.sort(function (left, right) {
+        return Number(left.user_id) - Number(right.user_id);
+      });
+      renderUsers();
+      elements.userCreateCode.value = "";
+      elements.userCreateName.value = "";
+      elements.userCreateRole.value = "user";
+      elements.userCreateRfid.value = "";
+      elements.userCreatePolicy.value = "unlimited";
+      elements.userCreateActive.value = "true";
+      setStatus("success", "Пользователь создан", "Новая запись добавлена в локальную базу и доступна для редактирования.");
+    } catch (error) {
+      setStatus("error", "Ошибка сохранения", String(error));
+    } finally {
+      state.isCreatingUser = false;
+      syncControls();
+    }
+  }
+
   function sortNomenclature() {
     state.nomenclature.sort(function (left, right) {
       return String(left.name).localeCompare(String(right.name), "ru");
@@ -768,6 +806,9 @@
 
   elements.refreshButton.addEventListener("click", function () {
     void loadAdminData();
+  });
+  elements.userCreateButton.addEventListener("click", function () {
+    void createUser();
   });
   elements.nomenclatureCreateButton.addEventListener("click", function () {
     void createNomenclature();

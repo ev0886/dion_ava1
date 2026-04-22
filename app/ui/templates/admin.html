@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>DION ABA1 Админка оператора MVP</title>
+  <title>DION ABA1 Admin</title>
   <link rel="stylesheet" href="/ui-assets/admin.css">
 </head>
 <body>
@@ -12,11 +12,8 @@
       <div>
         <p class="eyebrow">DION ABA1</p>
         <p class="eyebrow">Admin UI</p>
-        <h1>Админка оператора MVP</h1>
+        <h1>Администрирование вендингового аппарата DION</h1>
       </div>
-      <p class="hero-note">
-        Только локальное обслуживание пользователей. Матрица доступа и расширенная CSV-логика остаются вне этой ветки.
-      </p>
     </header>
 
     <section class="status-panel" id="status-panel" aria-live="polite">
@@ -93,34 +90,30 @@
       <div class="panel-heading">
         <div>
           <p class="eyebrow">Система</p>
-          <h2>Статус backend</h2>
+          <h2>Сводка состояния системы</h2>
         </div>
       </div>
       <div class="system-status-block" aria-live="polite">
         <div class="system-status-grid">
           <div class="system-status-item">
-            <span class="system-status-label">Состояние</span>
-            <strong id="system-health-status">Загрузка</strong>
+            <span class="system-status-label">Состояние API</span>
+            <strong id="system-api-status">Загрузка</strong>
           </div>
           <div class="system-status-item">
-            <span class="system-status-label">Готовность</span>
-            <strong id="system-readiness-status">Загрузка</strong>
+            <span class="system-status-label">Оборудование</span>
+            <strong id="system-hardware-status">Загрузка</strong>
           </div>
           <div class="system-status-item">
-            <span class="system-status-label">Провайдер оборудования / режим</span>
-            <strong id="system-hardware-provider">Загрузка</strong>
+            <span class="system-status-label">Режим оборудования</span>
+            <strong id="system-hardware-mode">Загрузка</strong>
           </div>
           <div class="system-status-item">
-            <span class="system-status-label">Окружение приложения</span>
-            <strong id="system-app-environment">Загрузка</strong>
+            <span class="system-status-label">Открытые ячейки</span>
+            <strong id="system-open-cells">Загрузка</strong>
           </div>
           <div class="system-status-item">
-            <span class="system-status-label">Имя приложения</span>
-            <strong id="system-app-name">Загрузка</strong>
-          </div>
-          <div class="system-status-item">
-            <span class="system-status-label">Привязка API</span>
-            <strong id="system-api-bind">Загрузка</strong>
+            <span class="system-status-label">Последняя проверка</span>
+            <strong id="system-checked-at">Загрузка</strong>
           </div>
         </div>
       </div>
@@ -133,7 +126,7 @@
           <h2>Операции, требующие внимания</h2>
         </div>
       </div>
-      <p class="panel-note">Только проблемные состояния: failed и recovery_required.</p>
+      <p class="panel-note">Показываются только операции с ошибкой или требующие проверки.</p>
       <div class="table-wrap table-wrap-scroll">
         <table class="operations-table">
           <thead>
@@ -143,13 +136,12 @@
               <th>Состояние</th>
               <th>Пользователь</th>
               <th>Товар</th>
-              <th>Количество</th>
               <th>Ячейка</th>
             </tr>
           </thead>
           <tbody id="problem-operations-table-body">
             <tr>
-              <td colspan="7" class="placeholder-cell">Загрузка проблемных операций...</td>
+              <td colspan="6" class="placeholder-cell">Загрузка проблемных операций...</td>
             </tr>
           </tbody>
         </table>
@@ -172,13 +164,12 @@
               <th>Состояние</th>
               <th>Пользователь</th>
               <th>Товар</th>
-              <th>Количество</th>
               <th>Ячейка</th>
             </tr>
           </thead>
           <tbody id="operations-table-body">
             <tr>
-              <td colspan="7" class="placeholder-cell">Загрузка последних операций...</td>
+              <td colspan="6" class="placeholder-cell">Загрузка последних операций...</td>
             </tr>
           </tbody>
         </table>
@@ -240,11 +231,51 @@
         </div>
         <button id="refresh-button" class="secondary-button" type="button">Обновить</button>
       </div>
-      <div class="table-wrap table-wrap-scroll">
+      <div class="user-create-grid">
+        <label class="field-block" for="user-create-code">
+          <span class="field-label">user_code</span>
+          <input id="user-create-code" class="inline-input" type="text" placeholder="Например, user-1002">
+        </label>
+        <label class="field-block" for="user-create-name">
+          <span class="field-label">full_name</span>
+          <input id="user-create-name" class="inline-input" type="text" placeholder="Полное имя">
+        </label>
+        <label class="field-block" for="user-create-role">
+          <span class="field-label">role_code</span>
+          <select id="user-create-role" class="inline-select">
+            <option value="user">user</option>
+            <option value="operator">operator</option>
+            <option value="admin">admin</option>
+          </select>
+        </label>
+        <label class="field-block" for="user-create-rfid">
+          <span class="field-label">rfid_uid</span>
+          <input id="user-create-rfid" class="inline-input" type="text" placeholder="Необязательно">
+        </label>
+        <label class="field-block" for="user-create-policy">
+          <span class="field-label">dispense_restriction_policy</span>
+          <select id="user-create-policy" class="inline-select">
+            <option value="unlimited">unlimited</option>
+            <option value="once_per_day">once_per_day</option>
+          </select>
+        </label>
+        <label class="field-block" for="user-create-active">
+          <span class="field-label">Статус</span>
+          <select id="user-create-active" class="inline-select">
+            <option value="true">Активен</option>
+            <option value="false">Неактивен</option>
+          </select>
+        </label>
+        <div class="user-create-actions">
+          <button id="user-create-button" class="save-button" type="button">Добавить пользователя</button>
+          <p class="row-note">Новая запись создаётся по тем же правилам валидации, что и импорт пользователей.</p>
+        </div>
+      </div>
+      <div class="table-wrap table-wrap-scroll user-table-wrap">
         <table class="user-table">
           <thead>
             <tr>
-              <th>ID пользователя</th>
+              <th></th>
               <th>Код пользователя</th>
               <th>Полное имя</th>
               <th>Статус</th>

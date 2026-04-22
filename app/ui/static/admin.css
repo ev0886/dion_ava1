@@ -71,12 +71,6 @@ body {
   font-size: 0.9rem;
 }
 
-.hero-note {
-  margin: 0;
-  max-width: 48rem;
-  color: var(--muted);
-}
-
 .status-panel {
   padding: 0.9rem 1.1rem;
   display: grid;
@@ -171,6 +165,20 @@ body {
   margin-bottom: 0.9rem;
 }
 
+.user-create-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
+  gap: 0.85rem;
+  align-items: end;
+  margin-bottom: 0.9rem;
+}
+
+.user-create-actions {
+  display: grid;
+  gap: 0.35rem;
+  justify-items: start;
+}
+
 .nomenclature-create-actions {
   display: grid;
   gap: 0.35rem;
@@ -214,6 +222,10 @@ body {
 .table-wrap-scroll {
   max-height: 24rem;
   overflow-y: auto;
+}
+
+.user-table-wrap {
+  max-height: 62rem;
 }
 
 .user-table {

@@ -111,8 +111,22 @@ class OperationRepository(Repository):
                 item_name=item_name,
                 quantity=qty_confirmed if qty_confirmed is not None else qty_requested,
                 slot_code=slot_code,
+                cell_number=_to_operator_cell_number(drum_position=drum_position, lock_number=lock_number),
             )
-            for operation_id, started_at, operation_type, operation_state, user_code, full_name, item_name, qty_confirmed, qty_requested, slot_code in rows
+            for (
+                operation_id,
+                started_at,
+                operation_type,
+                operation_state,
+                user_code,
+                full_name,
+                item_name,
+                qty_confirmed,
+                qty_requested,
+                slot_code,
+                drum_position,
+                lock_number,
+            ) in rows
         ]
 
     def list_problem_for_admin(self, *, limit: int = 20) -> list[AdminRecentOperationDTO]:
@@ -133,8 +147,22 @@ class OperationRepository(Repository):
                 item_name=item_name,
                 quantity=qty_confirmed if qty_confirmed is not None else qty_requested,
                 slot_code=slot_code,
+                cell_number=_to_operator_cell_number(drum_position=drum_position, lock_number=lock_number),
             )
-            for operation_id, started_at, operation_type, operation_state, user_code, full_name, item_name, qty_confirmed, qty_requested, slot_code in rows
+            for (
+                operation_id,
+                started_at,
+                operation_type,
+                operation_state,
+                user_code,
+                full_name,
+                item_name,
+                qty_confirmed,
+                qty_requested,
+                slot_code,
+                drum_position,
+                lock_number,
+            ) in rows
         ]
 
     def list_for_admin_export(
@@ -223,6 +251,8 @@ class OperationRepository(Repository):
                 Operation.qty_confirmed,
                 Operation.qty_requested,
                 Slot.code,
+                Slot.drum_position,
+                Slot.lock_number,
             )
             .outerjoin(User, User.id == Operation.user_id)
             .outerjoin(Item, Item.id == Operation.item_id)
@@ -231,6 +261,12 @@ class OperationRepository(Repository):
         if problem_states is not None:
             statement = statement.where(Operation.operation_state.in_(problem_states))
         return statement.order_by(func.coalesce(Operation.started_at, Operation.finished_at).desc(), Operation.id.desc()).limit(limit)
+
+
+def _to_operator_cell_number(*, drum_position: int | None, lock_number: int | None) -> int | None:
+    if drum_position is None or lock_number is None:
+        return None
+    return int(drum_position) * 24 + int(lock_number)
 
 
 class OperationSessionRepository(Repository):

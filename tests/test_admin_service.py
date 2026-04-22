@@ -336,6 +336,37 @@ def test_update_user_can_deactivate_user_and_preserve_record(
         assert persisted.status is UserStatus.INACTIVE
 
 
+def test_create_user_uses_same_admin_rules_and_normalizes_rfid(
+    session_factory: sessionmaker[Session],
+) -> None:
+    with session_factory() as session:
+        _seed_import_duplicate_rfid_domain(session)
+        session.add(Role(code=RoleCode.ADMIN, name="Admin"))
+        session.commit()
+        service = AdminUserService(UserRepository(session))
+
+        created = service.create_user(
+            user_code="  admin-1  ",
+            full_name="  Admin One  ",
+            role_code=RoleCode.ADMIN,
+            rfid_uid="aa bb-11 22",
+            dispense_restriction_policy=DispenseRestrictionPolicy.UNLIMITED,
+            is_active=False,
+        )
+
+        persisted = session.get(User, created.user_id)
+
+        assert created.user_code == "admin-1"
+        assert created.full_name == "Admin One"
+        assert created.role_code is RoleCode.ADMIN
+        assert created.rfid_uid == "AABB1122"
+        assert created.is_active is False
+        assert created.status is UserStatus.INACTIVE
+        assert persisted is not None
+        assert persisted.is_active is False
+        assert persisted.status is UserStatus.INACTIVE
+
+
 def test_list_recent_operations_for_admin_returns_newest_first_with_joined_fields(
     session_factory: sessionmaker[Session],
 ) -> None:
@@ -416,6 +447,7 @@ def test_list_recent_operations_for_admin_returns_newest_first_with_joined_field
             item_name="Item One",
             quantity=4,
             slot_code="slot-1",
+            cell_number=25,
         )
         assert rows[1] == AdminRecentOperationDTO(
             operation_id=rows[1].operation_id,
@@ -427,6 +459,7 @@ def test_list_recent_operations_for_admin_returns_newest_first_with_joined_field
             item_name="Item One",
             quantity=1,
             slot_code="slot-1",
+            cell_number=25,
         )
 
 
@@ -527,6 +560,7 @@ def test_list_problem_operations_for_admin_returns_failed_and_recovery_required_
                 item_name="Item One",
                 quantity=3,
                 slot_code="slot-1",
+                cell_number=25,
             ),
             AdminRecentOperationDTO(
                 operation_id=rows[1].operation_id,
@@ -538,6 +572,7 @@ def test_list_problem_operations_for_admin_returns_failed_and_recovery_required_
                 item_name="Item One",
                 quantity=2,
                 slot_code="slot-1",
+                cell_number=25,
             ),
         ]
 

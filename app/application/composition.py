@@ -143,7 +143,7 @@ def build_services(
         admin_users=admin_users_service,
         admin_nomenclature=admin_nomenclature_service,
         admin_operations=admin_operations_service,
-        admin_system_status=AdminSystemStatusService(startup_service),
+        admin_system_status=AdminSystemStatusService(startup_service, open_door_guard),
         auth=auth_service,
         inventory=inventory_service,
         operation_sessions=operation_session_service,

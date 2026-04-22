@@ -13,6 +13,7 @@ from app.api.errors import register_exception_handlers
 from app.api.schemas import (
     AdminNomenclatureCreateRequest,
     AdminNomenclatureUpdateRequest,
+    AdminUserCreateRequest,
     AdminUserUpdateRequest,
     AuthReadAndResolveRfidRequest,
     AuthResolveRequest,
@@ -142,6 +143,26 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
     @app.get("/admin/users")
     def admin_list_users(container: ApplicationContainer = Depends(get_application_container)) -> JSONResponse:
         return JSONResponse({"users": to_api_payload(container.services.admin_users.list_users())})
+
+    @app.post("/admin/users")
+    def admin_create_user(
+        payload: AdminUserCreateRequest,
+        container: ApplicationContainer = Depends(get_application_container),
+    ) -> JSONResponse:
+        return JSONResponse(
+            {
+                "user": to_api_payload(
+                    container.services.admin_users.create_user(
+                        user_code=payload.user_code,
+                        full_name=payload.full_name,
+                        role_code=payload.role_code,
+                        rfid_uid=payload.rfid_uid,
+                        dispense_restriction_policy=payload.dispense_restriction_policy,
+                        is_active=payload.is_active,
+                    )
+                )
+            }
+        )
 
     @app.get("/admin/nomenclature")
     def admin_list_nomenclature(container: ApplicationContainer = Depends(get_application_container)) -> JSONResponse:

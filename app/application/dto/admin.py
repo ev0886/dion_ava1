@@ -3,13 +3,11 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime
 
-from app.config.settings import HardwareProvider
 from app.domain.enums import (
     DispenseRestrictionPolicy,
     OperationState,
     OperationType,
     RoleCode,
-    StartupReadinessStatus,
     UserStatus,
 )
 
@@ -57,6 +55,7 @@ class AdminRecentOperationDTO:
     item_name: str | None
     quantity: int | None
     slot_code: str | None
+    cell_number: int | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -78,10 +77,8 @@ class AdminOperationExportRowDTO:
 
 @dataclass(frozen=True, slots=True)
 class AdminSystemStatusDTO:
-    health_status: str
-    readiness_status: StartupReadinessStatus
-    hardware_provider: HardwareProvider
-    app_environment: str
-    app_name: str
-    api_host: str
-    api_port: int
+    api_available: bool
+    hardware_status: str
+    hardware_mode: str
+    open_cells: bool
+    checked_at: datetime

@@ -76,6 +76,15 @@ class AdminUserUpdateRequest(ApiModel):
     dispense_restriction_policy: DispenseRestrictionPolicy
 
 
+class AdminUserCreateRequest(ApiModel):
+    user_code: str
+    full_name: str
+    role_code: RoleCode
+    rfid_uid: str | None = None
+    dispense_restriction_policy: DispenseRestrictionPolicy
+    is_active: bool = True
+
+
 class AdminNomenclatureCreateRequest(ApiModel):
     name: str
 
