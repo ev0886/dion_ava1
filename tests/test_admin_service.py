@@ -458,7 +458,7 @@ def test_list_recent_operations_for_admin_returns_newest_first_with_joined_field
             item_name="Item One",
             quantity=4,
             slot_code="slot-1",
-            cell_number=25,
+            cell_number=466,
         )
         assert rows[1] == AdminRecentOperationDTO(
             operation_id=rows[1].operation_id,
@@ -471,7 +471,7 @@ def test_list_recent_operations_for_admin_returns_newest_first_with_joined_field
             item_name="Item One",
             quantity=1,
             slot_code="slot-1",
-            cell_number=25,
+            cell_number=466,
         )
 
 
@@ -573,7 +573,7 @@ def test_list_problem_operations_for_admin_returns_failed_and_recovery_required_
                 item_name="Item One",
                 quantity=3,
                 slot_code="slot-1",
-                cell_number=25,
+                cell_number=466,
             ),
             AdminRecentOperationDTO(
                 operation_id=rows[1].operation_id,
@@ -586,7 +586,7 @@ def test_list_problem_operations_for_admin_returns_failed_and_recovery_required_
                 item_name="Item One",
                 quantity=2,
                 slot_code="slot-1",
-                cell_number=25,
+                cell_number=466,
             ),
         ]
 
@@ -667,7 +667,7 @@ def test_list_recent_operations_for_admin_includes_inventory_adjustment_quantity
                 item_name="Item One",
                 quantity=3,
                 slot_code="slot-1",
-                cell_number=25,
+                cell_number=466,
             )
         ]
 
@@ -827,9 +827,9 @@ def test_export_operations_csv_filters_inclusive_date_range_and_emits_expected_c
         assert exported_csv == "\n".join(
             (
                 "operation_id,started_at,finished_at,operation_type,operation_state,user_code,user_full_name,item_name,cell_number,error_code,error_message",
-                "2,2026-04-14T09:00:00,2026-04-14T09:10:00,Возврат,Ошибка,operator-1,Operator One,Item One,25,lock_timeout,Door lock timeout",
-                "3,2026-04-14T10:00:00,2026-04-14T10:05:00,Пополнение,Успешно,operator-1,Operator One,Item One,25,,",
-                "4,2026-04-14T11:00:00,2026-04-14T11:05:00,Изъятие,Успешно,operator-1,Operator One,Item One,25,,",
+                "2,2026-04-14T09:00:00,2026-04-14T09:10:00,Возврат,Ошибка,operator-1,Operator One,Item One,466,lock_timeout,Door lock timeout",
+                "3,2026-04-14T10:00:00,2026-04-14T10:05:00,Пополнение,Успешно,operator-1,Operator One,Item One,466,,",
+                "4,2026-04-14T11:00:00,2026-04-14T11:05:00,Изъятие,Успешно,operator-1,Operator One,Item One,466,,",
                 "",
             )
         )

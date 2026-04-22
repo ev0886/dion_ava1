@@ -151,7 +151,7 @@ def test_local_usb_operations_export_service_writes_csv_file_to_usb_mount(tmp_pa
     assert exported_path.read_text(encoding="utf-8-sig") == "\n".join(
         (
             "operation_id,started_at,finished_at,operation_type,operation_state,user_code,user_full_name,item_name,cell_number,error_code,error_message",
-            "1,2026-04-14T09:00:00,2026-04-14T09:10:00,\u0412\u044b\u0434\u0430\u0447\u0430,\u0423\u0441\u043f\u0435\u0448\u043d\u043e,user-1,User One,Item One,25,,",
+            "1,2026-04-14T09:00:00,2026-04-14T09:10:00,\u0412\u044b\u0434\u0430\u0447\u0430,\u0423\u0441\u043f\u0435\u0448\u043d\u043e,user-1,User One,Item One,466,,",
             "",
         )
     )
@@ -198,7 +198,7 @@ def test_local_usb_operations_export_endpoint_returns_success_payload_and_writes
     assert exported_path.read_text(encoding="utf-8-sig") == "\n".join(
         (
             "operation_id,started_at,finished_at,operation_type,operation_state,user_code,user_full_name,item_name,cell_number,error_code,error_message",
-            "1,2026-04-14T09:00:00,2026-04-14T09:10:00,\u0412\u044b\u0434\u0430\u0447\u0430,\u0423\u0441\u043f\u0435\u0448\u043d\u043e,user-1,User One,Item One,25,,",
+            "1,2026-04-14T09:00:00,2026-04-14T09:10:00,\u0412\u044b\u0434\u0430\u0447\u0430,\u0423\u0441\u043f\u0435\u0448\u043d\u043e,user-1,User One,Item One,466,,",
             "",
         )
     )

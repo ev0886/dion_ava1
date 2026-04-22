@@ -19,6 +19,12 @@ from app.application.dto.inventory import (
 from app.application.exceptions import NotFoundError, ValidationError
 from app.application.open_door_guard import OpenDoorGuard
 from app.application.time import utc_now
+from app.domain.drum_numbering import (
+    human_cell_number,
+    logical_quarter_from_drum_position,
+    logical_sector_from_drum_position,
+    operator_quarter_access_pos,
+)
 from app.domain.enums import BindingType, InventoryTransactionType, OperationState, OperationType
 from app.hardware.exceptions import HardwareError
 from app.persistence.models import (
@@ -36,13 +42,6 @@ from app.persistence.repositories.inventory import InventoryRepository
 
 
 class InventoryService:
-    _OPERATOR_ACCESS_SECTOR_BY_QUARTER = {
-        1: 7,
-        2: 15,
-        3: 23,
-        4: 31,
-    }
-
     def __init__(
         self,
         inventory_repository: InventoryRepository,
@@ -122,8 +121,8 @@ class InventoryService:
                 OperatorBoardCellDTO(
                     slot_id=record.slot_id,
                     cell_number=self._cell_number(record.drum_position, record.lock_number),
-                    sector_number=record.drum_position + 1,
-                    quarter_number=(record.drum_position // 8) + 1,
+                    sector_number=self._sector_number(record.drum_position),
+                    quarter_number=self._quarter_number(record.drum_position),
                     drum_position=record.drum_position,
                     lock_number=record.lock_number,
                     filled=record.filled,
@@ -546,12 +545,18 @@ class InventoryService:
 
     @staticmethod
     def _cell_number(drum_position: int, lock_number: int) -> int:
-        return (drum_position * 15) + lock_number
+        return human_cell_number(drum_position, lock_number)
+
+    @staticmethod
+    def _sector_number(drum_position: int) -> int:
+        return logical_sector_from_drum_position(drum_position)
 
     @classmethod
     def _quarter_number(cls, drum_position: int) -> int:
-        quarter_number = (drum_position // 8) + 1
-        if quarter_number not in cls._OPERATOR_ACCESS_SECTOR_BY_QUARTER:
+        quarter_number = logical_quarter_from_drum_position(drum_position)
+        try:
+            operator_quarter_access_pos(quarter_number)
+        except ValueError:
             raise ValidationError(f"Unsupported operator quarter for drum position: {drum_position}")
         return quarter_number
 
@@ -562,9 +567,9 @@ class InventoryService:
         if len(quarter_numbers) != 1:
             raise ValidationError("Selected slots must belong to exactly one quarter")
         quarter_number = next(iter(quarter_numbers))
-        target_sector = self._OPERATOR_ACCESS_SECTOR_BY_QUARTER[quarter_number]
+        target_position = operator_quarter_access_pos(quarter_number)
         try:
-            hardware_facade.move_drum_to_position(target_sector)
+            hardware_facade.move_drum_to_position(target_position)
         except HardwareError:
             self.inventory_repository.session.rollback()
             raise

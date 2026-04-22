@@ -5,6 +5,7 @@ from datetime import date, datetime, time, timedelta
 from sqlalchemy import and_, func, or_, select
 
 from app.application.dto.admin import AdminOperationExportRowDTO, AdminRecentOperationDTO
+from app.domain.drum_numbering import human_cell_number
 from app.domain.enums import OperationState, OperationType
 from app.persistence.models import InventoryTransaction, Item, Operation, OperationSession, OperationStateHistory, Slot, User
 from app.persistence.repositories.base import Repository
@@ -273,7 +274,7 @@ class OperationRepository(Repository):
 def _to_operator_cell_number(*, drum_position: int | None, lock_number: int | None) -> int | None:
     if drum_position is None or lock_number is None:
         return None
-    return int(drum_position) * 24 + int(lock_number)
+    return human_cell_number(int(drum_position), int(lock_number))
 
 
 class OperationSessionRepository(Repository):

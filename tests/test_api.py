@@ -1357,8 +1357,8 @@ def test_operator_board_endpoint_returns_real_fill_state(tmp_path: Path) -> None
     assert cells[1]["filled"] is True
     assert cells[2]["slot_id"] == ids.slot_two_id
     assert cells[2]["filled"] is False
-    assert cells[121]["slot_id"] == ids.slot_three_id
-    assert cells[121]["filled"] is True
+    assert cells[361]["slot_id"] == ids.slot_three_id
+    assert cells[361]["filled"] is True
 
 
 def test_operator_replenish_endpoint_writes_real_inventory_operations_and_events(tmp_path: Path) -> None:
@@ -1427,7 +1427,7 @@ def test_operator_prepare_replenish_endpoint_positions_drum_to_fixed_quarter_acc
         )
 
     assert response.status_code == 200
-    assert hardware_bundle.facade.get_drum_position().position == 7
+    assert hardware_bundle.facade.get_drum_position().position == 26
 
 
 def test_operator_replenish_endpoint_persists_without_repositioning_drum(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -1892,7 +1892,7 @@ def test_operator_prepare_remove_endpoint_positions_drum_to_fixed_quarter_access
         )
 
     assert response.status_code == 200
-    assert hardware_bundle.facade.get_drum_position().position == 15
+    assert hardware_bundle.facade.get_drum_position().position == 2
 
 
 def test_operator_remove_endpoint_persists_without_repositioning_drum(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -2034,7 +2034,7 @@ def test_admin_recent_operations_endpoint_returns_latest_slice_newest_first(tmp_
                 "item_name": "Item One",
                 "quantity": 5,
                 "slot_code": "slot-1",
-                "cell_number": 73,
+                "cell_number": 436,
             },
             {
                 "operation_id": 1,
@@ -2047,7 +2047,7 @@ def test_admin_recent_operations_endpoint_returns_latest_slice_newest_first(tmp_
                 "item_name": "Item One",
                 "quantity": 1,
                 "slot_code": "slot-1",
-                "cell_number": 73,
+                "cell_number": 436,
             },
         ]
     }
@@ -2133,7 +2133,7 @@ def test_admin_problem_operations_endpoint_returns_failed_and_recovery_required_
                 "item_name": "Item One",
                 "quantity": 3,
                 "slot_code": "slot-1",
-                "cell_number": 73,
+                "cell_number": 436,
             },
             {
                 "operation_id": 2,
@@ -2146,7 +2146,7 @@ def test_admin_problem_operations_endpoint_returns_failed_and_recovery_required_
                 "item_name": "Item One",
                 "quantity": 2,
                 "slot_code": "slot-1",
-                "cell_number": 73,
+                "cell_number": 436,
             },
         ]
     }
@@ -2210,7 +2210,7 @@ def test_admin_recent_operations_endpoint_includes_inventory_adjustment_quantity
                 "item_name": "Item One",
                 "quantity": 2,
                 "slot_code": "slot-1",
-                "cell_number": 73,
+                "cell_number": 436,
             }
         ]
     }
@@ -2369,10 +2369,10 @@ def test_admin_operations_export_endpoint_returns_csv_for_selected_inclusive_day
     assert response.content.decode("utf-8-sig") == "\n".join(
         (
             "operation_id,started_at,finished_at,operation_type,operation_state,user_code,user_full_name,item_name,cell_number,error_code,error_message",
-            "2,2026-04-14T00:00:00,2026-04-14T00:01:00,\u0412\u043e\u0437\u0432\u0440\u0430\u0442,\u041e\u0448\u0438\u0431\u043a\u0430,operator-1,Operator One,Item One,73,lock_timeout,Door lock timeout",
-            "3,2026-04-14T08:00:00,2026-04-14T08:05:00,\u041f\u043e\u043f\u043e\u043b\u043d\u0435\u043d\u0438\u0435,\u0423\u0441\u043f\u0435\u0448\u043d\u043e,operator-1,Operator One,Item One,73,,",
-            "4,2026-04-14T12:00:00,2026-04-14T12:05:00,\u0418\u0437\u044a\u044f\u0442\u0438\u0435,\u0423\u0441\u043f\u0435\u0448\u043d\u043e,operator-1,Operator One,Item One,73,,",
-            "5,2026-04-14T23:59:59,2026-04-15T00:05:00,\u041f\u043e\u043f\u043e\u043b\u043d\u0435\u043d\u0438\u0435,\u0423\u0441\u043f\u0435\u0448\u043d\u043e,operator-1,Operator One,Item One,73,,",
+            "2,2026-04-14T00:00:00,2026-04-14T00:01:00,\u0412\u043e\u0437\u0432\u0440\u0430\u0442,\u041e\u0448\u0438\u0431\u043a\u0430,operator-1,Operator One,Item One,436,lock_timeout,Door lock timeout",
+            "3,2026-04-14T08:00:00,2026-04-14T08:05:00,\u041f\u043e\u043f\u043e\u043b\u043d\u0435\u043d\u0438\u0435,\u0423\u0441\u043f\u0435\u0448\u043d\u043e,operator-1,Operator One,Item One,436,,",
+            "4,2026-04-14T12:00:00,2026-04-14T12:05:00,\u0418\u0437\u044a\u044f\u0442\u0438\u0435,\u0423\u0441\u043f\u0435\u0448\u043d\u043e,operator-1,Operator One,Item One,436,,",
+            "5,2026-04-14T23:59:59,2026-04-15T00:05:00,\u041f\u043e\u043f\u043e\u043b\u043d\u0435\u043d\u0438\u0435,\u0423\u0441\u043f\u0435\u0448\u043d\u043e,operator-1,Operator One,Item One,436,,",
             "",
         )
     )
@@ -2660,7 +2660,7 @@ def test_admin_recent_operations_keeps_deactivated_user_in_history(tmp_path: Pat
                 "item_name": "Item One",
                 "quantity": 1,
                 "slot_code": "slot-1",
-                "cell_number": 73,
+                "cell_number": 436,
             }
         ]
     }
