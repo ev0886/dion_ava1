@@ -1184,6 +1184,350 @@ def test_operator_replenish_endpoint_writes_real_inventory_operations_and_events
     assert binding.is_active is True
 
 
+def test_operator_replenish_endpoint_prefers_real_inventory_item_for_same_name_nomenclature(tmp_path: Path) -> None:
+    app = create_app(_settings(tmp_path, "api_operator_replenish_real_item.sqlite3"))
+
+    with app.state.session_factory() as session:
+        operator_role = Role(code=RoleCode.OPERATOR, name="Operator")
+        session.add(operator_role)
+        session.flush()
+
+        operator = User(
+            role_id=operator_role.id,
+            user_code="operator-1",
+            full_name="Operator One",
+            status=UserStatus.ACTIVE,
+            dispense_restriction_policy=DispenseRestrictionPolicy.ONCE_PER_DAY,
+            is_active=True,
+        )
+        wrong_item = Item(
+            item_group_id=None,
+            sku="operator-item-wrong",
+            name="Operator Item One",
+            description=None,
+            unit="pcs",
+            return_allowed=True,
+            min_level=0,
+            status=ItemStatus.ACTIVE,
+        )
+        real_item = Item(
+            item_group_id=None,
+            sku="operator-item-real",
+            name="Operator Item One",
+            description=None,
+            unit="pcs",
+            return_allowed=True,
+            min_level=0,
+            status=ItemStatus.ACTIVE,
+        )
+        nomenclature = NomenclatureEntry(
+            name="Operator Item One",
+            normalized_name="operator item one",
+            is_active=True,
+        )
+        session.add_all((operator, wrong_item, real_item, nomenclature))
+        session.flush()
+
+        slot_one = Slot(
+            code="slot-p00-l01",
+            slot_type=SlotType.UNIVERSAL,
+            drum_position=0,
+            board_address=0,
+            lock_number=1,
+            capacity=1,
+            status=SlotStatus.ACTIVE,
+        )
+        slot_two = Slot(
+            code="slot-p00-l02",
+            slot_type=SlotType.UNIVERSAL,
+            drum_position=0,
+            board_address=0,
+            lock_number=2,
+            capacity=1,
+            status=SlotStatus.ACTIVE,
+        )
+        session.add_all((slot_one, slot_two))
+        session.flush()
+
+        session.add(
+            SlotItemBinding(
+                slot_id=slot_one.id,
+                item_id=real_item.id,
+                binding_type=BindingType.PRIMARY,
+                is_active=True,
+                valid_from=None,
+                valid_to=None,
+            )
+        )
+        session.add(InventoryBalance(slot_id=slot_one.id, item_id=real_item.id, quantity=1))
+        session.commit()
+
+        operator_user_id = operator.id
+        nomenclature_id = nomenclature.id
+        slot_two_id = slot_two.id
+        real_item_id = real_item.id
+        wrong_item_id = wrong_item.id
+
+    with TestClient(app) as client:
+        response = client.post(
+            "/operator/inventory/replenish",
+            json={
+                "operator_user_id": operator_user_id,
+                "nomenclature_id": nomenclature_id,
+                "slot_ids": [slot_two_id],
+            },
+        )
+
+    assert response.status_code == 200
+    assert response.json()["item_id"] == real_item_id
+
+    with app.state.session_factory() as session:
+        real_balance = session.query(InventoryBalance).filter_by(slot_id=slot_two_id, item_id=real_item_id).one()
+        wrong_balance = session.query(InventoryBalance).filter_by(slot_id=slot_two_id, item_id=wrong_item_id).one_or_none()
+        binding = session.query(SlotItemBinding).filter_by(slot_id=slot_two_id, item_id=real_item_id, binding_type=BindingType.PRIMARY).one()
+
+    assert real_balance.quantity == 1
+    assert wrong_balance is None
+    assert binding.is_active is True
+
+
+def test_operator_replenish_endpoint_uses_machine_linked_item_for_user_availability(tmp_path: Path) -> None:
+    app = create_app(_settings(tmp_path, "api_operator_replenish_user_availability.sqlite3"))
+
+    with app.state.session_factory() as session:
+        operator_role = Role(code=RoleCode.OPERATOR, name="Operator")
+        user_role = Role(code=RoleCode.USER, name="User")
+        session.add_all((operator_role, user_role))
+        session.flush()
+
+        operator = User(
+            role_id=operator_role.id,
+            user_code="operator-1",
+            full_name="Operator One",
+            status=UserStatus.ACTIVE,
+            dispense_restriction_policy=DispenseRestrictionPolicy.ONCE_PER_DAY,
+            is_active=True,
+        )
+        user = User(
+            role_id=user_role.id,
+            user_code="user-1",
+            full_name="User One",
+            status=UserStatus.ACTIVE,
+            dispense_restriction_policy=DispenseRestrictionPolicy.UNLIMITED,
+            is_active=True,
+        )
+        wrong_item = Item(
+            item_group_id=None,
+            sku="operator-item-wrong",
+            name="Operator Item One",
+            description=None,
+            unit="pcs",
+            return_allowed=True,
+            min_level=0,
+            status=ItemStatus.ACTIVE,
+        )
+        real_item = Item(
+            item_group_id=None,
+            sku="operator-item-real",
+            name="Operator Item One",
+            description=None,
+            unit="pcs",
+            return_allowed=True,
+            min_level=0,
+            status=ItemStatus.ACTIVE,
+        )
+        nomenclature = NomenclatureEntry(
+            name="Operator Item One",
+            normalized_name="operator item one",
+            is_active=True,
+        )
+        session.add_all((operator, user, wrong_item, real_item, nomenclature))
+        session.flush()
+
+        slot_one = Slot(
+            code="slot-p00-l01",
+            slot_type=SlotType.UNIVERSAL,
+            drum_position=0,
+            board_address=0,
+            lock_number=1,
+            capacity=1,
+            status=SlotStatus.ACTIVE,
+        )
+        slot_two = Slot(
+            code="slot-p00-l02",
+            slot_type=SlotType.UNIVERSAL,
+            drum_position=0,
+            board_address=0,
+            lock_number=2,
+            capacity=1,
+            status=SlotStatus.ACTIVE,
+        )
+        session.add_all((slot_one, slot_two))
+        session.flush()
+
+        session.add(
+            SlotItemBinding(
+                slot_id=slot_one.id,
+                item_id=real_item.id,
+                binding_type=BindingType.PRIMARY,
+                is_active=True,
+                valid_from=None,
+                valid_to=None,
+            )
+        )
+        session.add(InventoryBalance(slot_id=slot_one.id, item_id=real_item.id, quantity=1))
+        session.commit()
+
+        operator_user_id = operator.id
+        user_id = user.id
+        nomenclature_id = nomenclature.id
+        slot_two_id = slot_two.id
+        real_item_id = real_item.id
+        wrong_item_id = wrong_item.id
+
+    with TestClient(app) as client:
+        replenish_response = client.post(
+            "/operator/inventory/replenish",
+            json={
+                "operator_user_id": operator_user_id,
+                "nomenclature_id": nomenclature_id,
+                "slot_ids": [slot_two_id],
+            },
+        )
+        user_options_response = client.get(
+            f"/user/dispense-options?user_id={user_id}",
+        )
+
+    assert replenish_response.status_code == 200
+    assert replenish_response.json()["item_id"] == real_item_id
+    assert user_options_response.status_code == 200
+    assert user_options_response.json()["restriction_blocked"] is False
+
+    options = {
+        option["item_id"]: option
+        for option in user_options_response.json()["options"]
+    }
+    assert real_item_id in options
+    assert wrong_item_id not in options
+    assert options[real_item_id]["total_quantity"] == 2
+
+
+def test_operator_replenish_endpoint_rejects_ambiguous_same_name_machine_items(tmp_path: Path) -> None:
+    app = create_app(_settings(tmp_path, "api_operator_replenish_ambiguous.sqlite3"))
+
+    with app.state.session_factory() as session:
+        operator_role = Role(code=RoleCode.OPERATOR, name="Operator")
+        session.add(operator_role)
+        session.flush()
+
+        operator = User(
+            role_id=operator_role.id,
+            user_code="operator-1",
+            full_name="Operator One",
+            status=UserStatus.ACTIVE,
+            dispense_restriction_policy=DispenseRestrictionPolicy.ONCE_PER_DAY,
+            is_active=True,
+        )
+        item_one = Item(
+            item_group_id=None,
+            sku="operator-item-1",
+            name="Operator Item One",
+            description=None,
+            unit="pcs",
+            return_allowed=True,
+            min_level=0,
+            status=ItemStatus.ACTIVE,
+        )
+        item_two = Item(
+            item_group_id=None,
+            sku="operator-item-2",
+            name="Operator Item One",
+            description=None,
+            unit="pcs",
+            return_allowed=True,
+            min_level=0,
+            status=ItemStatus.ACTIVE,
+        )
+        nomenclature = NomenclatureEntry(
+            name="Operator Item One",
+            normalized_name="operator item one",
+            is_active=True,
+        )
+        session.add_all((operator, item_one, item_two, nomenclature))
+        session.flush()
+
+        slot_one = Slot(
+            code="slot-p00-l01",
+            slot_type=SlotType.UNIVERSAL,
+            drum_position=0,
+            board_address=0,
+            lock_number=1,
+            capacity=1,
+            status=SlotStatus.ACTIVE,
+        )
+        slot_two = Slot(
+            code="slot-p00-l02",
+            slot_type=SlotType.UNIVERSAL,
+            drum_position=0,
+            board_address=0,
+            lock_number=2,
+            capacity=1,
+            status=SlotStatus.ACTIVE,
+        )
+        slot_three = Slot(
+            code="slot-p00-l03",
+            slot_type=SlotType.UNIVERSAL,
+            drum_position=0,
+            board_address=0,
+            lock_number=3,
+            capacity=1,
+            status=SlotStatus.ACTIVE,
+        )
+        session.add_all((slot_one, slot_two, slot_three))
+        session.flush()
+
+        session.add_all(
+            (
+                SlotItemBinding(
+                    slot_id=slot_one.id,
+                    item_id=item_one.id,
+                    binding_type=BindingType.PRIMARY,
+                    is_active=True,
+                    valid_from=None,
+                    valid_to=None,
+                ),
+                SlotItemBinding(
+                    slot_id=slot_three.id,
+                    item_id=item_two.id,
+                    binding_type=BindingType.PRIMARY,
+                    is_active=True,
+                    valid_from=None,
+                    valid_to=None,
+                ),
+                InventoryBalance(slot_id=slot_one.id, item_id=item_one.id, quantity=1),
+                InventoryBalance(slot_id=slot_three.id, item_id=item_two.id, quantity=1),
+            )
+        )
+        session.commit()
+
+        operator_user_id = operator.id
+        nomenclature_id = nomenclature.id
+        slot_two_id = slot_two.id
+
+    with TestClient(app) as client:
+        response = client.post(
+            "/operator/inventory/replenish",
+            json={
+                "operator_user_id": operator_user_id,
+                "nomenclature_id": nomenclature_id,
+                "slot_ids": [slot_two_id],
+            },
+        )
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "Ambiguous inventory item mapping for nomenclature 'Operator Item One'"
+
+
 def test_operator_remove_endpoint_rejects_mixed_invalid_batch_without_partial_changes(tmp_path: Path) -> None:
     app = create_app(_settings(tmp_path, "api_operator_remove_validation.sqlite3"))
     ids = _seed_operator_touch_domain(app)

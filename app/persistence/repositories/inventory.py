@@ -6,7 +6,7 @@ from datetime import datetime
 from sqlalchemy import and_, case, func, select
 
 from app.domain.enums import BindingType, ItemStatus, SlotStatus, SlotType
-from app.persistence.models import InventoryBalance, InventoryTransaction, Slot, SlotItemBinding
+from app.persistence.models import InventoryBalance, InventoryTransaction, Item, Slot, SlotItemBinding
 from app.persistence.repositories.base import Repository
 
 
@@ -39,7 +39,18 @@ class OperatorBoardSlotRecord:
     filled: bool
 
 
+@dataclass(frozen=True, slots=True)
+class ReplenishItemResolution:
+    item: Item | None
+    matched_candidate_count: int
+    resolution_source: str
+
+
 class InventoryRepository(Repository):
+    @staticmethod
+    def _normalize_name(value: str) -> str:
+        return " ".join(value.split()).casefold()
+
     def get_balance(self, slot_id: int, item_id: int) -> InventoryBalance | None:
         statement = select(InventoryBalance).where(
             InventoryBalance.slot_id == slot_id,
@@ -127,18 +138,96 @@ class InventoryRepository(Repository):
         )
         return tuple(self.session.execute(statement).scalars())
 
-    def get_active_item_by_normalized_name(self, normalized_name: str):
-        from app.persistence.models import Item
-
+    def list_active_items_by_normalized_name(self, normalized_name: str) -> tuple[Item, ...]:
         statement = (
             select(Item)
             .where(Item.status == ItemStatus.ACTIVE)
             .order_by(Item.id.asc())
         )
-        for item in self.session.execute(statement).scalars():
-            if " ".join(item.name.split()).casefold() == normalized_name:
-                return item
-        return None
+        return tuple(
+            item
+            for item in self.session.execute(statement).scalars()
+            if self._normalize_name(item.name) == normalized_name
+        )
+
+    def resolve_authoritative_replenish_item(
+        self,
+        *,
+        normalized_name: str,
+        slot_ids: tuple[int, ...],
+    ) -> ReplenishItemResolution:
+        candidates = self.list_active_items_by_normalized_name(normalized_name)
+        if not candidates:
+            return ReplenishItemResolution(
+                item=None,
+                matched_candidate_count=0,
+                resolution_source="no_name_match",
+            )
+        if len(candidates) == 1:
+            return ReplenishItemResolution(
+                item=candidates[0],
+                matched_candidate_count=1,
+                resolution_source="single_name_match",
+            )
+
+        candidate_ids = tuple(item.id for item in candidates)
+        active_binding_rows = self.session.execute(
+            select(
+                SlotItemBinding.slot_id,
+                SlotItemBinding.item_id,
+            ).where(
+                SlotItemBinding.item_id.in_(candidate_ids),
+                SlotItemBinding.is_active.is_(True),
+            )
+        ).all()
+        positive_inventory_item_ids = {
+            item_id
+            for (item_id,) in self.session.execute(
+                select(InventoryBalance.item_id)
+                .where(
+                    InventoryBalance.item_id.in_(candidate_ids),
+                    InventoryBalance.quantity > 0,
+                )
+                .group_by(InventoryBalance.item_id)
+            ).all()
+        }
+
+        selected_slot_binding_item_ids = {
+            item_id
+            for slot_id, item_id in active_binding_rows
+            if slot_id in slot_ids
+        }
+        if len(selected_slot_binding_item_ids) == 1:
+            resolved_item_id = next(iter(selected_slot_binding_item_ids))
+            return ReplenishItemResolution(
+                item=next(item for item in candidates if item.id == resolved_item_id),
+                matched_candidate_count=len(candidates),
+                resolution_source="selected_slot_active_binding",
+            )
+
+        active_binding_item_ids = {item_id for _, item_id in active_binding_rows}
+        active_binding_with_positive_inventory_item_ids = active_binding_item_ids & positive_inventory_item_ids
+        if len(active_binding_with_positive_inventory_item_ids) == 1:
+            resolved_item_id = next(iter(active_binding_with_positive_inventory_item_ids))
+            return ReplenishItemResolution(
+                item=next(item for item in candidates if item.id == resolved_item_id),
+                matched_candidate_count=len(candidates),
+                resolution_source="machine_active_binding_with_positive_inventory",
+            )
+
+        if len(active_binding_item_ids) == 1:
+            resolved_item_id = next(iter(active_binding_item_ids))
+            return ReplenishItemResolution(
+                item=next(item for item in candidates if item.id == resolved_item_id),
+                matched_candidate_count=len(candidates),
+                resolution_source="machine_active_binding",
+            )
+
+        return ReplenishItemResolution(
+            item=None,
+            matched_candidate_count=len(candidates),
+            resolution_source="ambiguous_name_match",
+        )
 
     def get_binding(self, *, slot_id: int, item_id: int, binding_type: BindingType) -> SlotItemBinding | None:
         statement = select(SlotItemBinding).where(

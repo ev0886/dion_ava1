@@ -138,10 +138,18 @@ class InventoryService:
         if nomenclature is None or not nomenclature.is_active:
             raise NotFoundError(f"Nomenclature entry not found: {nomenclature_id}")
 
-        item = self.inventory_repository.get_active_item_by_normalized_name(nomenclature.normalized_name)
-        if item is None:
+        item_resolution = self.inventory_repository.resolve_authoritative_replenish_item(
+            normalized_name=nomenclature.normalized_name,
+            slot_ids=normalized_slot_ids,
+        )
+        item = item_resolution.item
+        if item is None and item_resolution.matched_candidate_count == 0:
             raise ValidationError(
                 f"Active inventory item not found for nomenclature '{nomenclature.name}'"
+            )
+        if item is None:
+            raise ValidationError(
+                f"Ambiguous inventory item mapping for nomenclature '{nomenclature.name}'"
             )
 
         slots, balances_by_slot = self._load_slots_and_balances(normalized_slot_ids)
