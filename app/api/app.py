@@ -19,6 +19,7 @@ from app.api.schemas import (
     DispenseOperationRequest,
     ExportCreateRequest,
     LocalUsbOperationsExportRequest,
+    OperatorQuarterPositionRequest,
     OperatorRemoveRequest,
     OperatorReplenishRequest,
     RefillOperationRequest,
@@ -335,6 +336,21 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
     def operator_board_state(container: ApplicationContainer = Depends(get_application_container)) -> JSONResponse:
         return JSONResponse(to_api_payload(container.services.inventory.get_operator_board_state()))
 
+    @app.post("/operator/inventory/replenish/prepare")
+    def operator_prepare_replenish(
+        payload: OperatorQuarterPositionRequest,
+        container: ApplicationContainer = Depends(get_application_container),
+    ) -> JSONResponse:
+        return JSONResponse(
+            to_api_payload(
+                container.services.inventory.operator_prepare_replenish_slots(
+                    operator_user_id=payload.operator_user_id,
+                    slot_ids=payload.slot_ids,
+                    hardware_facade=container.hardware.facade,
+                )
+            )
+        )
+
     @app.post("/operator/inventory/replenish")
     def operator_replenish(
         payload: OperatorReplenishRequest,
@@ -345,6 +361,21 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
                 container.services.inventory.operator_replenish_slots(
                     operator_user_id=payload.operator_user_id,
                     nomenclature_id=payload.nomenclature_id,
+                    slot_ids=payload.slot_ids,
+                    hardware_facade=container.hardware.facade,
+                )
+            )
+        )
+
+    @app.post("/operator/inventory/remove/prepare")
+    def operator_prepare_remove(
+        payload: OperatorQuarterPositionRequest,
+        container: ApplicationContainer = Depends(get_application_container),
+    ) -> JSONResponse:
+        return JSONResponse(
+            to_api_payload(
+                container.services.inventory.operator_prepare_remove_slots(
+                    operator_user_id=payload.operator_user_id,
                     slot_ids=payload.slot_ids,
                     hardware_facade=container.hardware.facade,
                 )

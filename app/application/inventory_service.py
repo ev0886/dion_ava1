@@ -166,7 +166,6 @@ class InventoryService:
             )
 
         slots, balances_by_slot = self._load_slots_and_balances(normalized_slot_ids)
-        self._position_operator_quarter_access(slots, hardware_facade)
         invalid_slots = [
             self._cell_number(slot.drum_position, slot.lock_number)
             for slot in slots
@@ -319,7 +318,6 @@ class InventoryService:
             raise ValidationError("operator_user_id must be positive")
 
         slots, balances_by_slot = self._load_slots_and_balances(normalized_slot_ids)
-        self._position_operator_quarter_access(slots, hardware_facade)
         invalid_slots = [
             self._cell_number(slot.drum_position, slot.lock_number)
             for slot in slots
@@ -434,6 +432,36 @@ class InventoryService:
             operation_ids=tuple(operation_ids),
         )
 
+    def operator_prepare_replenish_slots(
+        self,
+        *,
+        operator_user_id: int,
+        slot_ids: tuple[int, ...],
+        hardware_facade=None,
+    ) -> OperatorBoardStateResult:
+        self._prepare_operator_quarter_access(
+            operator_user_id=operator_user_id,
+            slot_ids=slot_ids,
+            hardware_facade=hardware_facade,
+            error_message="Operator replenish blocked: one or more cells are open",
+        )
+        return self.get_operator_board_state()
+
+    def operator_prepare_remove_slots(
+        self,
+        *,
+        operator_user_id: int,
+        slot_ids: tuple[int, ...],
+        hardware_facade=None,
+    ) -> OperatorBoardStateResult:
+        self._prepare_operator_quarter_access(
+            operator_user_id=operator_user_id,
+            slot_ids=slot_ids,
+            hardware_facade=hardware_facade,
+            error_message="Operator removal blocked: one or more cells are open",
+        )
+        return self.get_operator_board_state()
+
     def resolve_dispense_slot_for_item(self, item_id: int) -> int:
         if item_id <= 0:
             raise ValidationError("item_id must be positive")
@@ -540,6 +568,21 @@ class InventoryService:
         except HardwareError:
             self.inventory_repository.session.rollback()
             raise
+
+    def _prepare_operator_quarter_access(
+        self,
+        *,
+        operator_user_id: int,
+        slot_ids: tuple[int, ...],
+        hardware_facade,
+        error_message: str,
+    ) -> None:
+        self._ensure_all_cells_closed(hardware_facade, error_message)
+        normalized_slot_ids = self._normalize_slot_ids(slot_ids)
+        if operator_user_id <= 0:
+            raise ValidationError("operator_user_id must be positive")
+        slots, _balances_by_slot = self._load_slots_and_balances(normalized_slot_ids)
+        self._position_operator_quarter_access(slots, hardware_facade)
 
     def _ensure_all_cells_closed(self, hardware_facade, error_message: str) -> None:
         if self._open_door_guard is None or hardware_facade is None:

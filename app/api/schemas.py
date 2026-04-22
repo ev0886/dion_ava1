@@ -89,6 +89,11 @@ class OperatorRemoveRequest(ApiModel):
     slot_ids: tuple[int, ...]
 
 
+class OperatorQuarterPositionRequest(ApiModel):
+    operator_user_id: int
+    slot_ids: tuple[int, ...]
+
+
 class OperatorReplenishRequest(ApiModel):
     operator_user_id: int
     nomenclature_id: int

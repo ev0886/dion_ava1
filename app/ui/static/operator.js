@@ -10,7 +10,9 @@
   const config = window.DION_OPERATOR_UI_CONFIG || {};
   const TOUCH_NOMENCLATURE_ENDPOINT = config.listTouchNomenclatureEndpoint || "";
   const OPERATOR_BOARD_STATE_ENDPOINT = config.operatorBoardStateEndpoint || "";
+  const OPERATOR_PREPARE_REPLENISH_ENDPOINT = config.operatorPrepareReplenishEndpoint || "";
   const OPERATOR_REPLENISH_ENDPOINT = config.operatorReplenishEndpoint || "";
+  const OPERATOR_PREPARE_REMOVE_ENDPOINT = config.operatorPrepareRemoveEndpoint || "";
   const OPERATOR_REMOVE_ENDPOINT = config.operatorRemoveEndpoint || "";
   const TOUCH_AUTH_STORAGE_KEY = config.touchAuthStorageKey || "";
   const EMPTY_NOMENCLATURE_MESSAGE = config.emptyNomenclatureMessage || "Номенклатура не настроена";
@@ -933,6 +935,43 @@
     showConfirmationView(actionType, getActionLabel(actionType));
   }
 
+  async function prepareQuarterAccess(actionType) {
+    if (!authContext) {
+      setStatusMessage(getActionLabel(actionType) + ": РѕС‚СЃСѓС‚СЃС‚РІСѓРµС‚ РѕРїРµСЂР°С‚РѕСЂСЃРєРёР№ РєРѕРЅС‚РµРєСЃС‚");
+      return false;
+    }
+
+    const endpoint =
+      actionType === "remove" ? OPERATOR_PREPARE_REMOVE_ENDPOINT : OPERATOR_PREPARE_REPLENISH_ENDPOINT;
+    if (!endpoint) {
+      setStatusMessage(getActionLabel(actionType) + ": РѕС‚СЃСѓС‚СЃС‚РІСѓРµС‚ РєРѕРЅРµС‡РЅР°СЏ С‚РѕС‡РєР° РїРѕР·РёС†РёРѕРЅРёСЂРѕРІР°РЅРёСЏ");
+      return false;
+    }
+
+    setBusy(true);
+    try {
+      const response = await postJson(endpoint, {
+        operator_user_id: authContext.user_id,
+        slot_ids: getSelectedSlotIds(),
+      });
+      const payload = await response.json().catch(function () {
+        return {};
+      });
+      if (!response.ok) {
+        setStatusMessage(parseErrorDetail(payload));
+        showBoardView();
+        return false;
+      }
+      return true;
+    } catch (_error) {
+      setStatusMessage(getActionLabel(actionType) + ": РѕС€РёР±РєР° СЃРІСЏР·Рё СЃ СЃРµСЂРІРµСЂРѕРј");
+      showBoardView();
+      return false;
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function submitRemove() {
     if (!authContext || !OPERATOR_REMOVE_ENDPOINT) {
       setStatusMessage("Изъять: отсутствует операторский контекст");
@@ -1018,8 +1057,12 @@
     }
   });
 
-  confirmationConfirmButton.addEventListener("click", function () {
+  confirmationConfirmButton.addEventListener("click", async function () {
     if (pendingActionType === "remove") {
+      const prepared = await prepareQuarterAccess("remove");
+      if (!prepared) {
+        return;
+      }
       showRemoveExecutionView();
       setStatusMessage("Изъять: выполните изъятие по выбранным ячейкам");
       return;
@@ -1044,10 +1087,14 @@
     setStatusMessage("Пополнить: выбор ячеек сохранен");
   });
 
-  replenishItemSelectConfirmButton.addEventListener("click", function () {
+  replenishItemSelectConfirmButton.addEventListener("click", async function () {
     const selectedItem = getSelectedReplenishItem();
     if (!selectedItem) {
       syncReplenishConfirmState();
+      return;
+    }
+    const prepared = await prepareQuarterAccess("refill");
+    if (!prepared) {
       return;
     }
     showReplenishExecutionView();

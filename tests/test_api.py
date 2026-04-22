@@ -156,7 +156,9 @@ def test_ui_operator_page_serves_role_foundation(tmp_path: Path) -> None:
     assert '"touchAuthStorageKey": "dion.touchAuthContext"' in response.text
     assert '"listTouchNomenclatureEndpoint": "/touch/nomenclature"' in response.text
     assert '"operatorBoardStateEndpoint": "/operator/board"' in response.text
+    assert '"operatorPrepareReplenishEndpoint": "/operator/inventory/replenish/prepare"' in response.text
     assert '"operatorReplenishEndpoint": "/operator/inventory/replenish"' in response.text
+    assert '"operatorPrepareRemoveEndpoint": "/operator/inventory/remove/prepare"' in response.text
     assert '"operatorRemoveEndpoint": "/operator/inventory/remove"' in response.text
     assert '"emptyNomenclatureMessage": "\\u041d\\u043e\\u043c\\u0435\\u043d\\u043a\\u043b\\u0430\\u0442\\u0443\\u0440\\u0430 \\u043d\\u0435 \\u043d\\u0430\\u0441\\u0442\\u0440\\u043e\\u0435\\u043d\\u0430"' in response.text
 
@@ -938,12 +940,26 @@ def test_open_door_guard_blocks_operator_and_refill_endpoints(
     ids = _seed_operator_touch_domain(app)
 
     with TestClient(app) as client:
+        prepare_replenish_response = client.post(
+            "/operator/inventory/replenish/prepare",
+            json={
+                "operator_user_id": ids.operator_user_id,
+                "slot_ids": [ids.slot_two_id],
+            },
+        )
         replenish_response = client.post(
             "/operator/inventory/replenish",
             json={
                 "operator_user_id": ids.operator_user_id,
                 "nomenclature_id": ids.nomenclature_id,
                 "slot_ids": [ids.slot_two_id],
+            },
+        )
+        prepare_remove_response = client.post(
+            "/operator/inventory/remove/prepare",
+            json={
+                "operator_user_id": ids.operator_user_id,
+                "slot_ids": [ids.slot_one_id],
             },
         )
         remove_response = client.post(
@@ -964,8 +980,12 @@ def test_open_door_guard_blocks_operator_and_refill_endpoints(
             },
         )
 
+    assert prepare_replenish_response.status_code == 400
+    assert prepare_replenish_response.json()["detail"] == "Operator replenish blocked: one or more cells are open"
     assert replenish_response.status_code == 400
     assert replenish_response.json()["detail"] == "Operator replenish blocked: one or more cells are open"
+    assert prepare_remove_response.status_code == 400
+    assert prepare_remove_response.json()["detail"] == "Operator removal blocked: one or more cells are open"
     assert remove_response.status_code == 400
     assert remove_response.json()["detail"] == "Operator removal blocked: one or more cells are open"
     assert refill_response.status_code == 400
@@ -1310,6 +1330,7 @@ def test_touch_ui_assets_no_longer_embed_mock_nomenclature_lists(tmp_path: Path)
     assert "loadReplenishItems" in operator_js.text
     assert 'fetch(TOUCH_NOMENCLATURE_ENDPOINT' in operator_js.text
     assert "refreshBoardState" in operator_js.text
+    assert "prepareQuarterAccess" in operator_js.text
     assert "submitReplenish" in operator_js.text
     assert "submitRemove" in operator_js.text
     assert "item-01" not in operator_js.text
@@ -1371,7 +1392,7 @@ def test_operator_replenish_endpoint_writes_real_inventory_operations_and_events
     assert binding.is_active is True
 
 
-def test_operator_replenish_endpoint_positions_drum_to_fixed_quarter_access_sector(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_operator_prepare_replenish_endpoint_positions_drum_to_fixed_quarter_access_sector(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     drum_controller = MockDrumAdapter(initial_position=0)
     lock_controller = MockLockAdapter(lock_states={(0, 1): LockState.LOCKED, (0, 2): LockState.LOCKED})
     hardware_bundle = HardwareBundle(
@@ -1391,6 +1412,37 @@ def test_operator_replenish_endpoint_positions_drum_to_fixed_quarter_access_sect
 
     with TestClient(app, raise_server_exceptions=False) as client:
         response = client.post(
+            "/operator/inventory/replenish/prepare",
+            json={
+                "operator_user_id": ids.operator_user_id,
+                "slot_ids": [ids.slot_two_id],
+            },
+        )
+
+    assert response.status_code == 200
+    assert hardware_bundle.facade.get_drum_position().position == 7
+
+
+def test_operator_replenish_endpoint_persists_without_repositioning_drum(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    drum_controller = MockDrumAdapter(initial_position=31)
+    lock_controller = MockLockAdapter(lock_states={(0, 1): LockState.LOCKED, (0, 2): LockState.LOCKED})
+    hardware_bundle = HardwareBundle(
+        provider=HardwareProvider.MOCK,
+        drum_controller=drum_controller,
+        lock_controller=lock_controller,
+        rfid_reader=MockRfidAdapter(),
+        facade=HardwareFacade(
+            drum_controller=drum_controller,
+            lock_controller=lock_controller,
+            rfid_reader=MockRfidAdapter(),
+        ),
+    )
+    monkeypatch.setattr("app.application.composition.create_hardware_bundle", lambda _settings: hardware_bundle)
+    app = create_app(_settings(tmp_path, "api_operator_replenish_no_reposition.sqlite3"))
+    ids = _seed_operator_touch_domain(app)
+
+    with TestClient(app) as client:
+        response = client.post(
             "/operator/inventory/replenish",
             json={
                 "operator_user_id": ids.operator_user_id,
@@ -1400,7 +1452,7 @@ def test_operator_replenish_endpoint_positions_drum_to_fixed_quarter_access_sect
         )
 
     assert response.status_code == 200
-    assert hardware_bundle.facade.get_drum_position().position == 7
+    assert hardware_bundle.facade.get_drum_position().position == 31
 
 
 def test_operator_replenish_endpoint_prefers_real_inventory_item_for_same_name_nomenclature(tmp_path: Path) -> None:
@@ -1805,7 +1857,7 @@ def test_operator_remove_endpoint_clears_filled_slot_and_records_inventory_chang
     assert event.event_type == "operator_inventory_remove"
 
 
-def test_operator_remove_endpoint_positions_drum_to_fixed_quarter_access_sector(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_operator_prepare_remove_endpoint_positions_drum_to_fixed_quarter_access_sector(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     drum_controller = MockDrumAdapter(initial_position=0)
     lock_controller = MockLockAdapter(lock_states={(0, 1): LockState.LOCKED, (0, 2): LockState.LOCKED})
     hardware_bundle = HardwareBundle(
@@ -1825,7 +1877,7 @@ def test_operator_remove_endpoint_positions_drum_to_fixed_quarter_access_sector(
 
     with TestClient(app) as client:
         response = client.post(
-            "/operator/inventory/remove",
+            "/operator/inventory/remove/prepare",
             json={
                 "operator_user_id": ids.operator_user_id,
                 "slot_ids": [ids.slot_three_id],
@@ -1836,7 +1888,38 @@ def test_operator_remove_endpoint_positions_drum_to_fixed_quarter_access_sector(
     assert hardware_bundle.facade.get_drum_position().position == 15
 
 
-def test_operator_replenish_returns_hardware_failure_without_inventory_mutation(
+def test_operator_remove_endpoint_persists_without_repositioning_drum(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    drum_controller = MockDrumAdapter(initial_position=23)
+    lock_controller = MockLockAdapter(lock_states={(0, 1): LockState.LOCKED, (0, 2): LockState.LOCKED})
+    hardware_bundle = HardwareBundle(
+        provider=HardwareProvider.MOCK,
+        drum_controller=drum_controller,
+        lock_controller=lock_controller,
+        rfid_reader=MockRfidAdapter(),
+        facade=HardwareFacade(
+            drum_controller=drum_controller,
+            lock_controller=lock_controller,
+            rfid_reader=MockRfidAdapter(),
+        ),
+    )
+    monkeypatch.setattr("app.application.composition.create_hardware_bundle", lambda _settings: hardware_bundle)
+    app = create_app(_settings(tmp_path, "api_operator_remove_no_reposition.sqlite3"))
+    ids = _seed_operator_touch_domain(app)
+
+    with TestClient(app) as client:
+        response = client.post(
+            "/operator/inventory/remove",
+            json={
+                "operator_user_id": ids.operator_user_id,
+                "slot_ids": [ids.slot_three_id],
+            },
+        )
+
+    assert response.status_code == 200
+    assert hardware_bundle.facade.get_drum_position().position == 23
+
+
+def test_operator_prepare_replenish_returns_hardware_failure_without_inventory_mutation(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1859,10 +1942,9 @@ def test_operator_replenish_returns_hardware_failure_without_inventory_mutation(
 
     with TestClient(app, raise_server_exceptions=False) as client:
         response = client.post(
-            "/operator/inventory/replenish",
+            "/operator/inventory/replenish/prepare",
             json={
                 "operator_user_id": ids.operator_user_id,
-                "nomenclature_id": ids.nomenclature_id,
                 "slot_ids": [ids.slot_two_id],
             },
         )

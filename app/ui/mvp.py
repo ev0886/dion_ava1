@@ -70,7 +70,9 @@ def render_operator_page(settings: AppSettings) -> HTMLResponse:
         "touchAuthStorageKey": "dion.touchAuthContext",
         "listTouchNomenclatureEndpoint": "/touch/nomenclature",
         "operatorBoardStateEndpoint": "/operator/board",
+        "operatorPrepareReplenishEndpoint": "/operator/inventory/replenish/prepare",
         "operatorReplenishEndpoint": "/operator/inventory/replenish",
+        "operatorPrepareRemoveEndpoint": "/operator/inventory/remove/prepare",
         "operatorRemoveEndpoint": "/operator/inventory/remove",
         "emptyNomenclatureMessage": "Номенклатура не настроена",
     }
