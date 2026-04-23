@@ -126,6 +126,7 @@ class InventoryService:
                     drum_position=record.drum_position,
                     lock_number=record.lock_number,
                     filled=record.filled,
+                    item_name=record.item_name,
                 )
                 for record in records
             )

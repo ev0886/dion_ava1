@@ -213,6 +213,19 @@ a {
     linear-gradient(180deg, rgba(245, 249, 240, 0.96) 0%, rgba(237, 243, 232, 0.98) 100%);
 }
 
+.cell-info-hint {
+  min-height: 30px;
+  margin: 0;
+  padding: 6px 9px;
+  border: 1px solid rgba(18, 86, 69, 0.18);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.74);
+  color: var(--brand-strong);
+  font-size: 0.78rem;
+  font-weight: 700;
+  line-height: 1.25;
+}
+
 .cells-grid {
   height: 100%;
   display: grid;

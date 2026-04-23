@@ -1482,10 +1482,13 @@ def test_operator_board_endpoint_returns_real_fill_state(tmp_path: Path) -> None
     cells = {cell["cell_number"]: cell for cell in response.json()["cells"]}
     assert cells[1]["slot_id"] == ids.slot_one_id
     assert cells[1]["filled"] is True
+    assert cells[1]["item_name"] == "Operator Item One"
     assert cells[2]["slot_id"] == ids.slot_two_id
     assert cells[2]["filled"] is False
+    assert cells[2]["item_name"] is None
     assert cells[361]["slot_id"] == ids.slot_three_id
     assert cells[361]["filled"] is True
+    assert cells[361]["item_name"] == "Operator Item One"
 
 
 def test_operator_replenish_endpoint_writes_real_inventory_operations_and_events(tmp_path: Path) -> None:

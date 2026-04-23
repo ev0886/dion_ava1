@@ -89,6 +89,7 @@ class OperatorBoardCellDTO:
     drum_position: int
     lock_number: int
     filled: bool
+    item_name: str | None
 
 
 @dataclass(frozen=True, slots=True)

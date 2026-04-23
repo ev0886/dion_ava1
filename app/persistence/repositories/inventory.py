@@ -37,6 +37,7 @@ class OperatorBoardSlotRecord:
     drum_position: int
     lock_number: int
     filled: bool
+    item_name: str | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -81,8 +82,12 @@ class InventoryRepository(Repository):
         return tuple(self.session.execute(statement).scalars())
 
     def list_operator_board_slots(self) -> tuple[OperatorBoardSlotRecord, ...]:
-        positive_balance_slots = (
-            select(InventoryBalance.slot_id.label("slot_id"))
+        positive_balance_items = (
+            select(
+                InventoryBalance.slot_id.label("slot_id"),
+                func.min(Item.name).label("item_name"),
+            )
+            .join(Item, Item.id == InventoryBalance.item_id)
             .where(InventoryBalance.quantity > 0)
             .group_by(InventoryBalance.slot_id)
             .subquery()
@@ -92,9 +97,10 @@ class InventoryRepository(Repository):
                 Slot.id,
                 Slot.drum_position,
                 Slot.lock_number,
-                positive_balance_slots.c.slot_id.is_not(None),
+                positive_balance_items.c.slot_id.is_not(None),
+                positive_balance_items.c.item_name,
             )
-            .outerjoin(positive_balance_slots, positive_balance_slots.c.slot_id == Slot.id)
+            .outerjoin(positive_balance_items, positive_balance_items.c.slot_id == Slot.id)
             .where(
                 Slot.status == SlotStatus.ACTIVE,
                 Slot.lock_number >= 1,
@@ -111,6 +117,7 @@ class InventoryRepository(Repository):
                 drum_position=row[1],
                 lock_number=row[2],
                 filled=bool(row[3]),
+                item_name=row[4],
             )
             for row in rows
         )

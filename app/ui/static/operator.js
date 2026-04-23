@@ -6,6 +6,7 @@
   const REMOVE_SUCCESS_RETURN_DELAY_MS = 1800;
   const REPLENISH_SUCCESS_RETURN_DELAY_MS = 1800;
   const UI_IDLE_TIMEOUT_MS = 30000;
+  const EXECUTION_IDLE_TIMEOUT_MS = 120000;
   const PRESENCE_COUNTDOWN_SECONDS = 30;
   const config = window.DION_OPERATOR_UI_CONFIG || {};
   const TOUCH_NOMENCLATURE_ENDPOINT = config.listTouchNomenclatureEndpoint || "";
@@ -53,6 +54,7 @@
   const replenishExecutionActions = document.getElementById("operator-actions-replenish-execution");
   const sectorGrid = document.getElementById("sector-grid");
   const cellsGrid = document.getElementById("cells-grid");
+  const cellInfoHint = document.getElementById("cell-info-hint");
   const selectionSummary = document.getElementById("selection-summary");
   const statusMessage = document.getElementById("status-message");
   const operatorSummary = document.getElementById("operator-summary");
@@ -107,6 +109,7 @@
     !replenishExecutionActions ||
     !sectorGrid ||
     !cellsGrid ||
+    !cellInfoHint ||
     !selectionSummary ||
     !statusMessage ||
     !operatorSummary ||
@@ -151,6 +154,13 @@
 
   function canUseSharedInactivityTimeout() {
     return currentView !== "remove-success" && currentView !== "replenish-success";
+  }
+
+  function getCurrentIdleTimeoutMs() {
+    if (currentView === "remove-execution" || currentView === "replenish-execution") {
+      return EXECUTION_IDLE_TIMEOUT_MS;
+    }
+    return UI_IDLE_TIMEOUT_MS;
   }
 
   function clearInactivityTimer() {
@@ -226,7 +236,7 @@
     }
     inactivityTimerId = window.setTimeout(function () {
       showPresenceOverlay();
-    }, UI_IDLE_TIMEOUT_MS);
+    }, getCurrentIdleTimeoutMs());
   }
 
   function restartInactivityTimeout() {
@@ -329,6 +339,23 @@
 
   function setStatusMessage(message) {
     statusMessage.textContent = message;
+  }
+
+  function setCellInfoHintForCell(cellNumber) {
+    const cellState = getCellState(cellNumber);
+    if (!cellState) {
+      cellInfoHint.textContent = "\u042f\u0447\u0435\u0439\u043a\u0430 " + cellNumber + ": \u043d\u0435\u0442 \u0434\u0430\u043d\u043d\u044b\u0445";
+      return;
+    }
+    if (cellState.filled && cellState.item_name) {
+      cellInfoHint.textContent = "\u042f\u0447\u0435\u0439\u043a\u0430 " + cellNumber + ": " + cellState.item_name;
+      return;
+    }
+    if (cellState.filled) {
+      cellInfoHint.textContent = "\u042f\u0447\u0435\u0439\u043a\u0430 " + cellNumber + ": \u0437\u0430\u043f\u043e\u043b\u043d\u0435\u043d\u0430";
+      return;
+    }
+    cellInfoHint.textContent = "\u042f\u0447\u0435\u0439\u043a\u0430 " + cellNumber + " \u043f\u0443\u0441\u0442\u0430";
   }
 
   function updateQuarterMeta() {
@@ -762,7 +789,7 @@
         button.setAttribute("aria-pressed", selectedCells.has(cellNumber) ? "true" : "false");
         button.setAttribute("aria-label", "Ячейка " + cellNumber);
         button.textContent = String(cellNumber);
-        button.disabled = isBusy || !selectable;
+        button.disabled = isBusy;
         if (selectedCells.has(cellNumber)) {
           button.classList.add("is-selected");
         }
@@ -776,6 +803,7 @@
           if (isBusy) {
             return;
           }
+          setCellInfoHintForCell(cellNumber);
           if (!selectable) {
             setStatusMessage(getBlockedSelectionMessage(cellNumber));
             return;
@@ -876,6 +904,7 @@
         boardStateByCell.set(cell.cell_number, {
           slot_id: cell.slot_id,
           filled: Boolean(cell.filled),
+          item_name: typeof cell.item_name === "string" && cell.item_name ? cell.item_name : null,
         });
       });
     }
