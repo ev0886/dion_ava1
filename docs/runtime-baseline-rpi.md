@@ -8,6 +8,7 @@ This document describes the currently working live-stand runtime baseline. It is
 - expected repo path on Raspberry Pi: `/opt/dion_ava1`
 - expected API bind: `127.0.0.1:8000` unless overridden in `/etc/default/dion_ava1`
 - service entrypoint: `python -m app.api`
+- runtime env file: `/etc/default/dion_ava1`
 
 The checked-in unit file is `deploy/raspberry-pi/dion-api.service` and loads `/etc/default/dion_ava1`.
 
@@ -34,6 +35,44 @@ Why `by-path` is required:
 
 RFID may still appear as a different device class such as `/dev/ttyACM0`, but the stand-specific path should still be verified on hardware.
 
+## Cloned SSD or new stand bring-up
+
+Use this sequence after booting a cloned SSD on a new stand, after moving USB cables, or after replacing controller hardware:
+
+1. Confirm the repo and service location:
+
+```bash
+cd /opt/dion_ava1
+sudo systemctl status dion-api.service --no-pager
+```
+
+2. List serial identities:
+
+```bash
+ls -l /dev/serial/by-path
+readlink -f /dev/serial/by-path/*
+```
+
+3. Check the configured runtime paths:
+
+```bash
+grep -E 'DION_HARDWARE_PROVIDER|DION_HARDWARE_REAL_ENDPOINTS' /etc/default/dion_ava1
+```
+
+4. Restart and run readiness plus hardware diagnostics:
+
+```bash
+sudo systemctl restart dion-api.service
+sleep 2
+curl -fsS http://127.0.0.1:8000/health
+curl -fsS http://127.0.0.1:8000/readiness
+.venv/bin/python -m app.cli hardware-health
+```
+
+On a cloned SSD or new stand, drum and lock USB paths may be swapped relative to the previous stand. If `hardware-health` shows one controller failing or the behavior does not match the intended device, swap only the drum and lock `port` values in `/etc/default/dion_ava1`, restart the service, and run `hardware-health` again. Do not switch to `ttyUSB0` or `ttyUSB1`.
+
+RFID may also need path verification. Check whether the reader is still the configured ACM/serial device and update only after confirming the physical reader path.
+
 ## Current CU24 assumptions
 
 - `board_address = 0`
@@ -58,12 +97,67 @@ Interpretation note:
 ## User and operator flow notes
 
 - RFID auth by role is part of the confirmed baseline
-- admin web nomenclature flow is part of the confirmed baseline
+- admin web auth and nomenclature flow are part of the confirmed baseline
+- admin web default login is `admin`, default password is `dionava`
+- admin web password change is available in the UI
+- admin password reset over SSH is `cd /opt/dion_ava1 && .venv/bin/python -m app.cli reset-admin-password`
+- admin operations CSV export is available
+- admin balances CSV export is available
 - operator replenish/remove flows are confirmed working
 - operator prepare must finish quarter-positioning before final confirm
+- operator quarter access POS mapping is `1/4 -> 26`, `2/4 -> 18`, `3/4 -> 10`, `4/4 -> 2`
+- corrected logical sector and human cell numbering are in place
+- operator execution screen idle timeout is 2 minutes
+- operator filled-cell hint is present
 - user dispense is confirmed on real hardware
+- user dispense logical numbering is fixed
 - success screen after real dispense is confirmed working
 - blocked-auth and blocked-user messaging are confirmed working
+
+## Admin web quick reference
+
+- Open `/ui/admin`.
+- Login is required before admin pages and admin CSV exports are usable.
+- Default credentials are `admin` / `dionava`.
+- Change the password from the admin web UI after first login.
+- If the password is lost, reset it over SSH:
+
+```bash
+cd /opt/dion_ava1
+.venv/bin/python -m app.cli reset-admin-password
+```
+
+After reset, login again with `admin` / `dionava` and set a new password in the UI.
+
+Exports:
+
+- Operations CSV: admin web operations export by date range.
+- Balances CSV: admin web balances export.
+- Admin touch USB operations export: `/ui/admin-touch` writes operations CSV to the mounted USB device.
+- Admin touch USB balances export: `/ui/admin-touch` writes balances CSV to the mounted USB device.
+
+## Logical numbering reference
+
+Logical sector numbering:
+
+```text
+sector = ((32 - POS) % 32) + 1
+```
+
+Examples:
+
+- `POS 0 -> sector 1`
+- `POS 31 -> sector 2`
+- `POS 30 -> sector 3`
+- `POS 1 -> sector 32`
+
+Human cell numbering:
+
+```text
+human_cell_number = ((logical_sector - 1) * 15) + lock_number
+```
+
+where `lock_number` is `1..15`.
 
 ## Runtime config baseline for `/etc/default/dion_ava1`
 

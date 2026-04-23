@@ -140,3 +140,53 @@ For the current live stand baseline and stabilization package, see:
 - `docs/stand-smoke-checklist.md`
 - `docs/runtime-baseline-rpi.md`
 - `docs/hardware-diagnostics.md`
+
+## Current operational baseline
+
+The current DION ABA1 baseline is:
+
+- user, operator, and admin web flows are working
+- admin web auth is enabled at `/ui/admin`
+- default admin login is `admin`
+- default admin password is `dionava`
+- admin password change is available in the admin web UI
+- admin password reset over SSH is available with `python -m app.cli reset-admin-password`
+- admin operations CSV export is available
+- admin balances CSV export is available
+- real hardware dispense is confirmed working
+- operator prepare/replenish/remove hardware-assisted flow is confirmed working
+- open-door safety is enabled
+- operator execution idle timeout is 2 minutes
+- operator UI shows filled-cell hints
+
+Runtime configuration for real hardware must use `/dev/serial/by-path/...` for drum and lock controllers. Do not configure drum or lock as `ttyUSB0` or `ttyUSB1`.
+
+## Numbering reference
+
+Logical drum sector numbering is reverse-offset from the controller POS value:
+
+```text
+logical_sector = ((32 - POS) % 32) + 1
+```
+
+Examples:
+
+- `POS 0 -> sector 1`
+- `POS 31 -> sector 2`
+- `POS 30 -> sector 3`
+- `POS 1 -> sector 32`
+
+Human cell numbering is:
+
+```text
+human_cell_number = ((logical_sector - 1) * 15) + lock_number
+```
+
+where `lock_number` is `1..15` inside the logical sector.
+
+Operator quarter access positions are:
+
+- `1/4 -> POS 26`
+- `2/4 -> POS 18`
+- `3/4 -> POS 10`
+- `4/4 -> POS 2`
