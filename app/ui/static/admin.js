@@ -845,7 +845,7 @@
   async function changePassword() {
     state.isChangingPassword = true;
     syncControls();
-    setStatus("", "Password change", "Updating admin password.");
+    setStatus("", "Смена пароля", "Обновление пароля администратора.");
 
     try {
       const { response, payload } = await readJson(config.changePasswordEndpoint, {
@@ -857,17 +857,17 @@
         }),
       });
       if (!response.ok) {
-        throw new Error(payload.detail || "Password change failed.");
+        throw new Error(payload.detail || "Не удалось сменить пароль.");
       }
       elements.currentPassword.value = "";
       elements.newPassword.value = "";
       elements.confirmNewPassword.value = "";
-      setStatus("success", "Password changed", "Admin password was updated. Login again with the new password.");
+      setStatus("success", "Пароль изменен", "Пароль администратора обновлен. Войдите заново с новым паролем.");
       window.setTimeout(function () {
         window.location.assign("/ui/admin");
       }, 700);
     } catch (error) {
-      setStatus("error", "Password change failed", String(error));
+      setStatus("error", "Не удалось сменить пароль", String(error));
     } finally {
       state.isChangingPassword = false;
       syncControls();

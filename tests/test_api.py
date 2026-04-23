@@ -231,8 +231,8 @@ def test_ui_admin_page_serves_user_management_config(tmp_path: Path) -> None:
     assert '"importExampleCsvText"' in response.text
     assert '"supportedRoles"' in response.text
     assert '"uiRole": "admin"' in response.text
-    assert "Export balances CSV" in response.text
-    assert "Change admin password" in response.text
+    assert "Экспорт CSV" in response.text
+    assert "Смена пароля администратора" in response.text
 
 
 def test_admin_auth_login_logout_and_password_change_flow(tmp_path: Path) -> None:
