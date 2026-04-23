@@ -81,8 +81,11 @@ def test_admin_system_status_endpoint_returns_compact_admin_summary(tmp_path: Pa
     )
 
     with TestClient(app) as client:
+        unauthenticated_response = client.get("/admin/system/status")
+        _login_admin(client)
         response = client.get("/admin/system/status")
 
+    assert unauthenticated_response.status_code == 401
     assert response.status_code == 200
     payload = response.json()
     assert payload["api_available"] is True
@@ -189,37 +192,27 @@ def test_ui_admin_page_serves_user_management_config(tmp_path: Path) -> None:
     app = create_app(_settings(tmp_path, "api_ui_admin.sqlite3"))
 
     with TestClient(app) as client:
+        login_response = client.get("/ui/admin")
+        _login_admin(client)
         response = client.get("/ui/admin")
 
+    assert login_response.status_code == 200
+    assert "Admin login" in login_response.text
     assert response.status_code == 200
     assert "Admin UI" in response.text
-    assert "РЎРїСЂР°РІРѕС‡РЅРёРє РЅРѕРјРµРЅРєР»Р°С‚СѓСЂС‹" in response.text
-    assert "Р”РѕР±Р°РІРёС‚СЊ" in response.text
-    assert "РћРїРµСЂР°С†РёРё, С‚СЂРµР±СѓСЋС‰РёРµ РІРЅРёРјР°РЅРёСЏ" in response.text
-    assert "Р­РєСЃРїРѕСЂС‚ CSV" in response.text
-    assert "Р”Р°С‚Р° СЃ" in response.text
-    assert "Р”Р°С‚Р° РїРѕ" in response.text
-    assert "Р”РёР°РїР°Р·РѕРЅ РїРѕ РґРЅСЏРј. Р•СЃР»Рё РґР°С‚Р° РЅРµ СѓРєР°Р·Р°РЅР°, СЌРєСЃРїРѕСЂС‚ РЅРµ Р·Р°РїСѓСЃРєР°РµС‚СЃСЏ." in response.text
+    assert 'id="nomenclature-table-body"' in response.text
+    assert 'id="operations-export-button"' in response.text
     assert 'class="table-wrap table-wrap-scroll"' in response.text
-    assert "РђРґРјРёРЅРёСЃС‚СЂРёСЂРѕРІР°РЅРёРµ РІРµРЅРґРёРЅРіРѕРІРѕРіРѕ Р°РїРїР°СЂР°С‚Р° DION" in response.text
-    assert "РђРґРјРёРЅРєР° РѕРїРµСЂР°С‚РѕСЂР° MVP" not in response.text
-    assert "РРјРїРѕСЂС‚ CSV" in response.text
-    assert "РРјРїРѕСЂС‚РёСЂРѕРІР°С‚СЊ CSV" in response.text
-    assert "Р—Р°РіСЂСѓР·РёС‚СЊ РїСЂРёРјРµСЂ" in response.text
-    assert "РЎРєР°С‡Р°С‚СЊ РїСЂРёРјРµСЂ CSV" in response.text
-    assert "РџРѕСЃР»РµРґРЅРёРµ РґРµР№СЃС‚РІРёСЏ СЃРёСЃС‚РµРјС‹" in response.text
-    assert "РЎРѕСЃС‚РѕСЏРЅРёРµ API" in response.text
-    assert "РћР±РѕСЂСѓРґРѕРІР°РЅРёРµ" in response.text
-    assert "Р РµР¶РёРј РѕР±РѕСЂСѓРґРѕРІР°РЅРёСЏ" in response.text
-    assert "РћС‚РєСЂС‹С‚С‹Рµ СЏС‡РµР№РєРё" in response.text
-    assert "РџРѕСЃР»РµРґРЅСЏСЏ РїСЂРѕРІРµСЂРєР°" in response.text
-    assert "РџСЂРёРІСЏР·РєР° API" not in response.text
+    assert 'id="import-button"' in response.text
+    assert 'id="operations-table-body"' in response.text
+    assert 'id="system-api-status"' in response.text
     assert '"/admin/users"' in response.text
     assert '"/admin/nomenclature"' in response.text
     assert '"/admin/system/status"' in response.text
     assert '"/admin/operations/problem"' in response.text
     assert '"/admin/operations/recent"' in response.text
     assert '"/admin/operations/export"' in response.text
+    assert '"/admin/balances/export"' in response.text
     assert '"/admin/users/import"' in response.text
     assert '"/ui-assets/admin-users-import-example.csv"' in response.text
     assert '"once_per_day"' in response.text
@@ -227,7 +220,10 @@ def test_ui_admin_page_serves_user_management_config(tmp_path: Path) -> None:
     assert '"problemOperationsEndpoint"' in response.text
     assert '"recentOperationsEndpoint"' in response.text
     assert '"exportOperationsEndpoint"' in response.text
+    assert '"exportBalancesEndpoint"' in response.text
     assert '"exportUsersEndpoint"' in response.text
+    assert '"logoutEndpoint"' in response.text
+    assert '"changePasswordEndpoint"' in response.text
     assert '"createUserEndpoint"' in response.text
     assert '"listNomenclatureEndpoint"' in response.text
     assert '"createNomenclatureEndpoint"' in response.text
@@ -235,6 +231,60 @@ def test_ui_admin_page_serves_user_management_config(tmp_path: Path) -> None:
     assert '"importExampleCsvText"' in response.text
     assert '"supportedRoles"' in response.text
     assert '"uiRole": "admin"' in response.text
+    assert "Export balances CSV" in response.text
+    assert "Change admin password" in response.text
+
+
+def test_admin_auth_login_logout_and_password_change_flow(tmp_path: Path) -> None:
+    app = create_app(_settings(tmp_path, "api_admin_auth.sqlite3"))
+
+    with TestClient(app) as client:
+        assert client.get("/admin/users").status_code == 401
+        _login_admin(client)
+        assert client.get("/admin/users").status_code == 200
+
+        logout_response = client.post("/admin/auth/logout", json={})
+        assert logout_response.status_code == 200
+        assert client.get("/admin/users").status_code == 401
+
+        _login_admin(client)
+        change_response = client.post(
+            "/admin/auth/password",
+            json={
+                "current_password": "dionava",
+                "new_password": "newpass1",
+                "confirm_new_password": "newpass1",
+            },
+        )
+        assert change_response.status_code == 200
+        assert client.get("/admin/users").status_code == 401
+        assert client.post(
+            "/admin/auth/login",
+            json={"login": "admin", "password": "dionava"},
+        ).status_code == 400
+        _login_admin(client, password="newpass1")
+
+
+def test_admin_balances_export_requires_auth_and_uses_bom_cell_nomenclature_quantity(tmp_path: Path) -> None:
+    app = create_app(_settings(tmp_path, "api_admin_balances_export.sqlite3"))
+    _seed_base_domain(app)
+
+    with TestClient(app) as client:
+        unauthenticated_response = client.get("/admin/balances/export")
+        _login_admin(client)
+        response = client.get("/admin/balances/export")
+
+    assert unauthenticated_response.status_code == 401
+    assert response.status_code == 200
+    assert response.headers["content-disposition"] == 'attachment; filename="admin-balances-export.csv"'
+    assert response.content.startswith(b"\xef\xbb\xbf")
+    assert response.content.decode("utf-8-sig") == "\n".join(
+        (
+            "cell_number,nomenclature,quantity",
+            "436,Item One,5",
+            "",
+        )
+    )
 
 
 def test_ui_admin_touch_page_serves_separate_touch_shell(tmp_path: Path) -> None:
@@ -3322,6 +3372,12 @@ def _settings(tmp_path: Path, sqlite_filename: str) -> AppSettings:
         sqlite_filename=sqlite_filename,
         alembic_config_path=Path("alembic.ini"),
     )
+
+
+def _login_admin(client: TestClient, *, password: str = "dionava") -> None:
+    response = client.post("/admin/auth/login", json={"login": "admin", "password": password})
+    assert response.status_code == 200
+    assert response.json() == {"authenticated": True}
 
 
 def _real_settings(tmp_path: Path, sqlite_filename: str) -> AppSettings:

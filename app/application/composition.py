@@ -6,7 +6,14 @@ from pydantic import ValidationError
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
 
-from app.application.admin_service import AdminNomenclatureService, AdminOperationService, AdminSystemStatusService, AdminUserService
+from app.application.admin_service import (
+    AdminAuthService,
+    AdminBalanceService,
+    AdminNomenclatureService,
+    AdminOperationService,
+    AdminSystemStatusService,
+    AdminUserService,
+)
 from app.application.auth_service import AuthService
 from app.application.dispense_service import DispenseOperationService
 from app.application.export_service import ExportService
@@ -30,7 +37,7 @@ from app.persistence.repositories.logs import AuditLogRepository, EventLogReposi
 from app.persistence.repositories.nomenclature import NomenclatureRepository
 from app.persistence.repositories.operations import OperationRepository, OperationSessionRepository
 from app.persistence.repositories.recovery import RecoveryRepository
-from app.persistence.repositories.service import ExportRepository
+from app.persistence.repositories.service import ExportRepository, SystemSettingRepository
 from app.persistence.repositories.users import UserRepository
 from app.persistence.session import create_session_factory, create_sqlalchemy_engine
 
@@ -46,11 +53,14 @@ class RepositoryBundle:
     event_logs: EventLogRepository
     audit_logs: AuditLogRepository
     exports: ExportRepository
+    settings: SystemSettingRepository
 
 
 @dataclass(frozen=True, slots=True)
 class ServiceBundle:
     admin_users: AdminUserService
+    admin_auth: AdminAuthService
+    admin_balances: AdminBalanceService
     admin_nomenclature: AdminNomenclatureService
     admin_operations: AdminOperationService
     admin_system_status: AdminSystemStatusService
@@ -95,6 +105,7 @@ def build_repositories(session: Session) -> RepositoryBundle:
         event_logs=EventLogRepository(session),
         audit_logs=AuditLogRepository(session),
         exports=ExportRepository(session),
+        settings=SystemSettingRepository(session),
     )
 
 
@@ -127,6 +138,8 @@ def build_services(
         recovery_service=recovery_service,
     )
     admin_users_service = AdminUserService(repositories.users)
+    admin_auth_service = AdminAuthService(repositories.settings)
+    admin_balances_service = AdminBalanceService(repositories.inventory)
     admin_nomenclature_service = AdminNomenclatureService(repositories.nomenclature)
     admin_operations_service = AdminOperationService(
         repositories.operations,
@@ -141,6 +154,8 @@ def build_services(
     )
     return ServiceBundle(
         admin_users=admin_users_service,
+        admin_auth=admin_auth_service,
+        admin_balances=admin_balances_service,
         admin_nomenclature=admin_nomenclature_service,
         admin_operations=admin_operations_service,
         admin_system_status=AdminSystemStatusService(startup_service, open_door_guard),

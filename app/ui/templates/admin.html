@@ -14,6 +14,7 @@
         <p class="eyebrow">Admin UI</p>
         <h1>Администрирование вендингового аппарата DION</h1>
       </div>
+      <button id="logout-button" class="secondary-button" type="button">Logout</button>
     </header>
 
     <section class="status-panel" id="status-panel" aria-live="polite">
@@ -82,6 +83,51 @@
         <div class="export-actions">
           <button id="operations-export-button" class="secondary-button" type="button">Экспорт CSV</button>
           <p class="row-note">Диапазон по дням. Если дата не указана, экспорт не запускается.</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-heading">
+        <div>
+          <p class="eyebrow">Balances</p>
+          <h2>Export current balances to CSV</h2>
+        </div>
+      </div>
+      <div class="export-actions">
+        <a
+          id="export-balances-link"
+          class="secondary-button text-button"
+          href="/admin/balances/export"
+          download="admin-balances-export.csv"
+        >Export balances CSV</a>
+        <p class="row-note">Exports occupied cells only: cell_number, nomenclature, quantity.</p>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-heading">
+        <div>
+          <p class="eyebrow">Security</p>
+          <h2>Change admin password</h2>
+        </div>
+      </div>
+      <div class="password-change-grid">
+        <label class="field-block" for="current-password">
+          <span class="field-label">Current password</span>
+          <input id="current-password" class="inline-input" type="password" autocomplete="current-password">
+        </label>
+        <label class="field-block" for="new-password">
+          <span class="field-label">New password</span>
+          <input id="new-password" class="inline-input" type="password" autocomplete="new-password">
+        </label>
+        <label class="field-block" for="confirm-new-password">
+          <span class="field-label">Confirm new password</span>
+          <input id="confirm-new-password" class="inline-input" type="password" autocomplete="new-password">
+        </label>
+        <div class="password-change-actions">
+          <button id="change-password-button" class="save-button" type="button">Change password</button>
+          <p class="row-note">After a password change, this admin session is closed and you must log in again.</p>
         </div>
       </div>
     </section>

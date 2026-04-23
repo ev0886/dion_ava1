@@ -17,6 +17,7 @@ def build_parser() -> argparse.ArgumentParser:
     subparsers.add_parser("startup-check", help="Run startup readiness checks")
     subparsers.add_parser("hardware-health", help="Ping hardware endpoints and print availability")
     subparsers.add_parser("recovery-scan", help="Scan unfinished operations and open recovery cases")
+    subparsers.add_parser("reset-admin-password", help="Reset admin web UI password to the default value")
     seed_demo_inventory = subparsers.add_parser(
         "seed-demo-multi-slot-inventory",
         help="Seed deterministic demo inventory for one item across 10 fixed drum positions",
@@ -77,6 +78,11 @@ def _dispatch(args: argparse.Namespace, container: ApplicationContainer) -> int:
             ),
         }
         print(render_json(summary))
+        return 0
+
+    if args.command == "reset-admin-password":
+        container.services.admin_auth.reset_to_default_password()
+        print(render_json({"admin_login": "admin", "password_reset": True}))
         return 0
 
     if args.command == "seed-demo-multi-slot-inventory":

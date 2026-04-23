@@ -77,6 +77,13 @@ class AdminOperationExportRowDTO:
 
 
 @dataclass(frozen=True, slots=True)
+class AdminBalanceExportRowDTO:
+    cell_number: int
+    nomenclature: str
+    quantity: int
+
+
+@dataclass(frozen=True, slots=True)
 class AdminSystemStatusDTO:
     api_available: bool
     hardware_status: str

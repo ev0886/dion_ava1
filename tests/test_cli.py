@@ -121,6 +121,19 @@ def test_recovery_scan_runs_and_prints_deterministic_summary(tmp_path: Path) -> 
     assert '"unfinished_operation_ids": []' in stdout
 
 
+def test_reset_admin_password_dispatches_admin_auth_reset(monkeypatch) -> None:
+    fake_container = _FakeAdminAuthContainer()
+    monkeypatch.setattr("app.cli.create_bootstrapped_application_container", lambda _settings: fake_container)
+
+    exit_code, stdout, stderr = _run_cli(["reset-admin-password"])
+
+    assert exit_code == 0
+    assert fake_container.reset_called is True
+    assert '"admin_login": "admin"' in stdout
+    assert '"password_reset": true' in stdout
+    assert stderr == ""
+
+
 def test_seed_demo_multi_slot_inventory_runs_and_prints_seeded_slots(monkeypatch) -> None:
     monkeypatch.setattr("app.cli.create_bootstrapped_application_container", lambda _settings: _FakeSeedContainer())
     monkeypatch.setattr("app.cli.seed_demo_multi_slot_inventory", _fake_seed_demo_multi_slot_inventory)
@@ -141,6 +154,7 @@ def test_cli_help_lists_operator_commands() -> None:
     assert "startup-check" in stdout
     assert "hardware-health" in stdout
     assert "recovery-scan" in stdout
+    assert "reset-admin-password" in stdout
     assert "seed-demo-multi-slot-inventory" in stdout
     assert stderr == ""
 
@@ -201,6 +215,26 @@ class _FakeHardwareContainer:
 
     def __post_init__(self) -> None:
         self.hardware = SimpleNamespace(facade=_FakeHardwareFacade(self.all_ok))
+
+    def close(self) -> None:
+        return None
+
+
+@dataclass(slots=True)
+class _FakeAdminAuthService:
+    container: "_FakeAdminAuthContainer"
+
+    def reset_to_default_password(self) -> None:
+        self.container.reset_called = True
+
+
+@dataclass(slots=True)
+class _FakeAdminAuthContainer:
+    services: SimpleNamespace | None = None
+    reset_called: bool = False
+
+    def __post_init__(self) -> None:
+        self.services = SimpleNamespace(admin_auth=_FakeAdminAuthService(self))
 
     def close(self) -> None:
         return None

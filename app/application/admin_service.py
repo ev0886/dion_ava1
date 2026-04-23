@@ -1,11 +1,17 @@
 from __future__ import annotations
 
 import csv
+import base64
+import hashlib
+import hmac
+import json
+import secrets
 from dataclasses import dataclass
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 from io import StringIO
 
 from app.application.dto.admin import (
+    AdminBalanceExportRowDTO,
     AdminNomenclatureRecordDTO,
     AdminNomenclatureUpsertResultDTO,
     AdminOperationExportRowDTO,
@@ -21,9 +27,11 @@ from app.config.settings import HardwareProvider
 from app.application.exceptions import NotFoundError, ValidationError
 from app.domain.enums import DispenseRestrictionPolicy, OperationState, OperationType, RoleCode, UserStatus
 from app.persistence.models import User
+from app.persistence.repositories.inventory import InventoryRepository
 from app.persistence.repositories.logs import EventLogRepository
 from app.persistence.repositories.nomenclature import NomenclatureRepository
 from app.persistence.repositories.operations import OperationRepository
+from app.persistence.repositories.service import SystemSettingRepository
 from app.persistence.repositories.users import UserRepository
 
 
@@ -35,6 +43,141 @@ class _ImportedUserRow:
     role_code: RoleCode
     rfid_uid: str | None
     dispense_restriction_policy: DispenseRestrictionPolicy
+
+
+class AdminAuthService:
+    DEFAULT_LOGIN = "admin"
+    DEFAULT_PASSWORD = "dionava"
+    SESSION_TTL_SECONDS = 12 * 60 * 60
+
+    _PASSWORD_HASH_KEY = "admin.password_hash"
+    _SESSION_KEY = "admin.session"
+    _PASSWORD_ALGORITHM = "pbkdf2_sha256"
+    _PASSWORD_ITERATIONS = 390_000
+
+    def __init__(self, setting_repository: SystemSettingRepository) -> None:
+        self.setting_repository = setting_repository
+
+    def authenticate(self, *, login: str, password: str) -> str:
+        if login != self.DEFAULT_LOGIN or not self.verify_password(password):
+            raise ValidationError("Invalid admin login or password")
+        token = secrets.token_urlsafe(32)
+        expires_at = datetime.now(UTC) + timedelta(seconds=self.SESSION_TTL_SECONDS)
+        self.setting_repository.set_value(
+            key=self._SESSION_KEY,
+            value=json.dumps(
+                {
+                    "token_hash": self._hash_session_token(token),
+                    "expires_at": expires_at.isoformat(),
+                },
+                separators=(",", ":"),
+            ),
+            value_type="json",
+            description="Current admin web UI session token hash",
+        )
+        self.setting_repository.session.commit()
+        return token
+
+    def is_session_valid(self, token: str | None) -> bool:
+        if not token:
+            return False
+        raw_session = self.setting_repository.get_value(self._SESSION_KEY)
+        if raw_session is None:
+            return False
+        try:
+            payload = json.loads(raw_session)
+            expected_hash = str(payload["token_hash"])
+            expires_at = datetime.fromisoformat(str(payload["expires_at"]))
+        except (KeyError, TypeError, ValueError, json.JSONDecodeError):
+            return False
+        if expires_at <= datetime.now(UTC):
+            return False
+        return hmac.compare_digest(expected_hash, self._hash_session_token(token))
+
+    def logout(self) -> None:
+        self.setting_repository.set_value(
+            key=self._SESSION_KEY,
+            value="",
+            value_type="json",
+            description="Current admin web UI session token hash",
+        )
+        self.setting_repository.session.commit()
+
+    def change_password(self, *, current_password: str, new_password: str, confirm_new_password: str) -> None:
+        if not self.verify_password(current_password):
+            raise ValidationError("Current password is incorrect")
+        self._validate_new_password(new_password=new_password, confirm_new_password=confirm_new_password)
+        self._set_password(new_password)
+
+    def reset_to_default_password(self) -> None:
+        self._set_password(self.DEFAULT_PASSWORD)
+
+    def verify_password(self, password: str) -> bool:
+        stored_hash = self._get_or_create_password_hash()
+        try:
+            algorithm, raw_iterations, raw_salt, raw_digest = stored_hash.split("$", 3)
+            iterations = int(raw_iterations)
+            salt = base64.b64decode(raw_salt.encode("ascii"))
+            expected_digest = base64.b64decode(raw_digest.encode("ascii"))
+        except (ValueError, TypeError):
+            return False
+        if algorithm != self._PASSWORD_ALGORITHM:
+            return False
+        actual_digest = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt, iterations)
+        return hmac.compare_digest(expected_digest, actual_digest)
+
+    def _get_or_create_password_hash(self) -> str:
+        stored_hash = self.setting_repository.get_value(self._PASSWORD_HASH_KEY)
+        if stored_hash:
+            return stored_hash
+        password_hash = self._build_password_hash(self.DEFAULT_PASSWORD)
+        self.setting_repository.set_value(
+            key=self._PASSWORD_HASH_KEY,
+            value=password_hash,
+            value_type="password_hash",
+            description="Admin web UI password hash",
+        )
+        self.setting_repository.session.commit()
+        return password_hash
+
+    def _set_password(self, password: str) -> None:
+        self.setting_repository.set_value(
+            key=self._PASSWORD_HASH_KEY,
+            value=self._build_password_hash(password),
+            value_type="password_hash",
+            description="Admin web UI password hash",
+        )
+        self.setting_repository.set_value(
+            key=self._SESSION_KEY,
+            value="",
+            value_type="json",
+            description="Current admin web UI session token hash",
+        )
+        self.setting_repository.session.commit()
+
+    @classmethod
+    def _build_password_hash(cls, password: str) -> str:
+        salt = secrets.token_bytes(16)
+        digest = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt, cls._PASSWORD_ITERATIONS)
+        return "$".join(
+            (
+                cls._PASSWORD_ALGORITHM,
+                str(cls._PASSWORD_ITERATIONS),
+                base64.b64encode(salt).decode("ascii"),
+                base64.b64encode(digest).decode("ascii"),
+            )
+        )
+
+    @staticmethod
+    def _hash_session_token(token: str) -> str:
+        return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+    @staticmethod
+    def _validate_new_password(*, new_password: str, confirm_new_password: str) -> None:
+        if new_password != confirm_new_password:
+            raise ValidationError("New password confirmation does not match")
+        if len(new_password) < 6:
+            raise ValidationError("New password must contain at least 6 characters")
 
 
 class AdminUserService:
@@ -552,6 +695,24 @@ class AdminOperationService:
     @staticmethod
     def _csv_sort_key(row: tuple[object, ...]) -> tuple[str, str]:
         return (str(row[1] or row[2] or ""), str(row[0] or ""))
+
+
+class AdminBalanceService:
+    _CSV_COLUMNS = ("cell_number", "nomenclature", "quantity")
+
+    def __init__(self, inventory_repository: InventoryRepository) -> None:
+        self.inventory_repository = inventory_repository
+
+    def list_balances_for_export(self) -> tuple[AdminBalanceExportRowDTO, ...]:
+        return self.inventory_repository.list_positive_balances_for_admin_export()
+
+    def export_balances_csv(self) -> str:
+        output = StringIO()
+        writer = csv.writer(output, lineterminator="\n")
+        writer.writerow(self._CSV_COLUMNS)
+        for row in self.list_balances_for_export():
+            writer.writerow((row.cell_number, row.nomenclature, row.quantity))
+        return output.getvalue()
 
 
 class AdminSystemStatusService:

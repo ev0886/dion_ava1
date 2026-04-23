@@ -85,6 +85,17 @@ class AdminUserCreateRequest(ApiModel):
     is_active: bool = True
 
 
+class AdminLoginRequest(ApiModel):
+    login: str
+    password: str
+
+
+class AdminPasswordChangeRequest(ApiModel):
+    current_password: str
+    new_password: str
+    confirm_new_password: str
+
+
 class AdminNomenclatureCreateRequest(ApiModel):
     name: str
 

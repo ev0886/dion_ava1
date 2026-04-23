@@ -8,7 +8,13 @@ import pytest
 from sqlalchemy import create_engine, select, text
 from sqlalchemy.orm import Session, sessionmaker
 
-from app.application.admin_service import AdminNomenclatureService, AdminOperationService, AdminUserService
+from app.application.admin_service import (
+    AdminAuthService,
+    AdminBalanceService,
+    AdminNomenclatureService,
+    AdminOperationService,
+    AdminUserService,
+)
 from app.application.dto.admin import AdminRecentOperationDTO
 from app.application.exceptions import ValidationError
 from app.domain.enums import (
@@ -23,10 +29,11 @@ from app.domain.enums import (
     UserStatus,
 )
 from app.persistence.base import Base
-from app.persistence.models import InventoryTransaction, Item, Operation, Role, Slot, User, UserRfidCard
+from app.persistence.models import InventoryBalance, InventoryTransaction, Item, Operation, Role, Slot, User, UserRfidCard
 from app.persistence.repositories.inventory import InventoryRepository
 from app.persistence.repositories.nomenclature import NomenclatureRepository
 from app.persistence.repositories.operations import OperationRepository
+from app.persistence.repositories.service import SystemSettingRepository
 from app.persistence.repositories.users import UserRepository
 
 
@@ -43,6 +50,119 @@ def session_factory(tmp_path: Path) -> Iterator[sessionmaker[Session]]:
         yield factory
     finally:
         engine.dispose()
+
+
+def test_admin_auth_stores_hash_and_accepts_default_password(
+    session_factory: sessionmaker[Session],
+) -> None:
+    with session_factory() as session:
+        service = AdminAuthService(SystemSettingRepository(session))
+
+        token = service.authenticate(login="admin", password="dionava")
+
+        stored_hash = SystemSettingRepository(session).get_value("admin.password_hash")
+        assert stored_hash is not None
+        assert stored_hash != "dionava"
+        assert stored_hash.startswith("pbkdf2_sha256$")
+        assert service.is_session_valid(token)
+
+
+def test_admin_auth_changes_password_and_invalidates_existing_session(
+    session_factory: sessionmaker[Session],
+) -> None:
+    with session_factory() as session:
+        service = AdminAuthService(SystemSettingRepository(session))
+        token = service.authenticate(login="admin", password="dionava")
+
+        service.change_password(
+            current_password="dionava",
+            new_password="newpass1",
+            confirm_new_password="newpass1",
+        )
+
+        assert not service.is_session_valid(token)
+        assert service.verify_password("newpass1")
+        assert not service.verify_password("dionava")
+
+
+def test_admin_auth_reset_restores_default_password(
+    session_factory: sessionmaker[Session],
+) -> None:
+    with session_factory() as session:
+        service = AdminAuthService(SystemSettingRepository(session))
+        service.change_password(
+            current_password="dionava",
+            new_password="newpass1",
+            confirm_new_password="newpass1",
+        )
+
+        service.reset_to_default_password()
+
+        assert service.verify_password("dionava")
+        assert not service.verify_password("newpass1")
+
+
+def test_export_balances_csv_returns_cell_nomenclature_and_quantity(
+    session_factory: sessionmaker[Session],
+) -> None:
+    with session_factory() as session:
+        item = Item(
+            item_group_id=None,
+            sku="item-1",
+            name="Item One",
+            description=None,
+            unit="pcs",
+            return_allowed=True,
+            min_level=0,
+            status=ItemStatus.ACTIVE,
+        )
+        empty_item = Item(
+            item_group_id=None,
+            sku="item-empty",
+            name="Empty Item",
+            description=None,
+            unit="pcs",
+            return_allowed=True,
+            min_level=0,
+            status=ItemStatus.ACTIVE,
+        )
+        slot = Slot(
+            code="slot-p00-l01",
+            slot_type=SlotType.UNIVERSAL,
+            drum_position=0,
+            board_address=0,
+            lock_number=1,
+            capacity=1,
+            status=SlotStatus.ACTIVE,
+        )
+        empty_slot = Slot(
+            code="slot-p00-l02",
+            slot_type=SlotType.UNIVERSAL,
+            drum_position=0,
+            board_address=0,
+            lock_number=2,
+            capacity=1,
+            status=SlotStatus.ACTIVE,
+        )
+        session.add_all((item, empty_item, slot, empty_slot))
+        session.flush()
+        session.add_all(
+            (
+                InventoryBalance(slot_id=slot.id, item_id=item.id, quantity=3),
+                InventoryBalance(slot_id=empty_slot.id, item_id=empty_item.id, quantity=0),
+            )
+        )
+        session.commit()
+
+        exported_csv = AdminBalanceService(InventoryRepository(session)).export_balances_csv()
+
+        assert exported_csv == "\n".join(
+            (
+                "cell_number,nomenclature,quantity",
+                "1,Item One,3",
+                "",
+            )
+        )
 
 
 def test_import_users_csv_adds_row_context_to_duplicate_rfid_conflict(

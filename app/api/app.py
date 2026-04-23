@@ -4,7 +4,7 @@ from contextlib import asynccontextmanager
 from datetime import date
 from pathlib import Path
 
-from fastapi import Depends, FastAPI, Request
+from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 
@@ -13,6 +13,8 @@ from app.api.errors import register_exception_handlers
 from app.api.schemas import (
     AdminNomenclatureCreateRequest,
     AdminNomenclatureUpdateRequest,
+    AdminLoginRequest,
+    AdminPasswordChangeRequest,
     AdminUserCreateRequest,
     AdminUserUpdateRequest,
     AuthReadAndResolveRfidRequest,
@@ -36,7 +38,9 @@ from app.application.dto.operations import DispenseRequest, RefillRequest, Retur
 from app.bootstrap import bootstrap
 from app.config import AppSettings, get_settings
 from app.persistence.session import create_session_factory, create_sqlalchemy_engine
-from app.ui.mvp import render_admin_page, render_admin_touch_page, render_operator_page, render_user_page
+from app.ui.mvp import render_admin_login_page, render_admin_page, render_admin_touch_page, render_operator_page, render_user_page
+
+ADMIN_SESSION_COOKIE_NAME = "dion_admin_session"
 
 
 def create_app(settings: AppSettings | None = None) -> FastAPI:
@@ -75,7 +79,12 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
         return render_user_page(app.state.settings)
 
     @app.get("/ui/admin")
-    def ui_admin():
+    def ui_admin(
+        request: Request,
+        container: ApplicationContainer = Depends(get_application_container),
+    ):
+        if not _is_admin_authenticated(request, container):
+            return render_admin_login_page(app.state.settings)
         return render_admin_page(app.state.settings)
 
     @app.get("/ui/admin-touch")
@@ -140,14 +149,59 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
             )
         )
 
+    @app.post("/admin/auth/login")
+    def admin_auth_login(
+        payload: AdminLoginRequest,
+        container: ApplicationContainer = Depends(get_application_container),
+    ) -> JSONResponse:
+        token = container.services.admin_auth.authenticate(login=payload.login, password=payload.password)
+        response = JSONResponse({"authenticated": True})
+        response.set_cookie(
+            ADMIN_SESSION_COOKIE_NAME,
+            token,
+            httponly=True,
+            samesite="strict",
+            max_age=container.services.admin_auth.SESSION_TTL_SECONDS,
+        )
+        return response
+
+    @app.post("/admin/auth/logout")
+    def admin_auth_logout(
+        container: ApplicationContainer = Depends(get_application_container),
+        _: None = Depends(_require_admin_session),
+    ) -> JSONResponse:
+        container.services.admin_auth.logout()
+        response = JSONResponse({"authenticated": False})
+        response.delete_cookie(ADMIN_SESSION_COOKIE_NAME, httponly=True, samesite="strict")
+        return response
+
+    @app.post("/admin/auth/password")
+    def admin_change_password(
+        payload: AdminPasswordChangeRequest,
+        container: ApplicationContainer = Depends(get_application_container),
+        _: None = Depends(_require_admin_session),
+    ) -> JSONResponse:
+        container.services.admin_auth.change_password(
+            current_password=payload.current_password,
+            new_password=payload.new_password,
+            confirm_new_password=payload.confirm_new_password,
+        )
+        response = JSONResponse({"password_changed": True})
+        response.delete_cookie(ADMIN_SESSION_COOKIE_NAME, httponly=True, samesite="strict")
+        return response
+
     @app.get("/admin/users")
-    def admin_list_users(container: ApplicationContainer = Depends(get_application_container)) -> JSONResponse:
+    def admin_list_users(
+        container: ApplicationContainer = Depends(get_application_container),
+        _: None = Depends(_require_admin_session),
+    ) -> JSONResponse:
         return JSONResponse({"users": to_api_payload(container.services.admin_users.list_users())})
 
     @app.post("/admin/users")
     def admin_create_user(
         payload: AdminUserCreateRequest,
         container: ApplicationContainer = Depends(get_application_container),
+        _: None = Depends(_require_admin_session),
     ) -> JSONResponse:
         return JSONResponse(
             {
@@ -165,7 +219,10 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
         )
 
     @app.get("/admin/nomenclature")
-    def admin_list_nomenclature(container: ApplicationContainer = Depends(get_application_container)) -> JSONResponse:
+    def admin_list_nomenclature(
+        container: ApplicationContainer = Depends(get_application_container),
+        _: None = Depends(_require_admin_session),
+    ) -> JSONResponse:
         return JSONResponse({"nomenclature": to_api_payload(container.services.admin_nomenclature.list_nomenclature())})
 
     @app.get("/touch/nomenclature")
@@ -176,6 +233,7 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
     def admin_create_nomenclature(
         payload: AdminNomenclatureCreateRequest,
         container: ApplicationContainer = Depends(get_application_container),
+        _: None = Depends(_require_admin_session),
     ) -> JSONResponse:
         result = container.services.admin_nomenclature.create_nomenclature(name=payload.name)
         return JSONResponse(
@@ -190,6 +248,7 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
         nomenclature_id: int,
         payload: AdminNomenclatureUpdateRequest,
         container: ApplicationContainer = Depends(get_application_container),
+        _: None = Depends(_require_admin_session),
     ) -> JSONResponse:
         return JSONResponse(
             {
@@ -206,6 +265,7 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
     def admin_activate_nomenclature(
         nomenclature_id: int,
         container: ApplicationContainer = Depends(get_application_container),
+        _: None = Depends(_require_admin_session),
     ) -> JSONResponse:
         return JSONResponse(
             {
@@ -219,6 +279,7 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
     def admin_deactivate_nomenclature(
         nomenclature_id: int,
         container: ApplicationContainer = Depends(get_application_container),
+        _: None = Depends(_require_admin_session),
     ) -> JSONResponse:
         return JSONResponse(
             {
@@ -229,11 +290,17 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
         )
 
     @app.get("/admin/operations/recent")
-    def admin_list_recent_operations(container: ApplicationContainer = Depends(get_application_container)) -> JSONResponse:
+    def admin_list_recent_operations(
+        container: ApplicationContainer = Depends(get_application_container),
+        _: None = Depends(_require_admin_session),
+    ) -> JSONResponse:
         return JSONResponse({"operations": to_api_payload(container.services.admin_operations.list_recent_operations())})
 
     @app.get("/admin/operations/problem")
-    def admin_list_problem_operations(container: ApplicationContainer = Depends(get_application_container)) -> JSONResponse:
+    def admin_list_problem_operations(
+        container: ApplicationContainer = Depends(get_application_container),
+        _: None = Depends(_require_admin_session),
+    ) -> JSONResponse:
         return JSONResponse({"operations": to_api_payload(container.services.admin_operations.list_problem_operations())})
 
     @app.get("/admin/operations/export")
@@ -241,6 +308,7 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
         date_from: date,
         date_to: date,
         container: ApplicationContainer = Depends(get_application_container),
+        _: None = Depends(_require_admin_session),
     ) -> Response:
         return Response(
             content=container.services.admin_operations.export_operations_csv(
@@ -252,15 +320,32 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
         )
 
     @app.get("/admin/system/status")
-    def admin_system_status(container: ApplicationContainer = Depends(get_application_container)) -> JSONResponse:
+    def admin_system_status(
+        container: ApplicationContainer = Depends(get_application_container),
+        _: None = Depends(_require_admin_session),
+    ) -> JSONResponse:
         return JSONResponse(to_api_payload(container.services.admin_system_status.get_system_status(container.settings)))
 
     @app.get("/admin/users/export")
-    def admin_export_users(container: ApplicationContainer = Depends(get_application_container)) -> Response:
+    def admin_export_users(
+        container: ApplicationContainer = Depends(get_application_container),
+        _: None = Depends(_require_admin_session),
+    ) -> Response:
         return Response(
             content=container.services.admin_users.export_users_csv().encode("utf-8-sig"),
             media_type="text/csv; charset=utf-8",
             headers={"content-disposition": 'attachment; filename="admin-users-export.csv"'},
+        )
+
+    @app.get("/admin/balances/export")
+    def admin_export_balances(
+        container: ApplicationContainer = Depends(get_application_container),
+        _: None = Depends(_require_admin_session),
+    ) -> Response:
+        return Response(
+            content=container.services.admin_balances.export_balances_csv().encode("utf-8-sig"),
+            media_type="text/csv; charset=utf-8",
+            headers={"content-disposition": 'attachment; filename="admin-balances-export.csv"'},
         )
 
     @app.put("/admin/users/{user_id}")
@@ -268,6 +353,7 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
         user_id: int,
         payload: AdminUserUpdateRequest,
         container: ApplicationContainer = Depends(get_application_container),
+        _: None = Depends(_require_admin_session),
     ) -> JSONResponse:
         return JSONResponse(
             {
@@ -286,6 +372,7 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
     async def admin_import_users(
         request: Request,
         container: ApplicationContainer = Depends(get_application_container),
+        _: None = Depends(_require_admin_session),
     ) -> JSONResponse:
         csv_text = (await request.body()).decode("utf-8-sig")
         return JSONResponse(
@@ -575,3 +662,15 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
         )
 
     return app
+
+
+def _is_admin_authenticated(request: Request, container: ApplicationContainer) -> bool:
+    return container.services.admin_auth.is_session_valid(request.cookies.get(ADMIN_SESSION_COOKIE_NAME))
+
+
+def _require_admin_session(
+    request: Request,
+    container: ApplicationContainer = Depends(get_application_container),
+) -> None:
+    if not _is_admin_authenticated(request, container):
+        raise HTTPException(status_code=401, detail="Admin authentication required")

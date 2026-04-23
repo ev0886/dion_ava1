@@ -5,6 +5,7 @@
     statusPanel: document.getElementById("status-panel"),
     statusTitle: document.getElementById("status-title"),
     statusMessage: document.getElementById("status-message"),
+    logoutButton: document.getElementById("logout-button"),
     systemApiStatus: document.getElementById("system-api-status"),
     systemHardwareStatus: document.getElementById("system-hardware-status"),
     systemHardwareMode: document.getElementById("system-hardware-mode"),
@@ -27,6 +28,11 @@
     operationsExportDateFrom: document.getElementById("operations-export-date-from"),
     operationsExportDateTo: document.getElementById("operations-export-date-to"),
     operationsExportButton: document.getElementById("operations-export-button"),
+    exportBalancesLink: document.getElementById("export-balances-link"),
+    currentPassword: document.getElementById("current-password"),
+    newPassword: document.getElementById("new-password"),
+    confirmNewPassword: document.getElementById("confirm-new-password"),
+    changePasswordButton: document.getElementById("change-password-button"),
     importFile: document.getElementById("import-file"),
     importTextarea: document.getElementById("import-textarea"),
     loadExampleButton: document.getElementById("load-example-button"),
@@ -46,6 +52,7 @@
     systemStatus: null,
     isLoading: false,
     isExportingOperations: false,
+    isChangingPassword: false,
     isImporting: false,
     savingUserIds: new Set(),
     savingNomenclatureIds: new Set(),
@@ -414,6 +421,10 @@
     elements.operationsExportButton.disabled = state.isLoading || state.isExportingOperations;
     elements.operationsExportDateFrom.disabled = state.isExportingOperations;
     elements.operationsExportDateTo.disabled = state.isExportingOperations;
+    elements.changePasswordButton.disabled = state.isLoading || state.isChangingPassword;
+    elements.currentPassword.disabled = state.isChangingPassword;
+    elements.newPassword.disabled = state.isChangingPassword;
+    elements.confirmNewPassword.disabled = state.isChangingPassword;
     elements.importButton.disabled = state.isLoading || state.isImporting;
     elements.loadExampleButton.disabled = state.isImporting;
     elements.importFile.disabled = state.isImporting;
@@ -820,6 +831,52 @@
     }
   }
 
+  async function logout() {
+    try {
+      await readJson(config.logoutEndpoint, {
+        method: "POST",
+        body: JSON.stringify({}),
+      });
+    } finally {
+      window.location.assign("/ui/admin");
+    }
+  }
+
+  async function changePassword() {
+    state.isChangingPassword = true;
+    syncControls();
+    setStatus("", "Password change", "Updating admin password.");
+
+    try {
+      const { response, payload } = await readJson(config.changePasswordEndpoint, {
+        method: "POST",
+        body: JSON.stringify({
+          current_password: elements.currentPassword.value,
+          new_password: elements.newPassword.value,
+          confirm_new_password: elements.confirmNewPassword.value,
+        }),
+      });
+      if (!response.ok) {
+        throw new Error(payload.detail || "Password change failed.");
+      }
+      elements.currentPassword.value = "";
+      elements.newPassword.value = "";
+      elements.confirmNewPassword.value = "";
+      setStatus("success", "Password changed", "Admin password was updated. Login again with the new password.");
+      window.setTimeout(function () {
+        window.location.assign("/ui/admin");
+      }, 700);
+    } catch (error) {
+      setStatus("error", "Password change failed", String(error));
+    } finally {
+      state.isChangingPassword = false;
+      syncControls();
+    }
+  }
+
+  elements.logoutButton.addEventListener("click", function () {
+    void logout();
+  });
   elements.refreshButton.addEventListener("click", function () {
     void loadAdminData();
   });
@@ -835,11 +892,17 @@
   elements.operationsExportButton.addEventListener("click", function () {
     void exportOperations();
   });
+  elements.changePasswordButton.addEventListener("click", function () {
+    void changePassword();
+  });
   if (elements.downloadExampleLink && config.importExampleCsvAssetUrl) {
     elements.downloadExampleLink.href = config.importExampleCsvAssetUrl;
   }
   if (elements.exportUsersLink && config.exportUsersEndpoint) {
     elements.exportUsersLink.href = config.exportUsersEndpoint;
+  }
+  if (elements.exportBalancesLink && config.exportBalancesEndpoint) {
+    elements.exportBalancesLink.href = config.exportBalancesEndpoint;
   }
   elements.importButton.addEventListener("click", function () {
     void importUsers();

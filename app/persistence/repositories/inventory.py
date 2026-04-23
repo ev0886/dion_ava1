@@ -6,6 +6,8 @@ from datetime import datetime
 from sqlalchemy import and_, case, func, select
 
 from app.domain.enums import BindingType, ItemStatus, SlotStatus, SlotType
+from app.domain.drum_numbering import human_cell_number
+from app.application.dto.admin import AdminBalanceExportRowDTO
 from app.persistence.models import InventoryBalance, InventoryTransaction, Item, Slot, SlotItemBinding
 from app.persistence.repositories.base import Repository
 
@@ -352,6 +354,29 @@ class InventoryRepository(Repository):
                 quantity=int(quantity),
             )
             for item_name, quantity in rows
+        )
+
+    def list_positive_balances_for_admin_export(self) -> tuple[AdminBalanceExportRowDTO, ...]:
+        statement = (
+            select(
+                Slot.drum_position,
+                Slot.lock_number,
+                Item.name,
+                InventoryBalance.quantity,
+            )
+            .join(Slot, Slot.id == InventoryBalance.slot_id)
+            .join(Item, Item.id == InventoryBalance.item_id)
+            .where(InventoryBalance.quantity > 0)
+            .order_by(Slot.drum_position.asc(), Slot.lock_number.asc(), InventoryBalance.item_id.asc())
+        )
+        rows = self.session.execute(statement).all()
+        return tuple(
+            AdminBalanceExportRowDTO(
+                cell_number=human_cell_number(drum_position, lock_number),
+                nomenclature=item_name or "",
+                quantity=quantity,
+            )
+            for drum_position, lock_number, item_name, quantity in rows
         )
 
     def resolve_available_dispense_option(self, item_id: int) -> AvailableDispenseOptionRecord | None:

@@ -97,7 +97,10 @@ def render_admin_page(settings: AppSettings) -> HTMLResponse:
         "problemOperationsEndpoint": "/admin/operations/problem",
         "recentOperationsEndpoint": "/admin/operations/recent",
         "exportOperationsEndpoint": "/admin/operations/export",
+        "exportBalancesEndpoint": "/admin/balances/export",
         "exportUsersEndpoint": "/admin/users/export",
+        "logoutEndpoint": "/admin/auth/logout",
+        "changePasswordEndpoint": "/admin/auth/password",
         "updateUserEndpointBase": "/admin/users",
         "importUsersEndpoint": "/admin/users/import",
         "importExampleCsvAssetUrl": "/ui-assets/admin-users-import-example.csv",
@@ -110,6 +113,87 @@ def render_admin_page(settings: AppSettings) -> HTMLResponse:
             "__DION_ADMIN_UI_CONFIG__",
             json.dumps(ui_config, ensure_ascii=True),
         )
+    )
+
+
+def render_admin_login_page(settings: AppSettings) -> HTMLResponse:
+    del settings
+    return HTMLResponse(
+        """<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>DION ABA1 Admin Login</title>
+  <link rel="stylesheet" href="/ui-assets/admin.css">
+</head>
+<body>
+  <main class="admin-login-shell">
+    <section class="panel admin-login-panel">
+      <p class="eyebrow">DION ABA1 Admin UI</p>
+      <h1>Admin login</h1>
+      <div class="status-panel" id="login-status" aria-live="polite">
+        <strong id="login-status-title">Authentication required</strong>
+        <p id="login-status-message">Enter admin credentials to continue.</p>
+      </div>
+      <label class="field-block" for="admin-login">
+        <span class="field-label">Login</span>
+        <input id="admin-login" class="inline-input" type="text" value="admin" autocomplete="username">
+      </label>
+      <label class="field-block" for="admin-password">
+        <span class="field-label">Password</span>
+        <input id="admin-password" class="inline-input" type="password" autocomplete="current-password">
+      </label>
+      <button id="admin-login-button" class="save-button" type="button">Login</button>
+    </section>
+  </main>
+  <script>
+    (function () {
+      const loginInput = document.getElementById("admin-login");
+      const passwordInput = document.getElementById("admin-password");
+      const loginButton = document.getElementById("admin-login-button");
+      const status = document.getElementById("login-status");
+      const title = document.getElementById("login-status-title");
+      const message = document.getElementById("login-status-message");
+
+      function setStatus(kind, nextTitle, nextMessage) {
+        status.className = "status-panel" + (kind ? " status-" + kind : "");
+        title.textContent = nextTitle;
+        message.textContent = nextMessage;
+      }
+
+      async function login() {
+        loginButton.disabled = true;
+        setStatus("", "Checking credentials", "Please wait.");
+        try {
+          const response = await fetch("/admin/auth/login", {
+            method: "POST",
+            headers: {"Content-Type": "application/json"},
+            body: JSON.stringify({login: loginInput.value, password: passwordInput.value})
+          });
+          const payload = await response.json();
+          if (!response.ok) {
+            throw new Error(payload.detail || "Login failed");
+          }
+          window.location.assign("/ui/admin");
+        } catch (error) {
+          setStatus("error", "Login failed", String(error));
+        } finally {
+          loginButton.disabled = false;
+        }
+      }
+
+      loginButton.addEventListener("click", function () { void login(); });
+      passwordInput.addEventListener("keydown", function (event) {
+        if (event.key === "Enter") {
+          void login();
+        }
+      });
+      passwordInput.focus();
+    })();
+  </script>
+</body>
+</html>"""
     )
 
 
