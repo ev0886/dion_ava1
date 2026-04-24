@@ -133,6 +133,91 @@ The container helper is intentionally minimal. It does not add orchestration, se
 
 For Raspberry Pi OS desktop kiosk/autostart setup that targets the existing `/ui/mvp` page, see `docs/raspberry-pi-kiosk.md` and the repo-managed assets in `deploy/raspberry-pi/`.
 
+## Raspberry Pi OS deployment package
+
+Production deployment packaging is intentionally narrow:
+
+- target OS: clean Raspberry Pi OS
+- target hardware: Raspberry Pi 5
+- app path: `/opt/dion_ava1`
+- systemd service: `dion-api.service`
+- runtime env source of truth: `/etc/default/dion_ava1`
+
+Repo-managed deployment assets:
+
+- `deploy/raspberry-pi/install.sh`
+- `deploy/raspberry-pi/update.sh`
+- `deploy/raspberry-pi/dion_ava1.env.example`
+- `deploy/raspberry-pi/dion-api.service`
+
+### Fresh install on a clean Raspberry Pi OS machine
+
+1. Clone the repo into `/opt/dion_ava1`.
+2. Run:
+
+```bash
+cd /opt/dion_ava1
+sudo bash deploy/raspberry-pi/install.sh
+```
+
+The install script is intended for Raspberry Pi OS on Raspberry Pi 5 only and performs:
+
+- platform verification
+- `apt` install of required system packages
+- creation of `/opt/dion_ava1/var` and `/opt/dion_ava1/var/exports`
+- creation or refresh of `/opt/dion_ava1/.venv`
+- package install into the venv
+- bootstrap plus Alembic migrations
+- install of `dion-api.service`
+- install of `/etc/default/dion_ava1` from the example only when the file is missing
+- `systemctl daemon-reload`
+- `systemctl enable --now dion-api.service`
+
+### Update flow for an already deployed machine
+
+After updating the checked-out repo contents already present on the machine, run:
+
+```bash
+cd /opt/dion_ava1
+sudo bash deploy/raspberry-pi/update.sh
+```
+
+The update script performs:
+
+- Raspberry Pi OS and Raspberry Pi 5 verification
+- venv refresh and dependency reinstall from the current checkout
+- bootstrap plus Alembic migrations
+- refresh of the checked-in `dion-api.service`
+- `systemctl daemon-reload`
+- `systemctl restart dion-api.service`
+
+It does not overwrite `/etc/default/dion_ava1`.
+
+### Runtime env handling
+
+Use `/etc/default/dion_ava1` as the runtime source of truth for the deployed service.
+
+Rules for deployment:
+
+- install copies the example file only if `/etc/default/dion_ava1` is missing
+- install preserves an existing `/etc/default/dion_ava1`
+- update preserves `/etc/default/dion_ava1`
+- stand-specific hardware paths must be edited manually by a technician
+- drum and lock must use `/dev/serial/by-path/...`
+- drum and lock must not use `ttyUSB0` or `ttyUSB1`
+
+Recommended post-install steps:
+
+```bash
+sudoedit /etc/default/dion_ava1
+ls -l /dev/serial/by-path
+readlink -f /dev/serial/by-path/*
+sudo systemctl restart dion-api.service
+curl -fsS http://127.0.0.1:8000/health
+curl -fsS http://127.0.0.1:8000/readiness
+cd /opt/dion_ava1 && .venv/bin/python -m app.cli hardware-health
+```
+
 ## Live stand stabilization docs
 
 For the current live stand baseline and stabilization package, see:

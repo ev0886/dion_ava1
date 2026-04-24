@@ -10,7 +10,66 @@ This document describes the currently working live-stand runtime baseline. It is
 - service entrypoint: `python -m app.api`
 - runtime env file: `/etc/default/dion_ava1`
 
+For a clean Raspberry Pi OS deployment on Raspberry Pi 5, use:
+
+- install script: `deploy/raspberry-pi/install.sh`
+- update script: `deploy/raspberry-pi/update.sh`
+- env template source: `deploy/raspberry-pi/dion_ava1.env.example`
+
 The checked-in unit file is `deploy/raspberry-pi/dion-api.service` and loads `/etc/default/dion_ava1`.
+
+## Clean Raspberry Pi OS install path
+
+Use this flow on a fresh Raspberry Pi OS image for a new machine:
+
+```bash
+sudo mkdir -p /opt
+cd /opt
+sudo git clone <repo-url> dion_ava1
+cd /opt/dion_ava1
+sudo bash deploy/raspberry-pi/install.sh
+sudoedit /etc/default/dion_ava1
+sudo systemctl restart dion-api.service
+cd /opt/dion_ava1 && .venv/bin/python -m app.cli hardware-health
+```
+
+What the install script does:
+
+- verifies Raspberry Pi OS and Raspberry Pi 5
+- expects the repo to already live at `/opt/dion_ava1`
+- installs required system packages for this deployment baseline
+- creates `/opt/dion_ava1/var` and `/opt/dion_ava1/var/exports`
+- creates or refreshes `/opt/dion_ava1/.venv`
+- installs the project into the venv
+- runs bootstrap and Alembic migrations
+- installs the checked-in `dion-api.service`
+- installs `/etc/default/dion_ava1` only when missing
+- enables and starts `dion-api.service`
+
+## Update path on an existing deployed stand
+
+After the repo already present on the machine has been updated in place, run:
+
+```bash
+cd /opt/dion_ava1
+sudo bash deploy/raspberry-pi/update.sh
+```
+
+What the update script does:
+
+- verifies Raspberry Pi OS and Raspberry Pi 5
+- refreshes `/opt/dion_ava1/.venv`
+- reinstalls the current project and dependencies
+- runs bootstrap and Alembic migrations
+- refreshes the systemd unit from the repo
+- reloads systemd
+- restarts `dion-api.service`
+
+What it preserves:
+
+- existing `/etc/default/dion_ava1`
+- existing stand-specific hardware path configuration
+- current operator, user, and admin behavior
 
 ## Real hardware transport baseline
 
@@ -135,6 +194,12 @@ Exports:
 - Balances CSV: admin web balances export.
 - Admin touch USB operations export: `/ui/admin-touch` writes operations CSV to the mounted USB device.
 - Admin touch USB balances export: `/ui/admin-touch` writes balances CSV to the mounted USB device.
+
+First-use admin step on a fresh Raspberry Pi OS install:
+
+- after the service is healthy, open `/ui/admin`
+- login with the current baseline credentials
+- change the admin password before production handover
 
 ## Logical numbering reference
 

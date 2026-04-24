@@ -29,6 +29,32 @@ If the service does not come back cleanly, check:
 - `/etc/default/dion_ava1`
 - `/dev/serial/by-path`
 
+## Fresh install verification on clean Raspberry Pi OS
+
+After `deploy/raspberry-pi/install.sh` finishes on a new Raspberry Pi 5 machine:
+
+```bash
+sudoedit /etc/default/dion_ava1
+ls -l /dev/serial/by-path
+readlink -f /dev/serial/by-path/*
+sudo systemctl restart dion-api.service
+sudo systemctl status dion-api.service --no-pager
+curl -fsS http://127.0.0.1:8000/health
+curl -fsS http://127.0.0.1:8000/readiness
+cd /opt/dion_ava1 && .venv/bin/python -m app.cli hardware-health
+```
+
+Use this sequence before considering the stand ready:
+
+- confirm the drum controller path in `/etc/default/dion_ava1`
+- confirm the CU24 lock controller path in `/etc/default/dion_ava1`
+- confirm the RFID path in `/etc/default/dion_ava1`
+- confirm service health endpoints respond locally
+- confirm `hardware-health` reports the configured devices correctly
+- confirm admin login works at `/ui/admin`
+
+If the machine is a cloned or newly wired stand and drum/lock behavior is reversed, swap only the drum and lock `port` values in `/etc/default/dion_ava1`, restart the service, and run `hardware-health` again.
+
 ## Hardware health
 
 ```bash

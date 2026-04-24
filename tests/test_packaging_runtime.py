@@ -121,6 +121,55 @@ def test_raspberry_pi_kiosk_assets_target_local_ui_mvp() -> None:
     assert "dion-api.service" in kiosk_doc
 
 
+def test_raspberry_pi_install_script_is_pinned_to_current_production_baseline() -> None:
+    script = Path("deploy/raspberry-pi/install.sh").read_text(encoding="utf-8")
+
+    assert "APP_DIR=/opt/dion_ava1" in script
+    assert "ENV_TARGET=/etc/default/dion_ava1" in script
+    assert 'SYSTEMD_UNIT_NAME=dion-api.service' in script
+    assert "Raspberry Pi OS" in script
+    assert "Raspberry Pi 5" in script
+    assert "python3 -m venv" in script
+    assert '"${VENV_DIR}/bin/pip" install .' in script
+    assert '"${VENV_DIR}/bin/python" -m app.main' in script
+    assert "systemctl enable --now" in script
+    assert "Do not use ttyUSB0 or ttyUSB1 for drum or lock." in script
+
+
+def test_raspberry_pi_install_script_preserves_existing_env_file() -> None:
+    script = Path("deploy/raspberry-pi/install.sh").read_text(encoding="utf-8")
+
+    assert 'if [[ -f "${ENV_TARGET}" ]]; then' in script
+    assert 'log "Preserving existing ${ENV_TARGET}"' in script
+    assert 'install -m 640 "${env_source}" "${ENV_TARGET}"' in script
+
+
+def test_raspberry_pi_update_script_preserves_runtime_env_and_restarts_service() -> None:
+    script = Path("deploy/raspberry-pi/update.sh").read_text(encoding="utf-8")
+
+    assert "APP_DIR=/opt/dion_ava1" in script
+    assert "ENV_TARGET=/etc/default/dion_ava1" in script
+    assert "Raspberry Pi OS" in script
+    assert "Raspberry Pi 5" in script
+    assert '"${VENV_DIR}/bin/pip" install .' in script
+    assert '"${VENV_DIR}/bin/python" -m app.main' in script
+    assert "systemctl restart" in script
+    assert "/etc/default/dion_ava1 was not overwritten" in script
+
+
+def test_raspberry_pi_env_example_documents_by_path_hardware_mapping() -> None:
+    env_example = Path("deploy/raspberry-pi/dion_ava1.env.example").read_text(encoding="utf-8")
+
+    assert "DION_DATA_DIR=/opt/dion_ava1/var" in env_example
+    assert "DION_PYTHON_BIN=/opt/dion_ava1/.venv/bin/python" in env_example
+    assert "DION_HARDWARE_PROVIDER=real" in env_example
+    assert "/dev/serial/by-path/<replace-with-drum-controller-path>" in env_example
+    assert "/dev/serial/by-path/<replace-with-lock-controller-path>" in env_example
+    assert "do not use ttyUSB0 or ttyUSB1 for drum or lock" in env_example
+    assert '"move_completion_timeout_ms":35000' in env_example
+    assert '"board_address":0' in env_example
+
+
 @dataclass(slots=True)
 class _FakeStartupService:
     result: StartupReadinessDTO
